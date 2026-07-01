@@ -1,17 +1,19 @@
+import type { ConnectionPhase } from "@app/client-runtime";
 import type { DesktopTheme, ServerConfig } from "@app/contracts";
 import { useCallback, useEffect, useState } from "react";
 
 import { useConnection } from "./hooks/useConnection.ts";
 import { useTheme } from "./hooks/useTheme.ts";
+import { localApi } from "./localApi.ts";
 
-const STATUS_LABEL: Record<string, string> = {
+const STATUS_LABEL: Record<ConnectionPhase, string> = {
   idle: "Idle",
   connecting: "Connecting",
   connected: "Connected",
   reconnecting: "Reconnecting",
 };
 
-const STATUS_DOT: Record<string, string> = {
+const STATUS_DOT: Record<ConnectionPhase, string> = {
   idle: "bg-[--color-muted]",
   connecting: "bg-amber-400 animate-pulse",
   connected: "bg-emerald-400",
@@ -25,10 +27,12 @@ export function App() {
   const { request, subscribe } = conn;
   const { theme, setTheme } = useTheme();
   const connected = conn.state.phase === "connected";
+  const isDesktop = localApi().isDesktop;
 
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const [tick, setTick] = useState<number | null>(null);
   const [lifecycle, setLifecycle] = useState<string | null>(null);
+  const [menuAction, setMenuAction] = useState<string | null>(null);
   const [echoInput, setEchoInput] = useState("hello");
   const [echoResult, setEchoResult] = useState<string | null>(null);
   const [echoing, setEchoing] = useState(false);
@@ -52,18 +56,24 @@ export function App() {
     };
   }, [connected, request]);
 
-  // Live streams: established once connected. The client-runtime subscription
-  // auto-re-attaches across brief reconnects, so this need only run per session.
-  useEffect(() => {
-    if (!connected) return;
-    return subscribe("subscribeTicks", {}, (event) => setTick(event.tick));
-  }, [connected, subscribe]);
-  useEffect(() => {
-    if (!connected) return;
-    return subscribe("subscribeServerLifecycle", {}, (event) =>
-      setLifecycle(event.phase),
-    );
-  }, [connected, subscribe]);
+  // Live streams: subscribe once per mount. The client-runtime subscription
+  // watches the session and re-attaches on every reconnect by itself, so we must
+  // NOT gate on `connected` — that would tear the stream down and rebuild it on
+  // each blip, defeating the transport's built-in re-attach.
+  useEffect(
+    () => subscribe("subscribeTicks", {}, (event) => setTick(event.tick)),
+    [subscribe],
+  );
+  useEffect(
+    () =>
+      subscribe("subscribeServerLifecycle", {}, (event) =>
+        setLifecycle(event.phase),
+      ),
+    [subscribe],
+  );
+
+  // Native menu actions (shell only; inert in a browser). Subscribe once.
+  useEffect(() => localApi().onMenuAction(setMenuAction), []);
 
   const runEcho = useCallback(() => {
     setEchoing(true);
@@ -88,12 +98,12 @@ export function App() {
           <div className="flex items-center gap-2">
             <span
               className={`inline-block h-2.5 w-2.5 rounded-full ${
-                STATUS_DOT[conn.state.phase] ?? STATUS_DOT.idle
+                STATUS_DOT[conn.state.phase]
               }`}
               aria-hidden
             />
             <span className="text-sm text-[--color-muted]">
-              {STATUS_LABEL[conn.state.phase] ?? conn.state.phase}
+              {STATUS_LABEL[conn.state.phase]}
             </span>
           </div>
         </header>
@@ -115,6 +125,11 @@ export function App() {
           <Row label="Tick">
             <span className="font-mono tabular-nums">{tick ?? "—"}</span>
           </Row>
+          {isDesktop && (
+            <Row label="Menu">
+              <span className="font-mono">{menuAction ?? "—"}</span>
+            </Row>
+          )}
         </dl>
 
         <div className="mt-5 border-t border-[--color-border] pt-5">

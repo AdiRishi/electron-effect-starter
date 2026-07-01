@@ -28,7 +28,13 @@ global side effects. This starter keeps the patterns that solve that:
   (renderer↔server, via Effect RPC) and `DesktopBridge` (shell↔renderer, via IPC).
   Malformed data can't cross either wire.
 - **Robust lifecycle** — scoped startup/shutdown, graceful `SIGTERM`, readiness gate,
-  reconnect supervisor, everything traced with spans.
+  reconnect supervisor (credential minting lives _inside_ the retry loop, so a cold-start
+  outage backs off and recovers instead of freezing), everything traced with spans.
+
+Two shell capabilities are wired end-to-end as working references rather than stubs:
+a native **application menu** whose clicks dispatch actions to the renderer, and an
+**auto-updater** (`electron-updater`) that streams status to the UI — inert until packaged
+and pointed at a feed (see the seam below).
 
 ## Layout
 
@@ -67,7 +73,7 @@ IPC). The renderer exchanges it at `POST /api/auth/bootstrap/bearer` for a short
 
 ## Design seams — where you take over
 
-Three spots are intentionally left for you to shape:
+Four spots are intentionally left for you to shape:
 
 1. **Your RPCs** — `packages/contracts/src/rpc.ts` (`DESIGN SEAM #2`). Add a schema, an
    `Rpc.make(...)`, list it in `WsRpcGroup`, then handle it in `apps/server/src/ws.ts`.
@@ -76,6 +82,9 @@ Three spots are intentionally left for you to shape:
    Add fields to the schema; migration + atomic write are already handled.
 3. **Your bridge surface** — `packages/contracts/src/ipc.ts` (`DesktopBridge`). Add a method,
    wire a channel in `apps/desktop/src/ipc/`, implement the preload delegate.
+4. **Your update feed** — `apps/desktop/src/updates/DesktopUpdater.ts`. The updater is wired
+   end-to-end (events → state → renderer, plus check/download/install); drop your published
+   `setFeedURL(...)` into `configure` to make packaged builds fetch real releases.
 
 ## What was deliberately dropped
 

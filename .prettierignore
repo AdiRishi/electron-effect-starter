@@ -1,0 +1,8 @@
+# Files and directories Prettier should not format (build output and generated files)
+pnpm-lock.yaml
+node_modules
+dist
+dist-electron
+release
+*.tsbuildinfo
+coverage

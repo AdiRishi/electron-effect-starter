@@ -26,8 +26,7 @@ const canListenOnHost = (port: number, host: string): Effect.Effect<boolean> =>
       server.close();
     };
     server.once("error", () => {
-      server.removeAllListeners();
-      server.close();
+      cleanup();
       resume(Effect.succeed(false));
     });
     server.once("listening", () => {

@@ -23,7 +23,6 @@ import * as DesktopBackendConfiguration from "./DesktopBackendConfiguration.ts";
 import type { DesktopBackendStartConfig } from "./DesktopBackendConfiguration.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
-import * as DesktopState from "../app/DesktopState.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 
 // Supervises the single local server child: picks a free port, spawns the
@@ -533,17 +532,15 @@ const makeManager = (
     } satisfies DesktopBackendManagerShape;
   });
 
-// Wires the manager into the window's readiness callbacks and the shared
-// DesktopState.backendReady flag. `onReady` reveals the main window; `onNotReady`
-// clears the latch so a dock-click while the backend is down doesn't strand a
-// window pointing at nothing.
+// Wires the manager into the window's readiness callbacks. `onReady` reveals the
+// main window; `onNotReady` clears the latch so a dock-click while the backend
+// is down doesn't strand a window pointing at nothing.
 export const layer: Layer.Layer<
   DesktopBackendManager,
   never,
   | DesktopBackendConfiguration.DesktopBackendConfiguration
   | DesktopEnvironment.DesktopEnvironment
   | DesktopWindow.DesktopWindow
-  | DesktopState.DesktopState
   | NetService
   | FileSystem.FileSystem
   | ChildProcessSpawner.ChildProcessSpawner
@@ -552,19 +549,12 @@ export const layer: Layer.Layer<
   DesktopBackendManager,
   Effect.gen(function* () {
     const window = yield* DesktopWindow.DesktopWindow;
-    const state = yield* DesktopState.DesktopState;
     const manager = yield* makeManager({
-      onReady: (config) =>
-        Ref.set(state.backendReady, true).pipe(
-          Effect.andThen(window.handleBackendReady(config)),
-          // A window-create failure while revealing on backend-ready is
-          // unexpected and fatal; surface it as a defect rather than widening
-          // the callback's error channel.
-          Effect.orDie,
-        ),
-      onNotReady: Ref.set(state.backendReady, false).pipe(
-        Effect.andThen(window.handleBackendNotReady),
-      ),
+      // A window-create failure while revealing on backend-ready is unexpected
+      // and fatal; surface it as a defect rather than widening the callback's
+      // error channel.
+      onReady: (config) => window.handleBackendReady(config).pipe(Effect.orDie),
+      onNotReady: window.handleBackendNotReady,
     });
     return manager;
   }),

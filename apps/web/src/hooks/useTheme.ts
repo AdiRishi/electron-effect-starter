@@ -62,7 +62,7 @@ function getSnapshot(): DesktopTheme {
 /**
  * Theme state wired through `LocalApi.setTheme`, so a change persists to
  * localStorage (browser) AND syncs to the shell (bridge). Returns the stored
- * preference plus the resolved light/dark value the UI can display.
+ * preference and a setter; the effective light/dark is applied to `<html>`.
  */
 export function useTheme() {
   const theme = useSyncExternalStore(
@@ -70,8 +70,6 @@ export function useTheme() {
     getSnapshot,
     () => DEFAULT_THEME,
   );
-  const resolved: "light" | "dark" =
-    theme === "system" ? (systemDark() ? "dark" : "light") : theme;
 
   const setTheme = useCallback((next: DesktopTheme) => {
     void localApi().setTheme(next);
@@ -79,5 +77,5 @@ export function useTheme() {
     emit();
   }, []);
 
-  return { theme, resolvedTheme: resolved, setTheme } as const;
+  return { theme, setTheme } as const;
 }
