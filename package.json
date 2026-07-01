@@ -1,0 +1,30 @@
+{
+  "name": "@app/monorepo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev-runner.ts dev",
+    "dev:server": "node scripts/dev-runner.ts dev:server",
+    "dev:web": "node scripts/dev-runner.ts dev:web",
+    "dev:desktop": "node scripts/dev-runner.ts dev:desktop",
+    "build": "vp run --filter './apps/*' --filter './packages/*' build",
+    "build:desktop": "vp run --filter @app/desktop --filter @app/server build",
+    "start:desktop": "vp run --filter @app/desktop start",
+    "typecheck": "vp run -r --concurrency-limit 2 typecheck",
+    "test": "vp run -r test",
+    "lint": "vp lint",
+    "fmt": "vp fmt",
+    "dist:desktop": "node scripts/build-desktop-artifact.ts",
+    "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/*/dist apps/*/dist-electron packages/*/dist"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.24.0"
+}

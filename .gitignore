@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-electron/
+.vite-plus/
+*.tsbuildinfo
+*.log
+.env
+.env.local
+.DS_Store
+release/
+.playwright-mcp/

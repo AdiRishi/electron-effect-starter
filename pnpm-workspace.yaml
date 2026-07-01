@@ -1,0 +1,35 @@
+packages:
+  - apps/*
+  - packages/*
+  - scripts
+
+# Single source of truth for dependency versions. Every package pins with
+# the `catalog:` protocol (e.g. `"effect": "catalog:"`) so upgrades happen
+# in exactly one place. This is the pattern extracted from T3 Code.
+catalog:
+  "@effect/platform-node": 4.0.0-beta.78
+  "@effect/tsgo": 0.13.2
+  "@effect/vitest": 4.0.0-beta.78
+  "@types/node": 24.12.4
+  "@typescript/native-preview": 7.0.0-dev.20260604.1
+  effect: 4.0.0-beta.78
+  typescript: ~6.0.3
+  # `vite-plus` is voidzero's batteries-included Vite distribution; the bare
+  # `vite` specifier is aliased to its core so a single toolchain drives dev,
+  # build, pack (electron bundling) and test.
+  vite: npm:@voidzero-dev/vite-plus-core@0.2.1
+  vite-plus: 0.2.1
+
+onlyBuiltDependencies:
+  - electron
+  - esbuild
+  - msgpackr-extract
+
+# `vite` is aliased to vite-plus-core (version 0.2.1), which doesn't satisfy the
+# `^8` peer ranges that vitest / tailwind / plugin-react declare. vite-plus is
+# the single toolchain, so allow any vite for those peers.
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: "*"
