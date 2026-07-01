@@ -1,0 +1,115 @@
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+
+import { ConnectionSupervisor } from "../connection/supervisor.ts";
+import type { WsRpcProtocolClient } from "./protocol.ts";
+
+/** Raised when a request is issued while no socket is live. */
+export class RpcUnavailableError extends Schema.TaggedErrorClass<RpcUnavailableError>()(
+  "RpcUnavailableError",
+  {
+    method: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `RPC "${this.method}" was called while disconnected.`;
+  }
+}
+
+/** Every method tag on the typed client (both unary and streaming). */
+export type RpcTag = keyof WsRpcProtocolClient & string;
+
+type RpcMethod<TTag extends RpcTag> = WsRpcProtocolClient[TTag];
+
+export type RpcInput<TTag extends RpcTag> = Parameters<RpcMethod<TTag>>[0];
+
+/** Unary tags: the method returns an `Effect`. */
+export type UnaryRpcTag = {
+  [K in RpcTag]: RpcMethod<K> extends (input: never) => Effect.Effect<unknown, unknown, unknown>
+    ? K
+    : never;
+}[RpcTag];
+
+/** Streaming tags: the method returns a `Stream`. */
+export type StreamRpcTag = {
+  [K in RpcTag]: RpcMethod<K> extends (input: never) => Stream.Stream<unknown, unknown, unknown>
+    ? K
+    : never;
+}[RpcTag];
+
+export type RpcSuccess<TTag extends UnaryRpcTag> =
+  RpcMethod<TTag> extends (input: never) => Effect.Effect<infer A, unknown, unknown> ? A : never;
+
+export type RpcFailure<TTag extends UnaryRpcTag> =
+  RpcMethod<TTag> extends (input: never) => Effect.Effect<unknown, infer E, unknown> ? E : never;
+
+export type RpcStreamValue<TTag extends StreamRpcTag> =
+  RpcMethod<TTag> extends (input: never) => Stream.Stream<infer A, unknown, unknown> ? A : never;
+
+export type RpcStreamFailure<TTag extends StreamRpcTag> =
+  RpcMethod<TTag> extends (input: never) => Stream.Stream<unknown, infer E, unknown> ? E : never;
+
+const currentSession = Effect.gen(function* () {
+  const supervisor = yield* ConnectionSupervisor;
+  return yield* SubscriptionRef.get(supervisor.session);
+});
+
+/**
+ * Issue a unary RPC against the currently-live session. Fails fast with
+ * `RpcUnavailableError` if disconnected — callers decide whether to retry.
+ *
+ * ── DESIGN SEAM (add RPC calls) ──
+ * New unary methods added to `WsRpcGroup` (contracts) are callable immediately:
+ * `request("your.method", input)` type-checks against the generated client.
+ */
+export const request = <TTag extends UnaryRpcTag>(
+  tag: TTag,
+  input: RpcInput<TTag>,
+): Effect.Effect<RpcSuccess<TTag>, RpcFailure<TTag> | RpcUnavailableError, ConnectionSupervisor> =>
+  Effect.gen(function* () {
+    const session = yield* currentSession;
+    if (Option.isNone(session)) {
+      return yield* new RpcUnavailableError({ method: tag });
+    }
+    const method = session.value.client[tag] as (
+      input: RpcInput<TTag>,
+    ) => Effect.Effect<RpcSuccess<TTag>, RpcFailure<TTag>>;
+    return yield* method(input);
+  });
+
+/**
+ * Subscribe to a streaming RPC. The returned stream watches the supervisor's
+ * `session` ref and, on every reconnect, tears down the old subscription and
+ * re-attaches to the fresh session — so a consumer subscribes once and keeps
+ * receiving pushes across drops. While disconnected the stream is simply empty.
+ *
+ * ── DESIGN SEAM (add RPC calls) ──
+ * New `stream: true` methods on `WsRpcGroup` work here too:
+ * `subscribe("your.subscription", input)` re-attaches automatically.
+ */
+export const subscribe = <TTag extends StreamRpcTag>(
+  tag: TTag,
+  input: RpcInput<TTag>,
+): Stream.Stream<RpcStreamValue<TTag>, RpcStreamFailure<TTag>, ConnectionSupervisor> =>
+  Stream.unwrap(
+    Effect.map(ConnectionSupervisor, (supervisor) =>
+      SubscriptionRef.changes(supervisor.session).pipe(
+        Stream.switchMap(
+          Option.match({
+            onNone: () => Stream.empty,
+            onSome: (session) => {
+              const method = session.client[tag] as (
+                input: RpcInput<TTag>,
+              ) => Stream.Stream<RpcStreamValue<TTag>, RpcStreamFailure<TTag>>;
+              // If the transport drops, swallow the error and go quiet; the ref
+              // will emit `None` then a fresh session, which re-attaches us.
+              return method(input).pipe(Stream.catchCause(() => Stream.empty));
+            },
+          }),
+        ),
+      ),
+    ),
+  );
