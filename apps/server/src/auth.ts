@@ -32,7 +32,9 @@ export class BearerSessionStore extends Context.Service<
      * Exchange a bootstrap credential for a fresh bearer token. Returns
      * `Option.none()` when the credential does not match the server's token.
      */
-    readonly authenticateBootstrap: (credential: string) => Effect.Effect<Option.Option<string>>;
+    readonly authenticateBootstrap: (
+      credential: string,
+    ) => Effect.Effect<Option.Option<string>>;
     /** Whether the given bearer token is a live session. */
     readonly authenticateBearer: (token: string) => Effect.Effect<boolean>;
   }

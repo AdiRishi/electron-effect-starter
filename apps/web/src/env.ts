@@ -40,7 +40,10 @@ export function resolveConnectionTarget(): ConnectionTarget {
   if (isElectron && window.desktopBridge) {
     const bootstrap = window.desktopBridge.getServerBootstrap();
     if (bootstrap) {
-      return { httpBaseUrl: bootstrap.httpBaseUrl, wsBaseUrl: bootstrap.wsBaseUrl };
+      return {
+        httpBaseUrl: bootstrap.httpBaseUrl,
+        wsBaseUrl: bootstrap.wsBaseUrl,
+      };
     }
     const httpBaseUrl = window.location.origin;
     return { httpBaseUrl, wsBaseUrl: toWsOrigin(httpBaseUrl) };

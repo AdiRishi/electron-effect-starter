@@ -38,34 +38,38 @@ export class ServerConfig extends Context.Service<
   }
 >()("@app/server/config/ServerConfig") {}
 
-export const make = (config: ServerConfig["Service"]) => ServerConfig.of(config);
+export const make = (config: ServerConfig["Service"]) =>
+  ServerConfig.of(config);
 
-export const layer = (config: ServerConfig["Service"]) => Layer.succeed(ServerConfig, make(config));
+export const layer = (config: ServerConfig["Service"]) =>
+  Layer.succeed(ServerConfig, make(config));
 
 /**
  * Resolve the directory of built web assets. Prefers the bundled `dist/client`
  * (packaged) and falls back to `../web/dist` (monorepo dev). Returns `undefined`
  * when neither exists.
  */
-export const resolveStaticDir = Effect.fn("ServerConfig.resolveStaticDir")(function* () {
-  const { join, resolve } = yield* Path.Path;
-  const { exists } = yield* FileSystem.FileSystem;
+export const resolveStaticDir = Effect.fn("ServerConfig.resolveStaticDir")(
+  function* () {
+    const { join, resolve } = yield* Path.Path;
+    const { exists } = yield* FileSystem.FileSystem;
 
-  const bundledClient = resolve(join(import.meta.dirname, "client"));
-  const hasBundled = yield* exists(join(bundledClient, "index.html")).pipe(
-    Effect.orElseSucceed(() => false),
-  );
-  if (hasBundled) {
-    return bundledClient;
-  }
+    const bundledClient = resolve(join(import.meta.dirname, "client"));
+    const hasBundled = yield* exists(join(bundledClient, "index.html")).pipe(
+      Effect.orElseSucceed(() => false),
+    );
+    if (hasBundled) {
+      return bundledClient;
+    }
 
-  const monorepoClient = resolve(join(import.meta.dirname, "../../web/dist"));
-  const hasMonorepo = yield* exists(join(monorepoClient, "index.html")).pipe(
-    Effect.orElseSucceed(() => false),
-  );
-  if (hasMonorepo) {
-    return monorepoClient;
-  }
+    const monorepoClient = resolve(join(import.meta.dirname, "../../web/dist"));
+    const hasMonorepo = yield* exists(join(monorepoClient, "index.html")).pipe(
+      Effect.orElseSucceed(() => false),
+    );
+    if (hasMonorepo) {
+      return monorepoClient;
+    }
 
-  return undefined;
-});
+    return undefined;
+  },
+);

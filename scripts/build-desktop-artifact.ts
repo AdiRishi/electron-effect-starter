@@ -15,7 +15,9 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
-const REPO_ROOT = NodePath.dirname(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)));
+const REPO_ROOT = NodePath.dirname(
+  NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)),
+);
 
 const APP_ID = "com.example.desktopstarter";
 const PRODUCT_NAME = "Desktop Starter";
@@ -27,8 +29,18 @@ function arg(name: string, fallback: string): string {
     : fallback;
 }
 
-const platform = arg("platform", process.platform === "win32" ? "win" : process.platform === "linux" ? "linux" : "mac");
-const target = arg("target", platform === "mac" ? "dmg" : platform === "win" ? "nsis" : "AppImage");
+const platform = arg(
+  "platform",
+  process.platform === "win32"
+    ? "win"
+    : process.platform === "linux"
+      ? "linux"
+      : "mac",
+);
+const target = arg(
+  "target",
+  platform === "mac" ? "dmg" : platform === "win" ? "nsis" : "AppImage",
+);
 
 function sh(command: string): void {
   process.stdout.write(`\n$ ${command}\n`);
@@ -44,10 +56,14 @@ function main(): void {
   // 2. Stage an app directory electron-builder will pack.
   const stage = NodePath.join(REPO_ROOT, "release/app");
   NodeFS.rmSync(stage, { recursive: true, force: true });
-  NodeFS.mkdirSync(NodePath.join(stage, "apps/server/dist"), { recursive: true });
+  NodeFS.mkdirSync(NodePath.join(stage, "apps/server/dist"), {
+    recursive: true,
+  });
 
   const copy = (from: string, to: string) =>
-    NodeFS.cpSync(NodePath.join(REPO_ROOT, from), NodePath.join(stage, to), { recursive: true });
+    NodeFS.cpSync(NodePath.join(REPO_ROOT, from), NodePath.join(stage, to), {
+      recursive: true,
+    });
   copy("apps/desktop/dist-electron", "dist-electron");
   copy("apps/server/dist", "apps/server/dist");
   copy("apps/web/dist", "apps/server/dist/client");
@@ -56,7 +72,11 @@ function main(): void {
   NodeFS.writeFileSync(
     NodePath.join(stage, "package.json"),
     JSON.stringify(
-      { name: "desktop-starter", version: "0.0.0", main: "dist-electron/main.cjs" },
+      {
+        name: "desktop-starter",
+        version: "0.0.0",
+        main: "dist-electron/main.cjs",
+      },
       null,
       2,
     ),
@@ -81,7 +101,9 @@ function main(): void {
   NodeFS.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
   // 4. Pack. Requires `electron-builder` (a devDependency of @app/desktop).
-  sh(`pnpm --filter @app/desktop exec electron-builder --${platform} --config ${configPath}`);
+  sh(
+    `pnpm --filter @app/desktop exec electron-builder --${platform} --config ${configPath}`,
+  );
   process.stdout.write(`\n✔ Artifacts in release/dist\n`);
 }
 

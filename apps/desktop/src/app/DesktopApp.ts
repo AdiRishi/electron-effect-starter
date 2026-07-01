@@ -30,10 +30,9 @@ const makeRunId = Crypto.Crypto.pipe(
   Effect.map((value) => value.replaceAll("-", "").slice(0, 12)),
 );
 
-const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalStartupError")(function* (
-  stage: string,
-  cause: Cause.Cause<unknown>,
-) {
+const handleFatalStartupError = Effect.fn(
+  "desktop.startup.handleFatalStartupError",
+)(function* (stage: string, cause: Cause.Cause<unknown>) {
   const shutdown = yield* DesktopShutdown.DesktopShutdown;
   const state = yield* DesktopState.DesktopState;
   const electronApp = yield* ElectronApp.ElectronApp;
@@ -42,14 +41,19 @@ const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalStartupErr
   yield* logStartupError("fatal startup error", { stage, message });
   const wasQuitting = yield* Ref.getAndSet(state.quitting, true);
   if (!wasQuitting) {
-    yield* electronDialog.showErrorBox("App failed to start", `Stage: ${stage}\n${message}`);
+    yield* electronDialog.showErrorBox(
+      "App failed to start",
+      `Stage: ${stage}\n${message}`,
+    );
   }
   yield* shutdown.request;
   yield* electronApp.quit;
 });
 
 const fatalStartupCause = (stage: string, cause: Cause.Cause<unknown>) =>
-  handleFatalStartupError(stage, cause).pipe(Effect.andThen(Effect.failCause(cause)));
+  handleFatalStartupError(stage, cause).pipe(
+    Effect.andThen(Effect.failCause(cause)),
+  );
 
 const bootstrap = Effect.gen(function* () {
   const manager = yield* DesktopBackendManager.DesktopBackendManager;
@@ -73,8 +77,12 @@ const startup = Effect.gen(function* () {
   const electronTheme = yield* ElectronTheme.ElectronTheme;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
 
+  yield* electronApp.setPath("userData", environment.baseDir);
+
   const loaded = yield* settings.load;
-  yield* electronTheme.setSource(loaded.theme).pipe(Effect.ignore({ log: true }));
+  yield* electronTheme
+    .setSource(loaded.theme)
+    .pipe(Effect.ignore({ log: true }));
   yield* logStartupInfo("settings loaded", { logDir: environment.logDir });
 
   yield* lifecycle.register;
@@ -85,9 +93,10 @@ const startup = Effect.gen(function* () {
   );
   yield* logStartupInfo("app ready");
 
-  yield* electronApp.setPath("userData", environment.baseDir);
   yield* updater.configure;
-  yield* bootstrap.pipe(Effect.catchCause((cause) => fatalStartupCause("bootstrap", cause)));
+  yield* bootstrap.pipe(
+    Effect.catchCause((cause) => fatalStartupCause("bootstrap", cause)),
+  );
 }).pipe(Effect.withSpan("desktop.startup"));
 
 const scopedProgram = Effect.scoped(

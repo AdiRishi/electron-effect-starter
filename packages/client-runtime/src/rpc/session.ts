@@ -7,8 +7,14 @@ import * as RpcClient from "effect/unstable/rpc/RpcClient";
 import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 import * as Socket from "effect/unstable/socket/Socket";
 
-import { ConnectionTransientError, type PreparedConnection } from "../connection/model.ts";
-import { makeWsRpcProtocolClient, type WsRpcProtocolClient } from "./protocol.ts";
+import {
+  ConnectionTransientError,
+  type PreparedConnection,
+} from "../connection/model.ts";
+import {
+  makeWsRpcProtocolClient,
+  type WsRpcProtocolClient,
+} from "./protocol.ts";
 
 const SOCKET_OPEN_TIMEOUT = "15 seconds";
 
@@ -32,12 +38,19 @@ export interface RpcSession {
  */
 export const connect = (
   connection: PreparedConnection,
-): Effect.Effect<RpcSession, ConnectionTransientError, Scope.Scope | Socket.WebSocketConstructor> =>
+): Effect.Effect<
+  RpcSession,
+  ConnectionTransientError,
+  Scope.Scope | Socket.WebSocketConstructor
+> =>
   Effect.gen(function* () {
     const webSocketConstructor = yield* Socket.WebSocketConstructor;
 
     const connected = yield* Deferred.make<void, ConnectionTransientError>();
-    const disconnected = yield* Deferred.make<never, ConnectionTransientError>();
+    const disconnected = yield* Deferred.make<
+      never,
+      ConnectionTransientError
+    >();
 
     const hooks = RpcClient.ConnectionHooks.of({
       onConnect: Deferred.succeed(connected, undefined).pipe(Effect.asVoid),
@@ -58,7 +71,11 @@ export const connect = (
 
     const socketLayer = Socket.layerWebSocket(connection.socketUrl, {
       openTimeout: SOCKET_OPEN_TIMEOUT,
-    }).pipe(Layer.provide(Layer.succeed(Socket.WebSocketConstructor, webSocketConstructor)));
+    }).pipe(
+      Layer.provide(
+        Layer.succeed(Socket.WebSocketConstructor, webSocketConstructor),
+      ),
+    );
 
     const protocolLayer = Layer.effect(
       RpcClient.Protocol,
@@ -77,11 +94,15 @@ export const connect = (
     );
 
     const protocolContext = yield* Layer.build(protocolLayer);
-    const client = yield* makeWsRpcProtocolClient.pipe(Effect.provide(protocolContext));
+    const client = yield* makeWsRpcProtocolClient.pipe(
+      Effect.provide(protocolContext),
+    );
 
     return {
       client,
-      connected: Deferred.await(connected).pipe(Effect.raceFirst(Deferred.await(disconnected))),
+      connected: Deferred.await(connected).pipe(
+        Effect.raceFirst(Deferred.await(disconnected)),
+      ),
       closed: Deferred.await(disconnected),
     } satisfies RpcSession;
   });

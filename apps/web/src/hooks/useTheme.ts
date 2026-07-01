@@ -65,7 +65,11 @@ function getSnapshot(): DesktopTheme {
  * preference plus the resolved light/dark value the UI can display.
  */
 export function useTheme() {
-  const theme = useSyncExternalStore(subscribe, getSnapshot, () => DEFAULT_THEME);
+  const theme = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    () => DEFAULT_THEME,
+  );
   const resolved: "light" | "dark" =
     theme === "system" ? (systemDark() ? "dark" : "light") : theme;
 

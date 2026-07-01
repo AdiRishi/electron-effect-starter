@@ -7,24 +7,26 @@
     "dev:server": "node scripts/dev-runner.ts dev:server",
     "dev:web": "node scripts/dev-runner.ts dev:web",
     "dev:desktop": "node scripts/dev-runner.ts dev:desktop",
-    "build": "vp run --filter './apps/*' --filter './packages/*' build",
-    "build:desktop": "vp run --filter @app/desktop --filter @app/server build",
-    "start:desktop": "vp run --filter @app/desktop start",
-    "typecheck": "vp run -r --concurrency-limit 2 typecheck",
-    "test": "vp run -r test",
-    "lint": "vp lint",
-    "fmt": "vp fmt",
+    "build": "pnpm -r --if-present --filter './apps/*' --filter './packages/*' build",
+    "build:desktop": "pnpm --filter @app/web build && pnpm --filter @app/server build && pnpm --filter @app/desktop build",
+    "start:desktop": "pnpm --filter @app/desktop start",
+    "typecheck": "pnpm -r --if-present --workspace-concurrency=2 typecheck",
+    "test": "pnpm -r --if-present test",
+    "lint": "pnpm typecheck",
+    "fmt": "prettier --write .",
+    "fmt:check": "prettier --check .",
     "dist:desktop": "node scripts/build-desktop-artifact.ts",
     "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/*/dist apps/*/dist-electron packages/*/dist"
   },
   "devDependencies": {
-    "@effect/tsgo": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
-    "vite-plus": "catalog:"
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
   },
   "engines": {
     "node": ">=22"
   },
-  "packageManager": "pnpm@10.24.0"
+  "packageManager": "pnpm@11.7.0"
 }

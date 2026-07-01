@@ -1,4 +1,5 @@
-import { defineConfig } from "vite-plus";
+import { builtinModules } from "node:module";
+import { defineConfig, type ConfigEnv, type UserConfig } from "vite";
 
 // Two CJS entries bundled into `dist-electron`: the Electron main process and
 // the sandboxed preload. Electron's main + preload must be CommonJS (`.cjs`);
@@ -20,20 +21,48 @@ function isExternalRuntimeModule(id: string): boolean {
 }
 
 function shouldBundle(id: string): boolean {
-  return !id.startsWith("node:") && !isExternalRuntimeModule(id);
+  return !nodeBuiltinIds.has(id) && !isExternalRuntimeModule(id);
 }
 
-const commonPack = {
-  format: "cjs",
-  outDir: "dist-electron",
-  sourcemap: true,
-  outExtensions: () => ({ js: ".cjs" }),
-  deps: { alwaysBundle: shouldBundle },
-} as const;
+const nodeBuiltinIds = new Set([
+  ...builtinModules,
+  ...builtinModules.map((moduleName) => `node:${moduleName}`),
+]);
 
-export default defineConfig({
-  pack: [
-    { ...commonPack, entry: ["src/main.ts"], clean: true },
-    { ...commonPack, entry: ["src/preload.ts"] },
-  ],
-});
+function electronEntryConfig(input: {
+  readonly entryName: "main" | "preload";
+  readonly entry: string;
+  readonly emptyOutDir: boolean;
+}): UserConfig {
+  return {
+    build: {
+      lib: {
+        entry: input.entry,
+        formats: ["cjs"],
+        fileName: () => `${input.entryName}.cjs`,
+      },
+      outDir: "dist-electron",
+      sourcemap: true,
+      emptyOutDir: input.emptyOutDir,
+      minify: false,
+      target: "node20",
+      rollupOptions: {
+        external: (id) => !shouldBundle(id),
+      },
+    },
+  };
+}
+
+export default defineConfig((env: ConfigEnv) =>
+  env.mode === "preload"
+    ? electronEntryConfig({
+        entryName: "preload",
+        entry: "src/preload.ts",
+        emptyOutDir: false,
+      })
+    : electronEntryConfig({
+        entryName: "main",
+        entry: "src/main.ts",
+        emptyOutDir: true,
+      }),
+);

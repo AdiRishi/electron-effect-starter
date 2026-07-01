@@ -2,7 +2,7 @@
 
 An opinionated starting point for **Effect-TS desktop apps**, extracted from the
 [T3 Code](https://github.com/pingdotgg/t3code) architecture. An Electron shell supervises
-a local Node server that serves a React renderer over http/ws — so the *same* UI runs
+a local Node server that serves a React renderer over http/ws — so the _same_ UI runs
 inside the desktop shell **or** in a plain browser.
 
 ```
@@ -32,15 +32,15 @@ global side effects. This starter keeps the patterns that solve that:
 
 ## Layout
 
-| Package | Role |
-|---|---|
-| `apps/desktop` | Electron shell: composition root, Electron wrappers, backend supervision, typed IPC, settings, updates. |
-| `apps/server` | Node HTTP + WebSocket (Effect RPC) server. Serves the web app + `/ws`. |
-| `apps/web` | React + Vite + Tailwind renderer. Runs in-shell or in a browser. |
-| `packages/contracts` | Schema-only shared contracts (`WsRpcGroup`, `DesktopBridge`, …). |
-| `packages/client-runtime` | Shared client transport: `RpcClient` + reconnect supervisor. |
-| `packages/shared` | Runtime utilities (subpath exports, no barrel). |
-| `scripts` | `dev-runner` (deterministic ports + parallel dev) and dist tooling. |
+| Package                   | Role                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `apps/desktop`            | Electron shell: composition root, Electron wrappers, backend supervision, typed IPC, settings, updates. |
+| `apps/server`             | Node HTTP + WebSocket (Effect RPC) server. Serves the web app + `/ws`.                                  |
+| `apps/web`                | React + Vite + Tailwind renderer. Runs in-shell or in a browser.                                        |
+| `packages/contracts`      | Schema-only shared contracts (`WsRpcGroup`, `DesktopBridge`, …).                                        |
+| `packages/client-runtime` | Shared client transport: `RpcClient` + reconnect supervisor.                                            |
+| `packages/shared`         | Runtime utilities (subpath exports, no barrel).                                                         |
+| `scripts`                 | `dev-runner` (deterministic ports + parallel dev) and dist tooling.                                     |
 
 ## Getting started
 
@@ -53,6 +53,9 @@ pnpm typecheck
 
 The `dev-runner` derives per-checkout ports, mints one shared bootstrap token, and wires
 the environment so the three processes agree (see `scripts/dev-runner.ts`).
+
+The toolchain is deliberately plain: core Vite for browser/server/Electron builds,
+Vitest for tests, and `tsc` for typechecking. No Vite Plus.
 
 ## The auth handshake
 
@@ -78,4 +81,4 @@ Three spots are intentionally left for you to shape:
 
 From T3 Code: the coding-agent orchestration engine, WSL/SSH/Tailscale remote access,
 Clerk auth, the preview browser, terminals, git/VCS, and SQLite persistence. Those are
-*product*, not *pattern*. This starter keeps the skeleton.
+_product_, not _pattern_. This starter keeps the skeleton.

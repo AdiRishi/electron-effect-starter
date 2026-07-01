@@ -22,22 +22,21 @@ export type RuntimeState = typeof RuntimeState.Type;
 
 const encodeState = Schema.encodeSync(Schema.fromJsonString(RuntimeState));
 
-export const writeRuntimeState = Effect.fn("runtimeState.writeRuntimeState")(function* (input: {
-  readonly path: string;
-  readonly state: RuntimeState;
-}) {
-  const crypto = yield* Crypto.Crypto;
-  const suffix = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
-  yield* atomicWriteString({
-    path: input.path,
-    contents: encodeState(input.state),
-    suffix,
-  });
-});
+export const writeRuntimeState = Effect.fn("runtimeState.writeRuntimeState")(
+  function* (input: { readonly path: string; readonly state: RuntimeState }) {
+    const crypto = yield* Crypto.Crypto;
+    const suffix = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+    yield* atomicWriteString({
+      path: input.path,
+      contents: encodeState(input.state),
+      suffix,
+    });
+  },
+);
 
-export const clearRuntimeState = Effect.fn("runtimeState.clearRuntimeState")(function* (
-  path: string,
-) {
-  const fileSystem = yield* FileSystem.FileSystem;
-  yield* fileSystem.remove(path).pipe(Effect.ignore);
-});
+export const clearRuntimeState = Effect.fn("runtimeState.clearRuntimeState")(
+  function* (path: string) {
+    const fileSystem = yield* FileSystem.FileSystem;
+    yield* fileSystem.remove(path).pipe(Effect.ignore);
+  },
+);

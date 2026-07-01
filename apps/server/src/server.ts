@@ -56,7 +56,10 @@ export const makeServerLayer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
     const path = yield* Path.Path;
-    const runtimeStatePath = path.resolve(process.cwd(), ".app-server-runtime.json");
+    const runtimeStatePath = path.resolve(
+      process.cwd(),
+      ".app-server-runtime.json",
+    );
 
     const httpServerLayer = NodeHttpServer.layer(NodeHttp.createServer, {
       host: config.host,
@@ -85,7 +88,9 @@ export const makeServerLayer = Layer.unwrap(
 
           const address = server.address;
           const boundPort =
-            typeof address === "string" || !("port" in address) ? config.port : address.port;
+            typeof address === "string" || !("port" in address)
+              ? config.port
+              : address.port;
 
           yield* writeRuntimeState({
             path: runtimeStatePath,

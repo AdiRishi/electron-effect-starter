@@ -29,7 +29,9 @@ export const make = Effect.gen(function* () {
   const shutdown = yield* DesktopShutdown.DesktopShutdown;
   const state = yield* DesktopState.DesktopState;
   const window = yield* DesktopWindow.DesktopWindow;
-  const context = yield* Effect.context<DesktopWindow.DesktopWindow | DesktopState.DesktopState>();
+  const context = yield* Effect.context<
+    DesktopWindow.DesktopWindow | DesktopState.DesktopState
+  >();
   const runFork = Effect.runForkWith(context);
 
   const requestShutdown = Effect.gen(function* () {
@@ -39,7 +41,11 @@ export const make = Effect.gen(function* () {
 
   const register = Effect.gen(function* () {
     yield* electronApp.on("window-all-closed", () => {
-      runFork(logInfo("all windows closed; requesting shutdown").pipe(Effect.andThen(requestShutdown)));
+      runFork(
+        logInfo("all windows closed; requesting shutdown").pipe(
+          Effect.andThen(requestShutdown),
+        ),
+      );
     });
     yield* electronApp.on("before-quit", () => {
       runFork(requestShutdown);

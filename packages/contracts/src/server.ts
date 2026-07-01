@@ -14,11 +14,26 @@ export const ServerConfig = Schema.Struct({
 export type ServerConfig = typeof ServerConfig.Type;
 
 /**
+ * One-line JSON envelope handed from the desktop shell to the spawned local
+ * server over an inherited fd. Keeping this in contracts means both processes
+ * agree on the secret/port bootstrap shape without sharing runtime logic.
+ */
+export const ServerBootstrapEnvelope = Schema.Struct({
+  desktopBootstrapToken: Schema.String,
+  port: Schema.optional(Schema.Number),
+});
+export type ServerBootstrapEnvelope = typeof ServerBootstrapEnvelope.Type;
+
+/**
  * Lifecycle phases the server publishes through its ordered push bus. This is
  * the canonical "server-initiated push" demo: subscribers get a replay of the
  * retained snapshot followed by the live stream, ordered by `sequence`.
  */
-export const ServerLifecyclePhase = Schema.Literals(["starting", "ready", "draining"]);
+export const ServerLifecyclePhase = Schema.Literals([
+  "starting",
+  "ready",
+  "draining",
+]);
 export type ServerLifecyclePhase = typeof ServerLifecyclePhase.Type;
 
 export const ServerLifecycleStreamEvent = Schema.Struct({

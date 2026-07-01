@@ -37,7 +37,8 @@ function obtainBearerToken(httpBaseUrl: string): Effect.Effect<string, Error> {
     const bridge = window.desktopBridge;
     return Effect.tryPromise({
       try: () => bridge.getBearerToken(),
-      catch: (cause) => new Error(`Bridge failed to mint a bearer token: ${String(cause)}`),
+      catch: (cause) =>
+        new Error(`Bridge failed to mint a bearer token: ${String(cause)}`),
     });
   }
   return bootstrapRemoteBearerSession({
@@ -47,7 +48,6 @@ function obtainBearerToken(httpBaseUrl: string): Effect.Effect<string, Error> {
   }).pipe(
     Effect.map((session) => session.access_token),
     Effect.mapError((error) => new Error(error.message)),
-    Effect.provide(FetchHttpClient.layer),
   );
 }
 
@@ -64,7 +64,10 @@ function makeRuntimeLayer(
 ): Layer.Layer<ConnectionSupervisor> {
   return Layer.provideMerge(
     connectionSupervisorLayer(connection),
-    Layer.mergeAll(Socket.layerWebSocketConstructorGlobal, FetchHttpClient.layer),
+    Layer.mergeAll(
+      Socket.layerWebSocketConstructorGlobal,
+      FetchHttpClient.layer,
+    ),
   );
 }
 
@@ -129,7 +132,11 @@ export function useConnection(): ConnectionHandle {
       })
       .catch((error: unknown) => {
         if (!disposed) {
-          setState({ phase: "reconnecting", attempt: 1, lastError: String(error) });
+          setState({
+            phase: "reconnecting",
+            attempt: 1,
+            lastError: String(error),
+          });
         }
       });
 
@@ -142,7 +149,10 @@ export function useConnection(): ConnectionHandle {
   }, []);
 
   const request = useCallback(
-    <TTag extends UnaryRpcTag>(tag: TTag, input: RpcInput<TTag>): Promise<RpcSuccess<TTag>> => {
+    <TTag extends UnaryRpcTag>(
+      tag: TTag,
+      input: RpcInput<TTag>,
+    ): Promise<RpcSuccess<TTag>> => {
       const runtime = runtimeRef.current;
       if (!runtime) return Promise.reject(new Error("Not connected yet."));
       return runtime.runPromise(rpcRequest(tag, input));

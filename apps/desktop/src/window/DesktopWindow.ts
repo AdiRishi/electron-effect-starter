@@ -30,8 +30,14 @@ export type DesktopWindowError = ElectronWindow.ElectronWindowCreateError;
 export class DesktopWindow extends Context.Service<
   DesktopWindow,
   {
-    readonly createMain: Effect.Effect<Electron.BrowserWindow, DesktopWindowError>;
-    readonly ensureMain: Effect.Effect<Electron.BrowserWindow, DesktopWindowError>;
+    readonly createMain: Effect.Effect<
+      Electron.BrowserWindow,
+      DesktopWindowError
+    >;
+    readonly ensureMain: Effect.Effect<
+      Electron.BrowserWindow,
+      DesktopWindowError
+    >;
     readonly activate: Effect.Effect<void, DesktopWindowError>;
     readonly createMainIfBackendReady: Effect.Effect<void, DesktopWindowError>;
     // Marks the backend ready and opens the main window. Reports the resolved
@@ -43,7 +49,9 @@ export class DesktopWindow extends Context.Service<
     // Clears the latch so a dock-click while the backend is down can't open a
     // window pointing at nothing.
     readonly handleBackendNotReady: Effect.Effect<void>;
-    readonly dispatchMenuAction: (action: string) => Effect.Effect<void, DesktopWindowError>;
+    readonly dispatchMenuAction: (
+      action: string,
+    ) => Effect.Effect<void, DesktopWindowError>;
   }
 >()("@app/desktop/window/DesktopWindow") {}
 
@@ -111,7 +119,10 @@ export const make = Effect.gen(function* () {
 
     yield* electronWindow.loadUrl(window, applicationUrl).pipe(
       Effect.catch((error) =>
-        logWarning("main window failed to load", { url: applicationUrl, message: error.message }),
+        logWarning("main window failed to load", {
+          url: applicationUrl,
+          message: error.message,
+        }),
       ),
     );
     return window;
@@ -151,28 +162,32 @@ export const make = Effect.gen(function* () {
       }
       yield* createMainIfBackendReady;
     }).pipe(Effect.withSpan("desktop.window.activate")),
-    handleBackendReady: Effect.fn("desktop.window.handleBackendReady")(function* (config) {
-      yield* Ref.set(backendReadyRef, true);
-      // In production the window loads the backend's own origin; in dev it stays
-      // on the web dev server. Only advance the URL when we're not in dev.
-      if (!environment.isDevelopment) {
-        yield* Ref.set(applicationUrlRef, config.httpBaseUrl.href);
-      }
-      yield* logInfo("backend ready", { url: config.httpBaseUrl.href });
-      yield* createMainIfBackendReady;
-    }),
+    handleBackendReady: Effect.fn("desktop.window.handleBackendReady")(
+      function* (config) {
+        yield* Ref.set(backendReadyRef, true);
+        // In production the window loads the backend's own origin; in dev it stays
+        // on the web dev server. Only advance the URL when we're not in dev.
+        if (!environment.isDevelopment) {
+          yield* Ref.set(applicationUrlRef, config.httpBaseUrl.href);
+        }
+        yield* logInfo("backend ready", { url: config.httpBaseUrl.href });
+        yield* createMainIfBackendReady;
+      },
+    ),
     handleBackendNotReady: Ref.set(backendReadyRef, false).pipe(
       Effect.withSpan("desktop.window.handleBackendNotReady"),
     ),
-    dispatchMenuAction: Effect.fn("desktop.window.dispatchMenuAction")(function* (action) {
-      const window = yield* ensureMain;
-      yield* Effect.sync(() => {
-        if (!window.isDestroyed()) {
-          window.webContents.send(MENU_ACTION_CHANNEL, action);
-        }
-      });
-      yield* electronWindow.reveal(window);
-    }),
+    dispatchMenuAction: Effect.fn("desktop.window.dispatchMenuAction")(
+      function* (action) {
+        const window = yield* ensureMain;
+        yield* Effect.sync(() => {
+          if (!window.isDestroyed()) {
+            window.webContents.send(MENU_ACTION_CHANNEL, action);
+          }
+        });
+        yield* electronWindow.reveal(window);
+      },
+    ),
   });
 });
 

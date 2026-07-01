@@ -1,3 +1,4 @@
+import type { ServerBootstrapEnvelope } from "@app/contracts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -18,6 +19,7 @@ export interface DesktopBackendStartConfig {
   readonly entryPath: string;
   readonly cwd: string;
   readonly env: Record<string, string | undefined>;
+  readonly bootstrapEnvelope: ServerBootstrapEnvelope;
   readonly port: number;
   readonly bootstrapToken: string;
   readonly httpBaseUrl: URL;
@@ -46,17 +48,19 @@ export const make = Effect.gen(function* () {
   // stable token for the lifetime of the process. The first caller mints it;
   // everyone after reuses it.
   const tokenRef = yield* SynchronizedRef.make(Option.none<string>());
-  const getOrCreateBootstrapToken = SynchronizedRef.modifyEffect(tokenRef, (current) =>
-    Option.match(current, {
-      onSome: (token) => Effect.succeed([token, current] as const),
-      onNone: () =>
-        crypto.randomBytes(24).pipe(
-          Effect.map((bytes) => {
-            const token = Encoding.encodeHex(bytes);
-            return [token, Option.some(token)] as const;
-          }),
-        ),
-    }),
+  const getOrCreateBootstrapToken = SynchronizedRef.modifyEffect(
+    tokenRef,
+    (current) =>
+      Option.match(current, {
+        onSome: (token) => Effect.succeed([token, current] as const),
+        onNone: () =>
+          crypto.randomBytes(24).pipe(
+            Effect.map((bytes) => {
+              const token = Encoding.encodeHex(bytes);
+              return [token, Option.some(token)] as const;
+            }),
+          ),
+      }),
   );
 
   return DesktopBackendConfiguration.of({
@@ -70,18 +74,19 @@ export const make = Effect.gen(function* () {
           // binary. `ELECTRON_RUN_AS_NODE=1` makes it behave as plain Node so
           // the spawned server doesn't become a second GUI app instance.
           executablePath: process.execPath,
-          args: [environment.backendEntryPath, "start"],
+          args: [environment.backendEntryPath, "start", "--bootstrap-fd", "3"],
           entryPath: environment.backendEntryPath,
           cwd: environment.backendCwd,
           env: {
             ELECTRON_RUN_AS_NODE: "1",
-            // PRIMARY token/port delivery: env vars are the reliable channel
-            // that survives every spawn path. The more-hardened alternative the
-            // server also supports is `--bootstrap-fd 3` plus writing the JSON
-            // envelope to fd 3 (avoids the secret sitting in the child's
-            // environment); we keep to env vars here for simplicity.
-            APP_BOOTSTRAP_TOKEN: bootstrapToken,
-            APP_SERVER_PORT: String(input.port),
+            // The server receives these through fd3. Clear inherited env values
+            // so a developer shell cannot accidentally override the envelope.
+            APP_BOOTSTRAP_TOKEN: undefined,
+            APP_SERVER_PORT: undefined,
+          },
+          bootstrapEnvelope: {
+            desktopBootstrapToken: bootstrapToken,
+            port: input.port,
           },
           port: input.port,
           bootstrapToken,

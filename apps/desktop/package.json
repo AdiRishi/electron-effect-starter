@@ -5,10 +5,10 @@
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
-    "build": "vp pack",
+    "build": "vite build --mode main && vite build --mode preload",
     "start": "node scripts/start-electron.mjs",
-    "typecheck": "tsgo --noEmit",
-    "test": "vp test run --passWithNoTests"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@app/contracts": "workspace:*",
@@ -21,7 +21,9 @@
   "devDependencies": {
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
-    "electron-builder": "^26.0.0",
-    "vite-plus": "catalog:"
+    "electron-builder": "26.5.0",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
   }
 }

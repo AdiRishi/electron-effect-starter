@@ -91,19 +91,30 @@ export class ElectronWindow extends Context.Service<
       url: string,
     ) => Effect.Effect<void, ElectronWindowLoadUrlError>;
     readonly main: Effect.Effect<Option.Option<Electron.BrowserWindow>>;
-    readonly currentMainOrFirst: Effect.Effect<Option.Option<Electron.BrowserWindow>>;
-    readonly focusedMainOrFirst: Effect.Effect<Option.Option<Electron.BrowserWindow>>;
+    readonly currentMainOrFirst: Effect.Effect<
+      Option.Option<Electron.BrowserWindow>
+    >;
+    readonly focusedMainOrFirst: Effect.Effect<
+      Option.Option<Electron.BrowserWindow>
+    >;
     readonly setMain: (window: Electron.BrowserWindow) => Effect.Effect<void>;
-    readonly clearMain: (window: Option.Option<Electron.BrowserWindow>) => Effect.Effect<void>;
+    readonly clearMain: (
+      window: Option.Option<Electron.BrowserWindow>,
+    ) => Effect.Effect<void>;
     readonly reveal: (window: Electron.BrowserWindow) => Effect.Effect<void>;
-    readonly sendAll: (channel: string, ...args: readonly unknown[]) => Effect.Effect<void>;
+    readonly sendAll: (
+      channel: string,
+      ...args: readonly unknown[]
+    ) => Effect.Effect<void>;
     readonly destroyAll: Effect.Effect<void>;
   }
 >()("@app/desktop/electron/ElectronWindow") {}
 
 export const make = Effect.gen(function* () {
   const platform = yield* HostProcessPlatform;
-  const mainWindowRef = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+  const mainWindowRef = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(
+    Option.none(),
+  );
 
   const listWindows = Effect.try({
     try: () => Electron.BrowserWindow.getAllWindows(),
@@ -152,7 +163,8 @@ export const make = Effect.gen(function* () {
 
   const focusedMainOrFirst = Effect.gen(function* () {
     const focused = yield* Effect.try({
-      try: () => Option.fromNullishOr(Electron.BrowserWindow.getFocusedWindow() ?? null),
+      try: () =>
+        Option.fromNullishOr(Electron.BrowserWindow.getFocusedWindow() ?? null),
       catch: (cause) =>
         new ElectronWindowOperationError({
           operation: "get-focused-window",
@@ -187,13 +199,15 @@ export const make = Effect.gen(function* () {
 
       return Effect.try({
         try: () => new Electron.BrowserWindow(options),
-        catch: (cause) => new ElectronWindowCreateError({ options: diagnosticOptions, cause }),
+        catch: (cause) =>
+          new ElectronWindowCreateError({ options: diagnosticOptions, cause }),
       });
     },
     loadUrl: (window, url) =>
       Effect.tryPromise({
         try: () => window.loadURL(url),
-        catch: (cause) => new ElectronWindowLoadUrlError({ url, windowId: window.id, cause }),
+        catch: (cause) =>
+          new ElectronWindowLoadUrlError({ url, windowId: window.id, cause }),
       }),
     main: liveMain,
     currentMainOrFirst,

@@ -9,7 +9,11 @@ import * as Schema from "effect/Schema";
 export class EnvironmentAuthorizationError extends Schema.TaggedErrorClass<EnvironmentAuthorizationError>()(
   "EnvironmentAuthorizationError",
   {
-    reason: Schema.Literals(["missing-credential", "invalid-credential", "expired"]),
+    reason: Schema.Literals([
+      "missing-credential",
+      "invalid-credential",
+      "expired",
+    ]),
   },
 ) {
   override get message(): string {

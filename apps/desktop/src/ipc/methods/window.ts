@@ -63,7 +63,8 @@ export const getBearerToken = DesktopIpc.makeIpcMethod({
   payload: Schema.Void,
   result: Schema.String,
   handler: Effect.fn("desktop.ipc.window.getBearerToken")(function* () {
-    const localAuth = yield* DesktopLocalEnvironmentAuth.DesktopLocalEnvironmentAuth;
+    const localAuth =
+      yield* DesktopLocalEnvironmentAuth.DesktopLocalEnvironmentAuth;
     return yield* localAuth.getBearerToken;
   }),
 });

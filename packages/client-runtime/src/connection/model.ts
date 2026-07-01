@@ -32,7 +32,8 @@ export class ConnectionTransientError extends Schema.TaggedErrorClass<Connection
  * attempt; once we have been connected at least once, subsequent attempts show
  * as `reconnecting` so the status dot can distinguish a cold start from a blip.
  */
-export type ConnectionPhase = "idle" | "connecting" | "connected" | "reconnecting";
+export type ConnectionPhase =
+  "idle" | "connecting" | "connected" | "reconnecting";
 
 export interface ConnectionState {
   readonly phase: ConnectionPhase;

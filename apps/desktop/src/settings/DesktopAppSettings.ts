@@ -41,15 +41,20 @@ type DesktopSettingsDocument = typeof DesktopSettingsDocument.Type;
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
 const DesktopSettingsJson = Schema.fromJsonString(DesktopSettingsDocument);
-const decodeDesktopSettingsJson = Schema.decodeUnknownEffect(DesktopSettingsJson);
-const encodeDesktopSettingsJson = Schema.encodeUnknownEffect(DesktopSettingsJson);
+const decodeDesktopSettingsJson =
+  Schema.decodeUnknownEffect(DesktopSettingsJson);
+const encodeDesktopSettingsJson =
+  Schema.encodeUnknownEffect(DesktopSettingsJson);
 
 export interface DesktopSettingsChange {
   readonly settings: DesktopSettings;
   readonly changed: boolean;
 }
 
-const settingsChange = (settings: DesktopSettings, changed: boolean): DesktopSettingsChange => ({
+const settingsChange = (
+  settings: DesktopSettings,
+  changed: boolean,
+): DesktopSettingsChange => ({
   settings,
   changed,
 });
@@ -83,13 +88,17 @@ export class DesktopAppSettings extends Context.Service<
 function normalizeDocument(parsed: DesktopSettingsDocument): DesktopSettings {
   return {
     theme: parsed.theme ?? DEFAULT_DESKTOP_SETTINGS.theme,
-    updateChannel: parsed.updateChannel ?? DEFAULT_DESKTOP_SETTINGS.updateChannel,
+    updateChannel:
+      parsed.updateChannel ?? DEFAULT_DESKTOP_SETTINGS.updateChannel,
   };
 }
 
 // Only write the fields that diverge from defaults, so a settings file stays
 // minimal and forward-compatible with new default values.
-function toDocument(settings: DesktopSettings, defaults: DesktopSettings): DesktopSettingsDocument {
+function toDocument(
+  settings: DesktopSettings,
+  defaults: DesktopSettings,
+): DesktopSettingsDocument {
   const document: Mutable<DesktopSettingsDocument> = {};
   if (settings.theme !== defaults.theme) document.theme = settings.theme;
   if (settings.updateChannel !== defaults.updateChannel) {
@@ -98,7 +107,10 @@ function toDocument(settings: DesktopSettings, defaults: DesktopSettings): Deskt
   return document;
 }
 
-function setTheme(settings: DesktopSettings, theme: DesktopTheme): DesktopSettings {
+function setTheme(
+  settings: DesktopSettings,
+  theme: DesktopTheme,
+): DesktopSettings {
   return settings.theme === theme ? settings : { ...settings, theme };
 }
 
@@ -106,7 +118,9 @@ function setUpdateChannel(
   settings: DesktopSettings,
   updateChannel: DesktopUpdateChannel,
 ): DesktopSettings {
-  return settings.updateChannel === updateChannel ? settings : { ...settings, updateChannel };
+  return settings.updateChannel === updateChannel
+    ? settings
+    : { ...settings, updateChannel };
 }
 
 function readSettings(
@@ -133,7 +147,9 @@ export const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const crypto = yield* Crypto.Crypto;
-  const settingsRef = yield* SynchronizedRef.make(environment.defaultDesktopSettings);
+  const settingsRef = yield* SynchronizedRef.make(
+    environment.defaultDesktopSettings,
+  );
 
   const persist = (
     update: (settings: DesktopSettings) => DesktopSettings,
@@ -141,7 +157,10 @@ export const make = Effect.gen(function* () {
     SynchronizedRef.modifyEffect(settingsRef, (settings) => {
       const nextSettings = update(settings);
       if (nextSettings === settings) {
-        return Effect.succeed([settingsChange(settings, false), settings] as const);
+        return Effect.succeed([
+          settingsChange(settings, false),
+          settings,
+        ] as const);
       }
       return Effect.gen(function* () {
         const suffix = Encoding.encodeHex(yield* crypto.randomBytes(8));
@@ -161,7 +180,11 @@ export const make = Effect.gen(function* () {
         Effect.provideService(FileSystem.FileSystem, fileSystem),
         Effect.provideService(Path.Path, path),
         Effect.mapError(
-          (cause) => new DesktopSettingsWriteError({ path: environment.desktopSettingsPath, cause }),
+          (cause) =>
+            new DesktopSettingsWriteError({
+              path: environment.desktopSettingsPath,
+              cause,
+            }),
         ),
       );
     });
@@ -169,7 +192,10 @@ export const make = Effect.gen(function* () {
   return DesktopAppSettings.of({
     get: SynchronizedRef.get(settingsRef),
     load: Effect.gen(function* () {
-      const settings = yield* readSettings(fileSystem, environment.desktopSettingsPath);
+      const settings = yield* readSettings(
+        fileSystem,
+        environment.desktopSettingsPath,
+      );
       return yield* SynchronizedRef.setAndGet(settingsRef, settings);
     }).pipe(Effect.withSpan("desktop.settings.load")),
     setTheme: (theme) =>
@@ -178,7 +204,9 @@ export const make = Effect.gen(function* () {
       ),
     setUpdateChannel: (channel) =>
       persist((settings) => setUpdateChannel(settings, channel)).pipe(
-        Effect.withSpan("desktop.settings.setUpdateChannel", { attributes: { channel } }),
+        Effect.withSpan("desktop.settings.setUpdateChannel", {
+          attributes: { channel },
+        }),
       ),
   });
 });
@@ -187,7 +215,9 @@ export const layer = Layer.effect(DesktopAppSettings, make);
 
 // In-memory test layer: same setter semantics, no filesystem. Seed the initial
 // settings to exercise a specific configuration.
-export const layerTest = (initialSettings: DesktopSettings = DEFAULT_DESKTOP_SETTINGS) =>
+export const layerTest = (
+  initialSettings: DesktopSettings = DEFAULT_DESKTOP_SETTINGS,
+) =>
   Layer.effect(
     DesktopAppSettings,
     Effect.gen(function* () {
@@ -195,14 +225,18 @@ export const layerTest = (initialSettings: DesktopSettings = DEFAULT_DESKTOP_SET
       const update = (f: (settings: DesktopSettings) => DesktopSettings) =>
         SynchronizedRef.modify(settingsRef, (settings) => {
           const nextSettings = f(settings);
-          return [settingsChange(nextSettings, nextSettings !== settings), nextSettings] as const;
+          return [
+            settingsChange(nextSettings, nextSettings !== settings),
+            nextSettings,
+          ] as const;
         });
 
       return DesktopAppSettings.of({
         get: SynchronizedRef.get(settingsRef),
         load: SynchronizedRef.get(settingsRef),
         setTheme: (theme) => update((settings) => setTheme(settings, theme)),
-        setUpdateChannel: (channel) => update((settings) => setUpdateChannel(settings, channel)),
+        setUpdateChannel: (channel) =>
+          update((settings) => setUpdateChannel(settings, channel)),
       });
     }),
   );

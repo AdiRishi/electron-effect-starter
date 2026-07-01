@@ -8,7 +8,10 @@
  *
  * @module lifecycleEvents
  */
-import type { ServerLifecycleStreamEvent, ServerLifecyclePhase } from "@app/contracts";
+import type {
+  ServerLifecycleStreamEvent,
+  ServerLifecyclePhase,
+} from "@app/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -30,7 +33,9 @@ export interface LifecycleSnapshot {
 export class ServerLifecycleEvents extends Context.Service<
   ServerLifecycleEvents,
   {
-    readonly publish: (event: LifecycleEventInput) => Effect.Effect<ServerLifecycleStreamEvent>;
+    readonly publish: (
+      event: LifecycleEventInput,
+    ) => Effect.Effect<ServerLifecycleStreamEvent>;
     readonly snapshot: Effect.Effect<LifecycleSnapshot>;
     readonly stream: Stream.Stream<ServerLifecycleStreamEvent>;
   }
@@ -50,9 +55,16 @@ const make = Effect.gen(function* () {
           at: input.at,
         };
         // Retain only the latest event per phase, ordered by sequence.
-        const retained = current.events.filter((entry) => entry.phase !== input.phase);
-        const nextEvents = [...retained, nextEvent].sort((a, b) => a.sequence - b.sequence);
-        return [nextEvent, { sequence: nextSequence, events: nextEvents }] as const;
+        const retained = current.events.filter(
+          (entry) => entry.phase !== input.phase,
+        );
+        const nextEvents = [...retained, nextEvent].sort(
+          (a, b) => a.sequence - b.sequence,
+        );
+        return [
+          nextEvent,
+          { sequence: nextSequence, events: nextEvents },
+        ] as const;
       }).pipe(Effect.tap((event) => PubSub.publish(pubsub, event))),
     snapshot: Ref.get(state),
     get stream() {

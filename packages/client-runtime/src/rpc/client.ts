@@ -28,29 +28,49 @@ export type RpcInput<TTag extends RpcTag> = Parameters<RpcMethod<TTag>>[0];
 
 /** Unary tags: the method returns an `Effect`. */
 export type UnaryRpcTag = {
-  [K in RpcTag]: RpcMethod<K> extends (input: never) => Effect.Effect<unknown, unknown, unknown>
+  [K in RpcTag]: RpcMethod<K> extends (
+    input: never,
+  ) => Effect.Effect<unknown, unknown, unknown>
     ? K
     : never;
 }[RpcTag];
 
 /** Streaming tags: the method returns a `Stream`. */
 export type StreamRpcTag = {
-  [K in RpcTag]: RpcMethod<K> extends (input: never) => Stream.Stream<unknown, unknown, unknown>
+  [K in RpcTag]: RpcMethod<K> extends (
+    input: never,
+  ) => Stream.Stream<unknown, unknown, unknown>
     ? K
     : never;
 }[RpcTag];
 
 export type RpcSuccess<TTag extends UnaryRpcTag> =
-  RpcMethod<TTag> extends (input: never) => Effect.Effect<infer A, unknown, unknown> ? A : never;
+  RpcMethod<TTag> extends (
+    input: never,
+  ) => Effect.Effect<infer A, unknown, unknown>
+    ? A
+    : never;
 
 export type RpcFailure<TTag extends UnaryRpcTag> =
-  RpcMethod<TTag> extends (input: never) => Effect.Effect<unknown, infer E, unknown> ? E : never;
+  RpcMethod<TTag> extends (
+    input: never,
+  ) => Effect.Effect<unknown, infer E, unknown>
+    ? E
+    : never;
 
 export type RpcStreamValue<TTag extends StreamRpcTag> =
-  RpcMethod<TTag> extends (input: never) => Stream.Stream<infer A, unknown, unknown> ? A : never;
+  RpcMethod<TTag> extends (
+    input: never,
+  ) => Stream.Stream<infer A, unknown, unknown>
+    ? A
+    : never;
 
 export type RpcStreamFailure<TTag extends StreamRpcTag> =
-  RpcMethod<TTag> extends (input: never) => Stream.Stream<unknown, infer E, unknown> ? E : never;
+  RpcMethod<TTag> extends (
+    input: never,
+  ) => Stream.Stream<unknown, infer E, unknown>
+    ? E
+    : never;
 
 const currentSession = Effect.gen(function* () {
   const supervisor = yield* ConnectionSupervisor;
@@ -68,7 +88,11 @@ const currentSession = Effect.gen(function* () {
 export const request = <TTag extends UnaryRpcTag>(
   tag: TTag,
   input: RpcInput<TTag>,
-): Effect.Effect<RpcSuccess<TTag>, RpcFailure<TTag> | RpcUnavailableError, ConnectionSupervisor> =>
+): Effect.Effect<
+  RpcSuccess<TTag>,
+  RpcFailure<TTag> | RpcUnavailableError,
+  ConnectionSupervisor
+> =>
   Effect.gen(function* () {
     const session = yield* currentSession;
     if (Option.isNone(session)) {
@@ -93,7 +117,11 @@ export const request = <TTag extends UnaryRpcTag>(
 export const subscribe = <TTag extends StreamRpcTag>(
   tag: TTag,
   input: RpcInput<TTag>,
-): Stream.Stream<RpcStreamValue<TTag>, RpcStreamFailure<TTag>, ConnectionSupervisor> =>
+): Stream.Stream<
+  RpcStreamValue<TTag>,
+  RpcStreamFailure<TTag>,
+  ConnectionSupervisor
+> =>
   Stream.unwrap(
     Effect.map(ConnectionSupervisor, (supervisor) =>
       SubscriptionRef.changes(supervisor.session).pipe(

@@ -31,7 +31,9 @@ export class ElectronMenu extends Context.Service<
     readonly showContextMenu: (
       input: ElectronMenuContextInput,
     ) => Effect.Effect<Option.Option<string>>;
-    readonly popupTemplate: (input: ElectronMenuTemplateInput) => Effect.Effect<void>;
+    readonly popupTemplate: (
+      input: ElectronMenuTemplateInput,
+    ) => Effect.Effect<void>;
   }
 >()("@app/desktop/electron/ElectronMenu") {}
 
@@ -55,7 +57,11 @@ function buildTemplate(
     if (item.children && item.children.length > 0) {
       const submenu = buildTemplate(item.children, onSelect);
       if (submenu.length === 0) continue;
-      template.push({ label: item.label, enabled: item.disabled !== true, submenu });
+      template.push({
+        label: item.label,
+        enabled: item.disabled !== true,
+        submenu,
+      });
       continue;
     }
     template.push({
