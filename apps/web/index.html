@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)" />
+    <script>
+      // Pre-mount theme guard: toggle `.dark` before React renders so there is
+      // no flash of the wrong theme. Mirrors the logic in hooks/useTheme.ts.
+      (() => {
+        try {
+          const stored = window.localStorage.getItem("app:theme");
+          const theme =
+            stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+          const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          const isDark = theme === "dark" || (theme === "system" && prefersDark);
+          document.documentElement.classList.toggle("dark", isDark);
+        } catch {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
+    <style>
+      html,
+      body,
+      #root {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        background: #ffffff;
+        color: #18181b;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      html.dark body {
+        background: #0b0b0c;
+        color: #fafafa;
+      }
+      #boot-splash {
+        display: flex;
+        min-height: 100%;
+        align-items: center;
+        justify-content: center;
+      }
+      #boot-splash-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 9999px;
+        background: #a1a1aa;
+        animation: boot-pulse 1.1s ease-in-out infinite;
+      }
+      @keyframes boot-pulse {
+        0%,
+        100% {
+          opacity: 0.35;
+          transform: scale(0.85);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+    </style>
+    <title>Desktop Starter</title>
+  </head>
+  <body>
+    <div id="root">
+      <div id="boot-splash" aria-label="Loading">
+        <div id="boot-splash-dot"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
