@@ -1,0 +1,27 @@
+{
+  "name": "@app/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "build": "vp pack",
+    "start": "node scripts/start-electron.mjs",
+    "typecheck": "tsgo --noEmit",
+    "test": "vp test run --passWithNoTests"
+  },
+  "dependencies": {
+    "@app/contracts": "workspace:*",
+    "@app/shared": "workspace:*",
+    "@effect/platform-node": "catalog:",
+    "effect": "catalog:",
+    "electron": "^33.0.0",
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "electron-builder": "^26.0.0",
+    "vite-plus": "catalog:"
+  }
+}
