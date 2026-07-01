@@ -47,7 +47,9 @@ export interface DesktopBridge {
   readonly checkForUpdate: () => Promise<void>;
   readonly downloadUpdate: () => Promise<void>;
   readonly installUpdate: () => Promise<void>;
-  readonly onUpdateState: (listener: (state: DesktopUpdateState) => void) => Unsubscribe;
+  readonly onUpdateState: (
+    listener: (state: DesktopUpdateState) => void,
+  ) => Unsubscribe;
 
   readonly onMenuAction: (listener: (action: string) => void) => Unsubscribe;
 }

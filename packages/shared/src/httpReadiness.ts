@@ -16,7 +16,9 @@ export const DEFAULT_HTTP_READY_PROBE_TIMEOUT_MS = 1_000;
  * The shell uses this to wait for the spawned server to come up before showing
  * the window.
  */
-export const waitForHttpReady = Effect.fn("shared.httpReadiness.waitForHttpReady")(function* <E>(input: {
+export const waitForHttpReady = Effect.fn(
+  "shared.httpReadiness.waitForHttpReady",
+)(function* <E>(input: {
   readonly baseUrl: string;
   readonly path?: string;
   readonly timeoutMs?: number;
@@ -30,7 +32,8 @@ export const waitForHttpReady = Effect.fn("shared.httpReadiness.waitForHttpReady
 }): Effect.fn.Return<void, E, HttpClient.HttpClient> {
   const timeoutMs = input.timeoutMs ?? 30_000;
   const intervalMs = input.intervalMs ?? 100;
-  const probeTimeoutMs = input.probeTimeoutMs ?? DEFAULT_HTTP_READY_PROBE_TIMEOUT_MS;
+  const probeTimeoutMs =
+    input.probeTimeoutMs ?? DEFAULT_HTTP_READY_PROBE_TIMEOUT_MS;
   const retryPolicy = Schedule.spaced(Duration.millis(intervalMs)).pipe(
     Schedule.take(Math.max(0, Math.ceil(timeoutMs / intervalMs))),
   );
@@ -64,17 +67,21 @@ export const waitForHttpReady = Effect.fn("shared.httpReadiness.waitForHttpReady
         });
       }).pipe(
         Effect.mapError((cause) => (isMadeError(cause) ? cause : fail(cause))),
-        Effect.tapError((cause) => Ref.set(lastProbeFailure, { attempt, cause })),
+        Effect.tapError((cause) =>
+          Ref.set(lastProbeFailure, { attempt, cause }),
+        ),
       ),
     ),
     HttpClient.tap((response) => response.text.pipe(Effect.ignore)),
     HttpClient.retry(retryPolicy),
   );
 
-  const result = yield* readinessClient.execute(HttpClientRequest.get(requestUrl)).pipe(
-    Effect.mapError((cause) => (isMadeError(cause) ? cause : fail(cause))),
-    Effect.timeoutOption(Duration.millis(timeoutMs)),
-  );
+  const result = yield* readinessClient
+    .execute(HttpClientRequest.get(requestUrl))
+    .pipe(
+      Effect.mapError((cause) => (isMadeError(cause) ? cause : fail(cause))),
+      Effect.timeoutOption(Duration.millis(timeoutMs)),
+    );
 
   return yield* Option.match(result, {
     onSome: () => Effect.void,
@@ -82,7 +89,12 @@ export const waitForHttpReady = Effect.fn("shared.httpReadiness.waitForHttpReady
       Effect.gen(function* () {
         const lastFailure = yield* Ref.get(lastProbeFailure);
         return yield* Effect.fail(
-          fail({ kind: "overall-timeout", baseUrl: input.baseUrl, timeoutMs, lastFailure }),
+          fail({
+            kind: "overall-timeout",
+            baseUrl: input.baseUrl,
+            timeoutMs,
+            lastFailure,
+          }),
         );
       }),
   });

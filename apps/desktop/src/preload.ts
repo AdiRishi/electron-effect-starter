@@ -18,28 +18,36 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     return result as ReturnType<DesktopBridge["getAppInfo"]>;
   },
   getServerBootstrap: () => {
-    const result = ipcRenderer.sendSync(IpcChannels.GET_SERVER_BOOTSTRAP_CHANNEL);
+    const result = ipcRenderer.sendSync(
+      IpcChannels.GET_SERVER_BOOTSTRAP_CHANNEL,
+    );
     if (typeof result !== "object" || result === null) {
       return null;
     }
     return result as ReturnType<DesktopBridge["getServerBootstrap"]>;
   },
-  getBearerToken: () => ipcRenderer.invoke(IpcChannels.GET_BEARER_TOKEN_CHANNEL),
+  getBearerToken: () =>
+    ipcRenderer.invoke(IpcChannels.GET_BEARER_TOKEN_CHANNEL),
 
   setTheme: (theme) => ipcRenderer.invoke(IpcChannels.SET_THEME_CHANNEL, theme),
-  openExternal: (url) => ipcRenderer.invoke(IpcChannels.OPEN_EXTERNAL_CHANNEL, url),
-  confirm: (message) => ipcRenderer.invoke(IpcChannels.CONFIRM_CHANNEL, message),
-  pickFolder: (options) => ipcRenderer.invoke(IpcChannels.PICK_FOLDER_CHANNEL, options),
+  openExternal: (url) =>
+    ipcRenderer.invoke(IpcChannels.OPEN_EXTERNAL_CHANNEL, url),
+  confirm: (message) =>
+    ipcRenderer.invoke(IpcChannels.CONFIRM_CHANNEL, message),
+  pickFolder: (options) =>
+    ipcRenderer.invoke(IpcChannels.PICK_FOLDER_CHANNEL, options),
   showContextMenu: (items, position) =>
     ipcRenderer.invoke(IpcChannels.CONTEXT_MENU_CHANNEL, {
       items,
       ...(position === undefined ? {} : { position }),
     }),
 
-  getUpdateState: () => ipcRenderer.invoke(IpcChannels.GET_UPDATE_STATE_CHANNEL),
+  getUpdateState: () =>
+    ipcRenderer.invoke(IpcChannels.GET_UPDATE_STATE_CHANNEL),
   setUpdateChannel: (channel) =>
     ipcRenderer.invoke(IpcChannels.SET_UPDATE_CHANNEL_CHANNEL, channel),
-  checkForUpdate: () => ipcRenderer.invoke(IpcChannels.CHECK_FOR_UPDATE_CHANNEL),
+  checkForUpdate: () =>
+    ipcRenderer.invoke(IpcChannels.CHECK_FOR_UPDATE_CHANNEL),
   downloadUpdate: () => ipcRenderer.invoke(IpcChannels.DOWNLOAD_UPDATE_CHANNEL),
   installUpdate: () => ipcRenderer.invoke(IpcChannels.INSTALL_UPDATE_CHANNEL),
   onUpdateState: (listener) => {

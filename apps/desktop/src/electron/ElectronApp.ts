@@ -46,7 +46,10 @@ export class ElectronAppWhenReadyError extends Schema.TaggedErrorClass<ElectronA
 export class ElectronApp extends Context.Service<
   ElectronApp,
   {
-    readonly metadata: Effect.Effect<ElectronAppMetadata, ElectronAppMetadataReadError>;
+    readonly metadata: Effect.Effect<
+      ElectronAppMetadata,
+      ElectronAppMetadataReadError
+    >;
     readonly name: Effect.Effect<string>;
     readonly whenReady: Effect.Effect<void, ElectronAppWhenReadyError>;
     readonly quit: Effect.Effect<void>;
@@ -82,11 +85,13 @@ export const make = ElectronApp.of({
   metadata: Effect.gen(function* () {
     const appVersion = yield* Effect.try({
       try: () => Electron.app.getVersion(),
-      catch: (cause) => new ElectronAppMetadataReadError({ property: "app-version", cause }),
+      catch: (cause) =>
+        new ElectronAppMetadataReadError({ property: "app-version", cause }),
     });
     const appPath = yield* Effect.try({
       try: () => Electron.app.getAppPath(),
-      catch: (cause) => new ElectronAppMetadataReadError({ property: "app-path", cause }),
+      catch: (cause) =>
+        new ElectronAppMetadataReadError({ property: "app-path", cause }),
     });
 
     return {
@@ -119,7 +124,9 @@ export const make = ElectronApp.of({
     Effect.sync(() => {
       Electron.app.setName(name);
     }),
-  requestSingleInstanceLock: Effect.sync(() => Electron.app.requestSingleInstanceLock()),
+  requestSingleInstanceLock: Effect.sync(() =>
+    Electron.app.requestSingleInstanceLock(),
+  ),
   on: addScopedAppListener,
 });
 

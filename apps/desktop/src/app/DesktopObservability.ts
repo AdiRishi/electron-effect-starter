@@ -15,13 +15,22 @@ export interface DesktopComponentLogger {
     effect: Effect.Effect<A, E, R>,
     annotations?: DesktopLogAnnotations,
   ) => Effect.Effect<A, E, R>;
-  readonly logDebug: (message: string, annotations?: DesktopLogAnnotations) => Effect.Effect<void>;
-  readonly logInfo: (message: string, annotations?: DesktopLogAnnotations) => Effect.Effect<void>;
+  readonly logDebug: (
+    message: string,
+    annotations?: DesktopLogAnnotations,
+  ) => Effect.Effect<void>;
+  readonly logInfo: (
+    message: string,
+    annotations?: DesktopLogAnnotations,
+  ) => Effect.Effect<void>;
   readonly logWarning: (
     message: string,
     annotations?: DesktopLogAnnotations,
   ) => Effect.Effect<void>;
-  readonly logError: (message: string, annotations?: DesktopLogAnnotations) => Effect.Effect<void>;
+  readonly logError: (
+    message: string,
+    annotations?: DesktopLogAnnotations,
+  ) => Effect.Effect<void>;
 }
 
 export function makeComponentLogger(component: string): DesktopComponentLogger {
@@ -30,10 +39,14 @@ export function makeComponentLogger(component: string): DesktopComponentLogger {
 
   return {
     annotate,
-    logDebug: (message, annotations) => annotate(Effect.logDebug(message), annotations),
-    logInfo: (message, annotations) => annotate(Effect.logInfo(message), annotations),
-    logWarning: (message, annotations) => annotate(Effect.logWarning(message), annotations),
-    logError: (message, annotations) => annotate(Effect.logError(message), annotations),
+    logDebug: (message, annotations) =>
+      annotate(Effect.logDebug(message), annotations),
+    logInfo: (message, annotations) =>
+      annotate(Effect.logInfo(message), annotations),
+    logWarning: (message, annotations) =>
+      annotate(Effect.logWarning(message), annotations),
+    logError: (message, annotations) =>
+      annotate(Effect.logError(message), annotations),
   };
 }
 

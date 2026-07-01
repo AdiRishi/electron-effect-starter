@@ -18,11 +18,15 @@ const electronPath = require("electron");
 const childEnv = { ...process.env };
 delete childEnv.ELECTRON_RUN_AS_NODE;
 
-const child = NodeChildProcess.spawn(electronPath, ["dist-electron/main.cjs", ...process.argv.slice(2)], {
-  stdio: "inherit",
-  cwd: desktopDir,
-  env: childEnv,
-});
+const child = NodeChildProcess.spawn(
+  electronPath,
+  ["dist-electron/main.cjs", ...process.argv.slice(2)],
+  {
+    stdio: "inherit",
+    cwd: desktopDir,
+    env: childEnv,
+  },
+);
 
 child.on("exit", (code, signal) => {
   if (signal) {

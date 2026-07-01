@@ -108,4 +108,7 @@ const desktopRuntimeLayer = desktopApplicationLayer.pipe(
   Layer.provideMerge(electronLayer),
 );
 
-DesktopApp.program.pipe(Effect.provide(desktopRuntimeLayer), NodeRuntime.runMain);
+DesktopApp.program.pipe(
+  Effect.provide(desktopRuntimeLayer),
+  NodeRuntime.runMain,
+);

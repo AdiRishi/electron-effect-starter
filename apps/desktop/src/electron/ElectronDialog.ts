@@ -17,7 +17,10 @@ export class ElectronDialogPickFolderError extends Schema.TaggedErrorClass<Elect
   },
 ) {
   override get message(): string {
-    const owner = this.ownerWindowId === null ? "the application" : `window ${this.ownerWindowId}`;
+    const owner =
+      this.ownerWindowId === null
+        ? "the application"
+        : `window ${this.ownerWindowId}`;
     return `Failed to open the Electron folder picker for ${owner}.`;
   }
 }
@@ -31,7 +34,10 @@ export class ElectronDialogConfirmError extends Schema.TaggedErrorClass<Electron
   },
 ) {
   override get message(): string {
-    const owner = this.ownerWindowId === null ? "the application" : `window ${this.ownerWindowId}`;
+    const owner =
+      this.ownerWindowId === null
+        ? "the application"
+        : `window ${this.ownerWindowId}`;
     return `Failed to open an Electron confirmation dialog for ${owner}.`;
   }
 }
@@ -56,36 +62,50 @@ export class ElectronDialog extends Context.Service<
     readonly confirm: (
       input: ElectronDialogConfirmInput,
     ) => Effect.Effect<boolean, ElectronDialogConfirmError>;
-    readonly showErrorBox: (title: string, content: string) => Effect.Effect<void>;
+    readonly showErrorBox: (
+      title: string,
+      content: string,
+    ) => Effect.Effect<void>;
   }
 >()("@app/desktop/electron/ElectronDialog") {}
 
 export const make = ElectronDialog.of({
-  pickFolder: Effect.fn("desktop.electron.dialog.pickFolder")(function* (input) {
-    const ownerWindowId = Option.match(input.owner, {
-      onNone: () => null,
-      onSome: (owner) => owner.id,
-    });
-    const defaultPath = Option.getOrNull(input.defaultPath);
-    const openDialogOptions: Electron.OpenDialogOptions = {
-      properties: ["openDirectory", "createDirectory"],
-      ...(defaultPath === null ? {} : { defaultPath }),
-      ...Option.match(input.title, { onNone: () => ({}), onSome: (title) => ({ title }) }),
-    };
-    const result = yield* Effect.tryPromise({
-      try: () =>
-        Option.match(input.owner, {
-          onNone: () => Electron.dialog.showOpenDialog(openDialogOptions),
-          onSome: (owner) => Electron.dialog.showOpenDialog(owner, openDialogOptions),
+  pickFolder: Effect.fn("desktop.electron.dialog.pickFolder")(
+    function* (input) {
+      const ownerWindowId = Option.match(input.owner, {
+        onNone: () => null,
+        onSome: (owner) => owner.id,
+      });
+      const defaultPath = Option.getOrNull(input.defaultPath);
+      const openDialogOptions: Electron.OpenDialogOptions = {
+        properties: ["openDirectory", "createDirectory"],
+        ...(defaultPath === null ? {} : { defaultPath }),
+        ...Option.match(input.title, {
+          onNone: () => ({}),
+          onSome: (title) => ({ title }),
         }),
-      catch: (cause) => new ElectronDialogPickFolderError({ ownerWindowId, defaultPath, cause }),
-    });
+      };
+      const result = yield* Effect.tryPromise({
+        try: () =>
+          Option.match(input.owner, {
+            onNone: () => Electron.dialog.showOpenDialog(openDialogOptions),
+            onSome: (owner) =>
+              Electron.dialog.showOpenDialog(owner, openDialogOptions),
+          }),
+        catch: (cause) =>
+          new ElectronDialogPickFolderError({
+            ownerWindowId,
+            defaultPath,
+            cause,
+          }),
+      });
 
-    if (result.canceled) {
-      return Option.none();
-    }
-    return Option.fromNullishOr(result.filePaths[0]);
-  }),
+      if (result.canceled) {
+        return Option.none();
+      }
+      return Option.fromNullishOr(result.filePaths[0]);
+    },
+  ),
   confirm: Effect.fn("desktop.electron.dialog.confirm")(function* (input) {
     const normalizedMessage = input.message.trim();
     if (normalizedMessage.length === 0) {

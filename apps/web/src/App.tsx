@@ -60,7 +60,9 @@ export function App() {
   }, [connected, subscribe]);
   useEffect(() => {
     if (!connected) return;
-    return subscribe("subscribeServerLifecycle", {}, (event) => setLifecycle(event.phase));
+    return subscribe("subscribeServerLifecycle", {}, (event) =>
+      setLifecycle(event.phase),
+    );
   }, [connected, subscribe]);
 
   const runEcho = useCallback(() => {
@@ -78,7 +80,9 @@ export function App() {
           <div>
             <h1 className="text-lg font-semibold">Desktop Starter</h1>
             <p className="text-sm text-[--color-muted]">
-              {conn.state.lastError ? conn.state.lastError : "Effect RPC over WebSocket"}
+              {conn.state.lastError
+                ? conn.state.lastError
+                : "Effect RPC over WebSocket"}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -114,7 +118,9 @@ export function App() {
         </dl>
 
         <div className="mt-5 border-t border-[--color-border] pt-5">
-          <label className="mb-1.5 block text-xs font-medium text-[--color-muted]">Echo</label>
+          <label className="mb-1.5 block text-xs font-medium text-[--color-muted]">
+            Echo
+          </label>
           <div className="flex gap-2">
             <input
               value={echoInput}
@@ -131,12 +137,16 @@ export function App() {
             </button>
           </div>
           {echoResult !== null && (
-            <p className="mt-2 font-mono text-xs text-[--color-muted]">↩ {echoResult}</p>
+            <p className="mt-2 font-mono text-xs text-[--color-muted]">
+              ↩ {echoResult}
+            </p>
           )}
         </div>
 
         <div className="mt-5 flex items-center justify-between border-t border-[--color-border] pt-5">
-          <span className="text-xs font-medium text-[--color-muted]">Theme</span>
+          <span className="text-xs font-medium text-[--color-muted]">
+            Theme
+          </span>
           <div className="flex gap-1 rounded-lg border border-[--color-border] p-0.5">
             {THEMES.map((option) => (
               <button
@@ -158,7 +168,13 @@ export function App() {
   );
 }
 
-function Row({ label, children }: { readonly label: string; readonly children: React.ReactNode }) {
+function Row({
+  label,
+  children,
+}: {
+  readonly label: string;
+  readonly children: React.ReactNode;
+}) {
   return (
     <div className="flex items-center justify-between">
       <dt className="text-[--color-muted]">{label}</dt>

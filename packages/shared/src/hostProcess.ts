@@ -26,4 +26,7 @@ export const HostProcessEnvironment = Context.Reference<NodeJS.ProcessEnv>(
   { defaultValue: () => process.env },
 );
 
-export const isHostWindows = Effect.map(HostProcessPlatform, (platform) => platform === "win32");
+export const isHostWindows = Effect.map(
+  HostProcessPlatform,
+  (platform) => platform === "win32",
+);

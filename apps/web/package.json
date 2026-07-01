@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vp dev",
-    "build": "vp build",
-    "typecheck": "tsgo --noEmit",
-    "test": "vp test run --passWithNoTests"
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@app/client-runtime": "workspace:*",
@@ -22,7 +22,8 @@
     "@types/react-dom": "~19.2.3",
     "@vitejs/plugin-react": "^6.0.0",
     "tailwindcss": "^4.0.0",
+    "typescript": "catalog:",
     "vite": "catalog:",
-    "vite-plus": "catalog:"
+    "vitest": "catalog:"
   }
 }

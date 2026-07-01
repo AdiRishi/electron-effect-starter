@@ -15,7 +15,11 @@ export {
   INITIAL_CONNECTION_STATE,
   type PreparedConnection,
 } from "./connection/model.ts";
-export { ConnectionSupervisor, layer as connectionSupervisorLayer, start } from "./connection/supervisor.ts";
+export {
+  ConnectionSupervisor,
+  layer as connectionSupervisorLayer,
+  start,
+} from "./connection/supervisor.ts";
 
 // Typed RPC surface.
 export {

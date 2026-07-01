@@ -1,27 +1,34 @@
-import "vite-plus/test/config";
-import { defineConfig } from "vite-plus";
+import { builtinModules } from "node:module";
+import { defineConfig } from "vite";
 
-// Bundle the workspace packages into the single-file CLI so the packaged
+// Bundle every non-Node dependency into the single-file CLI so the packaged
 // `dist/bin.mjs` has no runtime dependency on the monorepo layout.
-const bundledPackagePrefixes = ["@app/"];
+const nodeBuiltinIds = new Set([
+  ...builtinModules,
+  ...builtinModules.map((moduleName) => `node:${moduleName}`),
+]);
 
-export function shouldBundleCliDependency(id: string): boolean {
-  return bundledPackagePrefixes.some((prefix) => id.startsWith(prefix));
+function isExternalCliDependency(id: string): boolean {
+  return nodeBuiltinIds.has(id);
 }
 
 export default defineConfig({
-  pack: {
-    entry: ["src/bin.ts"],
+  ssr: {
+    noExternal: true,
+  },
+  build: {
+    ssr: "src/bin.ts",
     outDir: "dist",
-    format: "esm",
     sourcemap: true,
-    clean: true,
-    deps: {
-      alwaysBundle: shouldBundleCliDependency,
-      onlyBundle: false,
-    },
-    banner: {
-      js: "#!/usr/bin/env node\n",
+    emptyOutDir: true,
+    minify: false,
+    target: "node22",
+    rollupOptions: {
+      external: isExternalCliDependency,
+      output: {
+        banner: "#!/usr/bin/env node\n",
+        entryFileNames: "[name].mjs",
+      },
     },
   },
 });

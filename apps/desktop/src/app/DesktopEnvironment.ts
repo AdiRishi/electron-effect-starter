@@ -70,7 +70,9 @@ export class DesktopEnvironment extends Context.Service<
   }
 >()("@app/desktop/app/DesktopEnvironment") {}
 
-function normalizePlatform(platform: NodeJS.Platform): DesktopAppInfo["platform"] {
+function normalizePlatform(
+  platform: NodeJS.Platform,
+): DesktopAppInfo["platform"] {
   if (platform === "win32") return "win32";
   if (platform === "darwin") return "darwin";
   return "linux";
@@ -102,7 +104,14 @@ export function makeWith(
     onSome: (override) => override,
     onNone: () =>
       input.isPackaged
-        ? path.join(input.resourcesPath, "app", "apps", "server", "dist", "bin.mjs")
+        ? path.join(
+            input.resourcesPath,
+            "app",
+            "apps",
+            "server",
+            "dist",
+            "bin.mjs",
+          )
         : path.resolve(input.dirname, "..", "..", "server", "dist", "bin.mjs"),
   });
   const backendCwd = path.dirname(backendEntryPath);
@@ -143,16 +152,28 @@ export function makeWith(
 export function layer(
   metadata: Pick<
     MakeDesktopEnvironmentInput,
-    "dirname" | "homeDirectory" | "platform" | "appVersion" | "appPath" | "isPackaged" | "resourcesPath"
+    | "dirname"
+    | "homeDirectory"
+    | "platform"
+    | "appVersion"
+    | "appPath"
+    | "isPackaged"
+    | "resourcesPath"
   >,
 ): Layer.Layer<DesktopEnvironment> {
   return Layer.effect(
     DesktopEnvironment,
     Effect.gen(function* () {
       const path = yield* Path.Path;
-      const serverEntryOverride = yield* Config.string("APP_SERVER_ENTRY").pipe(Config.option);
-      const configuredBackendPort = yield* Config.port("APP_SERVER_PORT").pipe(Config.option);
-      const devServerUrl = yield* Config.url("APP_DEV_WEB_URL").pipe(Config.option);
+      const serverEntryOverride = yield* Config.string("APP_SERVER_ENTRY").pipe(
+        Config.option,
+      );
+      const configuredBackendPort = yield* Config.port("APP_SERVER_PORT").pipe(
+        Config.option,
+      );
+      const devServerUrl = yield* Config.url("APP_DEV_WEB_URL").pipe(
+        Config.option,
+      );
       return makeWith(
         {
           ...metadata,

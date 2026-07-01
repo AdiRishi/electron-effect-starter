@@ -10,14 +10,15 @@
     }
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit",
-    "test": "vp test run --passWithNoTests"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "effect": "catalog:"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
-    "vite-plus": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

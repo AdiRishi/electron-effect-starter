@@ -38,7 +38,9 @@ const make = Effect.gen(function* () {
   const readyFlag = yield* Ref.make(false);
 
   return {
-    markHttpListening: Deferred.succeed(httpListening, undefined).pipe(Effect.asVoid),
+    markHttpListening: Deferred.succeed(httpListening, undefined).pipe(
+      Effect.asVoid,
+    ),
     awaitHttpListening: Deferred.await(httpListening),
     signalReady: Ref.set(readyFlag, true).pipe(
       Effect.andThen(Deferred.succeed(ready, undefined)),

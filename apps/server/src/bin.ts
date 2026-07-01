@@ -9,11 +9,17 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import { Command } from "effect/unstable/cli";
 
-import { runServerCommand, sharedServerCommandFlags, startCommand } from "./cli/server.ts";
+import {
+  runServerCommand,
+  sharedServerCommandFlags,
+  startCommand,
+} from "./cli/server.ts";
 
 const APP_VERSION = "0.0.0";
 
-export const cli = Command.make("app-server", { ...sharedServerCommandFlags }).pipe(
+export const cli = Command.make("app-server", {
+  ...sharedServerCommandFlags,
+}).pipe(
   Command.withDescription("Run the Desktop Starter server."),
   Command.withHandler((flags) => runServerCommand(flags)),
   Command.withSubcommands([startCommand]),

@@ -85,9 +85,9 @@ export const authBootstrapRouteLayer = HttpRouter.add(
   AUTH_BOOTSTRAP_PATH,
   Effect.gen(function* () {
     const auth = yield* Auth.BearerSessionStore;
-    const input = yield* HttpServerRequest.schemaBodyJson(BootstrapBearerInput).pipe(
-      Effect.orElseSucceed(() => null),
-    );
+    const input = yield* HttpServerRequest.schemaBodyJson(
+      BootstrapBearerInput,
+    ).pipe(Effect.orElseSucceed(() => null));
     if (input === null) {
       return HttpServerResponse.text("Bad Request", { status: 400 });
     }
@@ -97,7 +97,10 @@ export const authBootstrapRouteLayer = HttpRouter.add(
       return HttpServerResponse.text("Unauthorized", { status: 401 });
     }
 
-    const session: BearerSession = { access_token: minted.value, expires_at: null };
+    const session: BearerSession = {
+      access_token: minted.value,
+      expires_at: null,
+    };
     return yield* HttpServerResponse.json(session, { status: 200 });
   }),
 );
@@ -121,22 +124,30 @@ export const staticAndDevRouteLayer = HttpRouter.add(
       !isReservedPath(url.value.pathname) &&
       isLoopbackHostname(url.value.hostname)
     ) {
-      return HttpServerResponse.redirect(resolveDevRedirectUrl(config.devWebUrl, url.value), {
-        status: 302,
-      });
+      return HttpServerResponse.redirect(
+        resolveDevRedirectUrl(config.devWebUrl, url.value),
+        {
+          status: 302,
+        },
+      );
     }
 
-    const staticDir = config.staticDir ?? (yield* ServerConfig.resolveStaticDir());
+    const staticDir =
+      config.staticDir ?? (yield* ServerConfig.resolveStaticDir());
     if (!staticDir) {
-      return HttpServerResponse.text("No static directory configured and no dev URL set.", {
-        status: 503,
-      });
+      return HttpServerResponse.text(
+        "No static directory configured and no dev URL set.",
+        {
+          status: 503,
+        },
+      );
     }
 
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const staticRoot = path.resolve(staticDir);
-    const requestPath = url.value.pathname === "/" ? "/index.html" : url.value.pathname;
+    const requestPath =
+      url.value.pathname === "/" ? "/index.html" : url.value.pathname;
     const rawRelative = requestPath.replace(/^[/\\]+/, "");
     const hasRawLeadingParent = rawRelative.startsWith("..");
     const relative = path.normalize(rawRelative).replace(/^[/\\]+/, "");
@@ -146,25 +157,35 @@ export const staticAndDevRouteLayer = HttpRouter.add(
       relative.startsWith("..") ||
       relative.includes("\0")
     ) {
-      return HttpServerResponse.text("Invalid static file path", { status: 400 });
+      return HttpServerResponse.text("Invalid static file path", {
+        status: 400,
+      });
     }
 
     const isWithinRoot = (candidate: string) =>
       candidate === staticRoot ||
-      candidate.startsWith(staticRoot.endsWith(path.sep) ? staticRoot : `${staticRoot}${path.sep}`);
+      candidate.startsWith(
+        staticRoot.endsWith(path.sep) ? staticRoot : `${staticRoot}${path.sep}`,
+      );
 
     let filePath = path.resolve(staticRoot, relative);
     if (!isWithinRoot(filePath)) {
-      return HttpServerResponse.text("Invalid static file path", { status: 400 });
+      return HttpServerResponse.text("Invalid static file path", {
+        status: 400,
+      });
     }
     if (!path.extname(filePath)) {
       filePath = path.resolve(filePath, "index.html");
       if (!isWithinRoot(filePath)) {
-        return HttpServerResponse.text("Invalid static file path", { status: 400 });
+        return HttpServerResponse.text("Invalid static file path", {
+          status: 400,
+        });
       }
     }
 
-    const info = yield* fileSystem.stat(filePath).pipe(Effect.orElseSucceed(() => null));
+    const info = yield* fileSystem
+      .stat(filePath)
+      .pipe(Effect.orElseSucceed(() => null));
     if (!info || info.type !== "File") {
       // SPA fallback: serve index.html for unknown routes.
       const indexData = yield* fileSystem

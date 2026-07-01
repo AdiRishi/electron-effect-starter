@@ -39,7 +39,9 @@ export class DesktopUpdater extends Context.Service<
   {
     readonly configure: Effect.Effect<void>;
     readonly getState: Effect.Effect<DesktopUpdateState>;
-    readonly setChannel: (channel: DesktopUpdateChannel) => Effect.Effect<DesktopUpdateState>;
+    readonly setChannel: (
+      channel: DesktopUpdateChannel,
+    ) => Effect.Effect<DesktopUpdateState>;
     readonly check: Effect.Effect<void>;
     readonly download: Effect.Effect<void>;
     readonly install: Effect.Effect<void>;
@@ -53,9 +55,13 @@ export const make = Effect.gen(function* () {
 
   // Not packaged → updater is inert. A packaged build would flip this to "idle"
   // and drive the real electron-updater flow.
-  const initialStatus: DesktopUpdateStatus = environment.isPackaged ? "idle" : "disabled";
+  const initialStatus: DesktopUpdateStatus = environment.isPackaged
+    ? "idle"
+    : "disabled";
   const persisted = yield* settings.get;
-  const stateRef = yield* Ref.make(makeState(initialStatus, persisted.updateChannel));
+  const stateRef = yield* Ref.make(
+    makeState(initialStatus, persisted.updateChannel),
+  );
 
   const pushState = (state: DesktopUpdateState) =>
     electronWindow.sendAll(UPDATE_STATE_CHANNEL, state);
@@ -75,7 +81,11 @@ export const make = Effect.gen(function* () {
         const next = { ...current, channel };
         yield* setState(next);
         return next;
-      }).pipe(Effect.withSpan("desktop.updater.setChannel", { attributes: { channel } })),
+      }).pipe(
+        Effect.withSpan("desktop.updater.setChannel", {
+          attributes: { channel },
+        }),
+      ),
     check: Effect.void.pipe(Effect.withSpan("desktop.updater.check")),
     download: Effect.void.pipe(Effect.withSpan("desktop.updater.download")),
     install: Effect.void.pipe(Effect.withSpan("desktop.updater.install")),

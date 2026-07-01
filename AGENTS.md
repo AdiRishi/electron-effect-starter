@@ -3,7 +3,7 @@
 ## Task Completion Requirements
 
 - `pnpm typecheck` must pass before considering a task complete.
-- Prefer `pnpm test` (vite-plus test) for the test suite.
+- Prefer `pnpm test` (Vitest) for the test suite.
 
 ## Project Snapshot
 

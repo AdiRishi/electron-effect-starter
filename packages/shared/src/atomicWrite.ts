@@ -9,7 +9,9 @@ import * as Path from "effect/Path";
  * unique-per-write token (e.g. a random hex string) to avoid concurrent-write
  * collisions.
  */
-export const atomicWriteString = Effect.fn("shared.atomicWrite.atomicWriteString")(function* (input: {
+export const atomicWriteString = Effect.fn(
+  "shared.atomicWrite.atomicWriteString",
+)(function* (input: {
   readonly path: string;
   readonly contents: string;
   readonly suffix: string;
