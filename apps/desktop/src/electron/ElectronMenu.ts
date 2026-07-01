@@ -34,6 +34,12 @@ export class ElectronMenu extends Context.Service<
     readonly popupTemplate: (
       input: ElectronMenuTemplateInput,
     ) => Effect.Effect<void>;
+    // Installs the native application menu (menu bar on Windows/Linux, the top
+    // menu on macOS) from a template whose click handlers are supplied by the
+    // Desktop tier.
+    readonly setApplicationMenu: (
+      template: readonly Electron.MenuItemConstructorOptions[],
+    ) => Effect.Effect<void>;
   }
 >()("@app/desktop/electron/ElectronMenu") {}
 
@@ -106,6 +112,12 @@ export const make = ElectronMenu.of({
       const menu = Electron.Menu.buildFromTemplate([...input.template]);
       menu.popup({ window: input.window });
     }).pipe(Effect.ignore),
+  setApplicationMenu: (template) =>
+    Effect.sync(() => {
+      Electron.Menu.setApplicationMenu(
+        Electron.Menu.buildFromTemplate([...template]),
+      );
+    }),
 });
 
 export const layer = Layer.succeed(ElectronMenu, make);

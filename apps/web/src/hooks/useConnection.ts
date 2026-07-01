@@ -3,6 +3,7 @@ import {
   ConnectionSupervisor,
   connectionSupervisorLayer,
   type ConnectionState,
+  ConnectionTransientError,
   INITIAL_CONNECTION_STATE,
   type PreparedConnection,
   request as rpcRequest,
@@ -19,7 +20,6 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { FetchHttpClient } from "effect/unstable/http";
 import * as Socket from "effect/unstable/socket/Socket";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -57,17 +57,15 @@ function socketUrl(wsBaseUrl: string, token: string): string {
   return `${base}/ws?access_token=${encodeURIComponent(token)}`;
 }
 
-// The full runtime: the supervisor (which owns the socket + reconnect loop),
-// plus the platform seams it needs — a browser WebSocket and a fetch HttpClient.
+// The full runtime: the supervisor (which owns the socket + reconnect loop) over
+// the one platform seam it needs — a browser WebSocket constructor. The bearer
+// bootstrap uses the global `fetch` directly, so no HttpClient layer is needed.
 function makeRuntimeLayer(
   connection: PreparedConnection,
 ): Layer.Layer<ConnectionSupervisor> {
   return Layer.provideMerge(
     connectionSupervisorLayer(connection),
-    Layer.mergeAll(
-      Socket.layerWebSocketConstructorGlobal,
-      FetchHttpClient.layer,
-    ),
+    Socket.layerWebSocketConstructorGlobal,
   );
 }
 
@@ -89,9 +87,12 @@ export interface ConnectionHandle {
 }
 
 /**
- * Boots the connection supervisor once (after resolving the bearer token) and
- * mirrors its state into React. `request`/`subscribe` run against the same
- * runtime, so RPCs and the status dot share one session and one reconnect loop.
+ * Boots the connection supervisor once and mirrors its state into React.
+ * Bearer-token acquisition happens INSIDE the supervisor's connect loop (via
+ * `PreparedConnection.prepareSocketUrl`), so a server that is down at first load
+ * is retried with backoff rather than leaving the UI stuck. `request`/`subscribe`
+ * run against the same runtime, so RPCs and the status dot share one session and
+ * one reconnect loop.
  */
 export function useConnection(): ConnectionHandle {
   const [state, setState] = useState<ConnectionState>(INITIAL_CONNECTION_STATE);
@@ -99,52 +100,44 @@ export function useConnection(): ConnectionHandle {
 
   useEffect(() => {
     let disposed = false;
-    let runtime: AppRuntime | null = null;
-    let mirrorFiber: Fiber.Fiber<void> | null = null;
-
     const target = resolveConnectionTarget();
 
-    // Resolve the token first (its own tiny runtime), then stand up the app
-    // runtime whose supervisor immediately begins connecting.
-    void Effect.runPromise(obtainBearerToken(target.httpBaseUrl))
-      .then((token) => {
-        if (disposed) return;
-        const connection: PreparedConnection = {
-          label: "server",
-          socketUrl: socketUrl(target.wsBaseUrl, token),
-        };
-        runtime = ManagedRuntime.make(makeRuntimeLayer(connection));
-        runtimeRef.current = runtime;
+    // The supervisor runs `prepareSocketUrl` on every attempt: mint a bearer
+    // credential, then form the ws URL. A failed mint becomes a transient error
+    // it backs off from — the auth step is part of reconnection, not a gate
+    // before it.
+    const connection: PreparedConnection = {
+      label: "server",
+      prepareSocketUrl: obtainBearerToken(target.httpBaseUrl).pipe(
+        Effect.map((token) => socketUrl(target.wsBaseUrl, token)),
+        Effect.mapError(
+          (error) => new ConnectionTransientError({ detail: error.message }),
+        ),
+      ),
+    };
 
-        // Mirror supervisor state into React for as long as this mount lives.
-        mirrorFiber = runtime.runFork(
-          Effect.gen(function* () {
-            const supervisor = yield* ConnectionSupervisor;
-            yield* SubscriptionRef.changes(supervisor.state).pipe(
-              Stream.runForEach((next) =>
-                Effect.sync(() => {
-                  if (!disposed) setState(next);
-                }),
-              ),
-            );
-          }),
+    const runtime = ManagedRuntime.make(makeRuntimeLayer(connection));
+    runtimeRef.current = runtime;
+
+    // Mirror supervisor state into React for as long as this mount lives.
+    const mirrorFiber = runtime.runFork(
+      Effect.gen(function* () {
+        const supervisor = yield* ConnectionSupervisor;
+        yield* SubscriptionRef.changes(supervisor.state).pipe(
+          Stream.runForEach((next) =>
+            Effect.sync(() => {
+              if (!disposed) setState(next);
+            }),
+          ),
         );
-      })
-      .catch((error: unknown) => {
-        if (!disposed) {
-          setState({
-            phase: "reconnecting",
-            attempt: 1,
-            lastError: String(error),
-          });
-        }
-      });
+      }),
+    );
 
     return () => {
       disposed = true;
       runtimeRef.current = null;
-      if (mirrorFiber) void Effect.runPromise(Fiber.interrupt(mirrorFiber));
-      if (runtime) void runtime.dispose();
+      void Effect.runPromise(Fiber.interrupt(mirrorFiber));
+      void runtime.dispose();
     };
   }, []);
 

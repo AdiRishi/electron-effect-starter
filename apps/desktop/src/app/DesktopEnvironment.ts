@@ -183,7 +183,7 @@ export function layer(
         },
         path,
       );
-      // A malformed env value (e.g. a non-URL APP_WEB_URL) is a startup
+      // A malformed env value (e.g. a non-URL APP_DEV_WEB_URL) is a startup
       // misconfiguration; die rather than thread ConfigError through the graph.
     }).pipe(Effect.orDie),
   ).pipe(Layer.provide(Path.layer));

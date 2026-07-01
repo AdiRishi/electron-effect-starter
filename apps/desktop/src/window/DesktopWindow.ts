@@ -9,6 +9,7 @@ import type * as Electron from "electron";
 import type { DesktopBackendStartConfig } from "../backend/DesktopBackendConfiguration.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
+import * as ElectronMenu from "../electron/ElectronMenu.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
@@ -52,6 +53,9 @@ export class DesktopWindow extends Context.Service<
     readonly dispatchMenuAction: (
       action: string,
     ) => Effect.Effect<void, DesktopWindowError>;
+    // Builds the native application menu and installs it. Call once, after the
+    // app is ready; menu clicks dispatch actions to the renderer.
+    readonly installApplicationMenu: Effect.Effect<void>;
   }
 >()("@app/desktop/window/DesktopWindow") {}
 
@@ -72,8 +76,46 @@ function resolveApplicationUrl(
   });
 }
 
+// A minimal cross-platform application menu. The custom items dispatch string
+// actions to the renderer (received via preload's `onMenuAction`); everything
+// else uses Electron's built-in roles. This is the template the renderer's
+// menu-action handler is driven by — extend it with your own commands.
+function buildApplicationMenuTemplate(
+  appName: string,
+  platform: string,
+  onAction: (action: string) => void,
+): Electron.MenuItemConstructorOptions[] {
+  const isMac = platform === "darwin";
+  const template: Electron.MenuItemConstructorOptions[] = [];
+  if (isMac) {
+    template.push({ role: "appMenu" });
+  }
+  template.push(
+    {
+      label: "File",
+      submenu: [
+        {
+          label: "Preferences…",
+          accelerator: "CmdOrCtrl+,",
+          click: () => onAction("preferences"),
+        },
+        { type: "separator" },
+        isMac ? { role: "close" } : { role: "quit" },
+      ],
+    },
+    { role: "editMenu" },
+    { role: "viewMenu" },
+    {
+      label: "Help",
+      submenu: [{ label: `About ${appName}`, click: () => onAction("about") }],
+    },
+  );
+  return template;
+}
+
 export const make = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
+  const electronMenu = yield* ElectronMenu.ElectronMenu;
   const electronShell = yield* ElectronShell.ElectronShell;
   const electronTheme = yield* ElectronTheme.ElectronTheme;
   const electronWindow = yield* ElectronWindow.ElectronWindow;
@@ -103,17 +145,17 @@ export const make = Effect.gen(function* () {
     });
 
     // Open http/https links externally instead of navigating the shell.
-    window.webContents.setWindowOpenHandler(({ url }) => {
+    yield* electronWindow.setWindowOpenHandler(window, ({ url }) => {
       if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
         void runPromise(electronShell.openExternal(url));
       }
       return { action: "deny" };
     });
 
-    window.once("ready-to-show", () => {
+    yield* electronWindow.onReadyToShow(window, () => {
       void runPromise(electronWindow.reveal(window));
     });
-    window.on("closed", () => {
+    yield* electronWindow.onClosed(window, () => {
       void runPromise(electronWindow.clearMain(Option.some(window)));
     });
 
@@ -150,6 +192,29 @@ export const make = Effect.gen(function* () {
     yield* createMain;
   }).pipe(Effect.withSpan("desktop.window.createMainIfBackendReady"));
 
+  const dispatchMenuAction = Effect.fn("desktop.window.dispatchMenuAction")(
+    function* (action: string) {
+      const window = yield* ensureMain;
+      yield* electronWindow.send(window, MENU_ACTION_CHANNEL, action);
+      yield* electronWindow.reveal(window);
+    },
+  );
+
+  // Menu clicks arrive as raw Electron callbacks, so bridge each back into the
+  // Effect world via `runPromise` (a dispatch failure is logged, not thrown).
+  const installApplicationMenu = Effect.gen(function* () {
+    const template = buildApplicationMenuTemplate(
+      environment.displayName,
+      environment.platform,
+      (action) => {
+        void runPromise(
+          dispatchMenuAction(action).pipe(Effect.ignore({ log: true })),
+        );
+      },
+    );
+    yield* electronMenu.setApplicationMenu(template);
+  }).pipe(Effect.withSpan("desktop.window.installApplicationMenu"));
+
   return DesktopWindow.of({
     createMain,
     ensureMain,
@@ -177,17 +242,8 @@ export const make = Effect.gen(function* () {
     handleBackendNotReady: Ref.set(backendReadyRef, false).pipe(
       Effect.withSpan("desktop.window.handleBackendNotReady"),
     ),
-    dispatchMenuAction: Effect.fn("desktop.window.dispatchMenuAction")(
-      function* (action) {
-        const window = yield* ensureMain;
-        yield* Effect.sync(() => {
-          if (!window.isDestroyed()) {
-            window.webContents.send(MENU_ACTION_CHANNEL, action);
-          }
-        });
-        yield* electronWindow.reveal(window);
-      },
-    ),
+    dispatchMenuAction,
+    installApplicationMenu,
   });
 });
 

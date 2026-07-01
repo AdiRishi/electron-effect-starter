@@ -12,6 +12,7 @@ import * as DesktopShutdown from "./DesktopShutdown.ts";
 import * as DesktopState from "./DesktopState.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopUpdater from "../updates/DesktopUpdater.ts";
+import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
@@ -74,6 +75,7 @@ const startup = Effect.gen(function* () {
   const lifecycle = yield* DesktopLifecycle.DesktopLifecycle;
   const settings = yield* DesktopAppSettings.DesktopAppSettings;
   const updater = yield* DesktopUpdater.DesktopUpdater;
+  const window = yield* DesktopWindow.DesktopWindow;
   const electronTheme = yield* ElectronTheme.ElectronTheme;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
 
@@ -94,6 +96,7 @@ const startup = Effect.gen(function* () {
   yield* logStartupInfo("app ready");
 
   yield* updater.configure;
+  yield* window.installApplicationMenu;
   yield* bootstrap.pipe(
     Effect.catchCause((cause) => fatalStartupCause("bootstrap", cause)),
   );

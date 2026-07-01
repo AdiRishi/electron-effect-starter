@@ -67,6 +67,8 @@ export interface LocalApi {
   readonly confirm: (message: string) => Promise<boolean>;
   /** Returns null in the browser (no native folder picker). */
   readonly pickFolder: (options?: PickFolderOptions) => Promise<string | null>;
+  /** Native menu actions. In a plain browser this never fires (no menu). */
+  readonly onMenuAction: (listener: (action: string) => void) => Unsubscribe;
 }
 
 declare global {

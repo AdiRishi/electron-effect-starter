@@ -12,6 +12,8 @@ import * as NodeNet from "node:net";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
+import { loadRepoEnv } from "./lib/public-config.ts";
+
 const MODES = ["dev", "dev:server", "dev:web", "dev:desktop"] as const;
 type Mode = (typeof MODES)[number];
 
@@ -86,6 +88,15 @@ function run(
 }
 
 async function main(): Promise<void> {
+  // Layer repo-root .env / .env.local under the real environment so the
+  // overrides documented in .env.example (APP_SERVER_PORT, APP_WEB_PORT) take
+  // effect. A real shell env var still wins — we only fill keys not already set.
+  for (const [key, value] of Object.entries(loadRepoEnv({ baseEnv: {} }))) {
+    if (value !== undefined && process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+
   const offset = repoPortOffset();
   const serverPort =
     process.env.APP_SERVER_PORT !== undefined

@@ -46,6 +46,10 @@ export const connect = (
   Effect.gen(function* () {
     const webSocketConstructor = yield* Socket.WebSocketConstructor;
 
+    // Mint a fresh credential and build the URL for THIS attempt. A failed mint
+    // fails `connect`, which the supervisor treats as a transient drop.
+    const socketUrl = yield* connection.prepareSocketUrl;
+
     const connected = yield* Deferred.make<void, ConnectionTransientError>();
     const disconnected = yield* Deferred.make<
       never,
@@ -69,7 +73,7 @@ export const connect = (
       ),
     });
 
-    const socketLayer = Socket.layerWebSocket(connection.socketUrl, {
+    const socketLayer = Socket.layerWebSocket(socketUrl, {
       openTimeout: SOCKET_OPEN_TIMEOUT,
     }).pipe(
       Layer.provide(

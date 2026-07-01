@@ -47,6 +47,12 @@ function createLocalApi(): LocalApi {
       // No native folder picker in a plain browser.
       return null;
     },
+
+    onMenuAction: (listener) => {
+      // Only the shell has a native menu; in a browser this is inert.
+      if (bridge) return bridge.onMenuAction(listener);
+      return () => {};
+    },
   };
 }
 

@@ -18,10 +18,13 @@ import {
  * 16s. A tiny table keeps the "simple" promise of this starter's supervisor.
  */
 const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000] as const;
+const MAX_RETRY_DELAY_MS = 16_000;
 
-function retryDelayMs(failureCount: number): number {
-  const index = Math.min(failureCount, RETRY_DELAYS_MS.length - 1);
-  return RETRY_DELAYS_MS[index] ?? 16_000;
+function retryDelayMs(attemptIndex: number): number {
+  const index = Math.min(attemptIndex, RETRY_DELAYS_MS.length - 1);
+  // The `?? MAX` only satisfies `noUncheckedIndexedAccess`; the clamp above
+  // guarantees `index` is in range, so the fallback is never taken at runtime.
+  return RETRY_DELAYS_MS[index] ?? MAX_RETRY_DELAY_MS;
 }
 
 /**
