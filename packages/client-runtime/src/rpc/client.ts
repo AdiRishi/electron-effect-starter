@@ -1,8 +1,10 @@
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
+import { RpcClientError } from "effect/unstable/rpc";
 
 import { ConnectionSupervisor } from "../connection/supervisor.ts";
 import type { WsRpcProtocolClient } from "./protocol.ts";
@@ -52,9 +54,16 @@ export type RpcStreamValue<TTag extends StreamRpcTag> =
 export type RpcStreamFailure<TTag extends StreamRpcTag> =
   RpcMethod<TTag> extends (input: never) => Stream.Stream<unknown, infer E, unknown> ? E : never;
 
-const currentSession = Effect.gen(function* () {
+const isRpcClientError = Schema.is(RpcClientError.RpcClientError);
+
+/** Resolve the live session or fail fast so callers see "disconnected" as an error. */
+const currentSession = Effect.fn("clientRuntime.rpc.currentSession")(function* (method: string) {
   const supervisor = yield* ConnectionSupervisor;
-  return yield* SubscriptionRef.get(supervisor.session);
+  const session = yield* SubscriptionRef.get(supervisor.session);
+  if (Option.isNone(session)) {
+    return yield* new RpcUnavailableError({ method });
+  }
+  return session.value;
 });
 
 /**
@@ -65,26 +74,28 @@ const currentSession = Effect.gen(function* () {
  * New unary methods added to `WsRpcGroup` (contracts) are callable immediately:
  * `request("your.method", input)` type-checks against the generated client.
  */
-export const request = <TTag extends UnaryRpcTag>(
+export const request = Effect.fn("clientRuntime.rpc.request")(function* <TTag extends UnaryRpcTag>(
   tag: TTag,
   input: RpcInput<TTag>,
-): Effect.Effect<RpcSuccess<TTag>, RpcFailure<TTag> | RpcUnavailableError, ConnectionSupervisor> =>
-  Effect.gen(function* () {
-    const session = yield* currentSession;
-    if (Option.isNone(session)) {
-      return yield* new RpcUnavailableError({ method: tag });
-    }
-    const method = session.value.client[tag] as (
-      input: RpcInput<TTag>,
-    ) => Effect.Effect<RpcSuccess<TTag>, RpcFailure<TTag>>;
-    return yield* method(input);
-  });
+) {
+  yield* Effect.annotateCurrentSpan({ "rpc.method": tag });
+  const session = yield* currentSession(tag);
+  const method = session.client[tag] as (
+    input: RpcInput<TTag>,
+  ) => Effect.Effect<RpcSuccess<TTag>, RpcFailure<TTag>>;
+  return yield* method(input);
+});
 
 /**
  * Subscribe to a streaming RPC. The returned stream watches the supervisor's
  * `session` ref and, on every reconnect, tears down the old subscription and
  * re-attaches to the fresh session — so a consumer subscribes once and keeps
  * receiving pushes across drops. While disconnected the stream is simply empty.
+ *
+ * Failure semantics: a pure transport failure (`RpcClientError`, i.e. the socket
+ * dropped mid-stream) is logged and swallowed — the next session re-attaches us.
+ * Every other failure (a domain error the server actually returned) propagates
+ * to the consumer.
  *
  * ── DESIGN SEAM (add RPC calls) ──
  * New `stream: true` methods on `WsRpcGroup` work here too:
@@ -104,12 +115,29 @@ export const subscribe = <TTag extends StreamRpcTag>(
               const method = session.client[tag] as (
                 input: RpcInput<TTag>,
               ) => Stream.Stream<RpcStreamValue<TTag>, RpcStreamFailure<TTag>>;
-              // If the transport drops, swallow the error and go quiet; the ref
-              // will emit `None` then a fresh session, which re-attaches us.
-              return method(input).pipe(Stream.catchCause(() => Stream.empty));
+              return method(input).pipe(
+                Stream.catchCause((cause) => {
+                  const isTransportFailure =
+                    cause.reasons.length > 0 &&
+                    cause.reasons.every(
+                      (reason) => reason._tag === "Fail" && isRpcClientError(reason.error),
+                    );
+                  if (isTransportFailure) {
+                    // Go quiet; the session ref will emit None then a fresh
+                    // session, which re-attaches this subscription.
+                    return Stream.fromEffect(
+                      Effect.logWarning(
+                        "RPC subscription lost its transport; waiting for the next session.",
+                        { method: tag, cause: Cause.pretty(cause) },
+                      ),
+                    ).pipe(Stream.drain);
+                  }
+                  return Stream.failCause(cause);
+                }),
+              );
             },
           }),
         ),
       ),
     ),
-  );
+  ).pipe(Stream.withSpan("clientRuntime.rpc.subscribe", { attributes: { "rpc.method": tag } }));

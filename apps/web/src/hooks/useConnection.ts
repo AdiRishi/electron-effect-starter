@@ -1,11 +1,13 @@
+import { bootstrapRemoteBearerSession } from "@app/client-runtime/authorization";
 import {
-  bootstrapRemoteBearerSession,
   ConnectionSupervisor,
   connectionSupervisorLayer,
   type ConnectionState,
   ConnectionTransientError,
   INITIAL_CONNECTION_STATE,
   type PreparedConnection,
+} from "@app/client-runtime/connection";
+import {
   request as rpcRequest,
   type RpcInput,
   type RpcStreamValue,
@@ -13,7 +15,7 @@ import {
   type StreamRpcTag,
   subscribe as rpcSubscribe,
   type UnaryRpcTag,
-} from "@app/client-runtime";
+} from "@app/client-runtime/rpc";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
