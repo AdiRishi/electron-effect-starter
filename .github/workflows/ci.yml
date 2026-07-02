@@ -17,6 +17,9 @@ jobs:
           node-version-file: .nvmrc
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
+      # electron's postinstall can silently skip the binary download, and the
+      # desktop unit tests import modules that load the `electron` package.
+      - run: pnpm --filter @app/desktop ensure:electron
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
