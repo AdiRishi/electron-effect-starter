@@ -18,11 +18,6 @@ export interface ElectronMenuContextInput {
   readonly position: Option.Option<ElectronMenuPosition>;
 }
 
-export interface ElectronMenuTemplateInput {
-  readonly window: Electron.BrowserWindow;
-  readonly template: readonly Electron.MenuItemConstructorOptions[];
-}
-
 export class ElectronMenu extends Context.Service<
   ElectronMenu,
   {
@@ -31,9 +26,6 @@ export class ElectronMenu extends Context.Service<
     readonly showContextMenu: (
       input: ElectronMenuContextInput,
     ) => Effect.Effect<Option.Option<string>>;
-    readonly popupTemplate: (
-      input: ElectronMenuTemplateInput,
-    ) => Effect.Effect<void>;
     // Installs the native application menu (menu bar on Windows/Linux, the top
     // menu on macOS) from a template whose click handlers are supplied by the
     // Desktop tier.
@@ -107,11 +99,6 @@ export const make = ElectronMenu.of({
         resume(Effect.succeed(Option.none()));
       }
     }),
-  popupTemplate: (input) =>
-    Effect.sync(() => {
-      const menu = Electron.Menu.buildFromTemplate([...input.template]);
-      menu.popup({ window: input.window });
-    }).pipe(Effect.ignore),
   setApplicationMenu: (template) =>
     Effect.sync(() => {
       Electron.Menu.setApplicationMenu(

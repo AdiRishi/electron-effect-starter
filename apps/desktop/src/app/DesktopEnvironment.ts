@@ -29,7 +29,6 @@ export interface MakeDesktopEnvironmentInput {
   readonly homeDirectory: string;
   readonly platform: NodeJS.Platform;
   readonly appVersion: string;
-  readonly appPath: string;
   readonly isPackaged: boolean;
   readonly resourcesPath: string;
   /** `APP_SERVER_ENTRY` override, if set. */
@@ -48,7 +47,6 @@ export class DesktopEnvironment extends Context.Service<
     readonly isPackaged: boolean;
     readonly isDevelopment: boolean;
     readonly appVersion: string;
-    readonly appPath: string;
     readonly resourcesPath: string;
     readonly homeDirectory: string;
     /** Base app-data dir, e.g. ~/.app-starter — settings + logs live under here. */
@@ -86,8 +84,7 @@ export function makeWith(
 ): DesktopEnvironment["Service"] {
   const platform = normalizePlatform(input.platform);
   const isDevelopment = Option.isSome(input.devServerUrl);
-  const stageLabel = isDevelopment ? "Dev" : "Alpha";
-  const displayName = `${APP_BASE_NAME} (${stageLabel})`;
+  const displayName = isDevelopment ? `${APP_BASE_NAME} (Dev)` : APP_BASE_NAME;
 
   const baseDir = path.join(input.homeDirectory, ".app-starter");
   const logDir = path.join(baseDir, "logs");
@@ -129,7 +126,6 @@ export function makeWith(
     isPackaged: input.isPackaged,
     isDevelopment,
     appVersion: input.appVersion,
-    appPath: input.appPath,
     resourcesPath: input.resourcesPath,
     homeDirectory: input.homeDirectory,
     baseDir,
@@ -156,7 +152,6 @@ export function layer(
     | "homeDirectory"
     | "platform"
     | "appVersion"
-    | "appPath"
     | "isPackaged"
     | "resourcesPath"
   >,

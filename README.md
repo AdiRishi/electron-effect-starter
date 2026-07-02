@@ -27,9 +27,11 @@ global side effects. This starter keeps the patterns that solve that:
 - **Typed boundaries** — `@app/contracts` owns two schema-only contracts: `WsRpcGroup`
   (renderer↔server, via Effect RPC) and `DesktopBridge` (shell↔renderer, via IPC).
   Malformed data can't cross either wire.
-- **Robust lifecycle** — scoped startup/shutdown, graceful `SIGTERM`, readiness gate,
-  reconnect supervisor (credential minting lives _inside_ the retry loop, so a cold-start
-  outage backs off and recovers instead of freezing), everything traced with spans.
+- **Robust lifecycle** — single-instance lock (a second launch reveals the first
+  window), scoped startup/shutdown, readiness gate, a `draining` event published to
+  subscribers before the server's socket drops, reconnect supervisor (credential
+  minting lives _inside_ the retry loop, so a cold-start outage backs off and
+  recovers instead of freezing), everything traced with spans.
 
 Two shell capabilities are wired end-to-end as working references rather than stubs:
 a native **application menu** whose clicks dispatch actions to the renderer, and an

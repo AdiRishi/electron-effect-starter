@@ -13,7 +13,7 @@ import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import { Argument, Flag } from "effect/unstable/cli";
+import { Flag } from "effect/unstable/cli";
 
 import { readBootstrapEnvelope } from "../bootstrap.ts";
 import * as ServerConfig from "../config.ts";
@@ -48,12 +48,6 @@ export const sharedServerCommandFlags = {
   host: hostFlag,
   devWebUrl: devWebUrlFlag,
   bootstrapFd: bootstrapFdFlag,
-  cwd: Argument.string("cwd").pipe(
-    Argument.withDescription(
-      "Working directory (defaults to the current directory).",
-    ),
-    Argument.optional,
-  ),
 } as const;
 
 export interface CliServerFlags {
@@ -61,7 +55,6 @@ export interface CliServerFlags {
   readonly host: Option.Option<string>;
   readonly devWebUrl: Option.Option<string>;
   readonly bootstrapFd: Option.Option<number>;
-  readonly cwd: Option.Option<string>;
 }
 
 const parseUrlOption = (value: string | undefined): URL | undefined => {

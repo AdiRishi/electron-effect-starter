@@ -74,14 +74,6 @@ export class DesktopBackendBootstrapEncodeError extends Schema.TaggedErrorClass<
   }
 }
 
-export interface DesktopBackendSnapshot {
-  readonly desiredRunning: boolean;
-  readonly ready: boolean;
-  readonly activePid: Option.Option<number>;
-  readonly restartAttempt: number;
-  readonly restartScheduled: boolean;
-}
-
 interface DesktopBackendReadyCallbacks {
   readonly onReady: (config: DesktopBackendStartConfig) => Effect.Effect<void>;
   readonly onNotReady: Effect.Effect<void>;
@@ -89,13 +81,10 @@ interface DesktopBackendReadyCallbacks {
 
 export interface DesktopBackendManagerShape {
   readonly start: Effect.Effect<void>;
-  readonly stop: (options?: {
-    readonly timeout?: Duration.Duration;
-  }) => Effect.Effect<void>;
+  readonly stop: Effect.Effect<void>;
   readonly currentConfig: Effect.Effect<
     Option.Option<DesktopBackendStartConfig>
   >;
-  readonly snapshot: Effect.Effect<DesktopBackendSnapshot>;
 }
 
 export class DesktopBackendManager extends Context.Service<
@@ -258,15 +247,6 @@ const makeManager = (
     const state = yield* Ref.make(initialState);
     const mutex = yield* Semaphore.make(1);
 
-    const snapshot = Ref.get(state).pipe(
-      Effect.map((current): DesktopBackendSnapshot => ({
-        desiredRunning: current.desiredRunning,
-        ready: current.ready,
-        activePid: Option.flatMap(current.active, (run) => run.pid),
-        restartAttempt: current.restartAttempt,
-        restartScheduled: Option.isSome(current.restartFiber),
-      })),
-    );
     const currentConfig = Ref.get(state).pipe(
       Effect.map((current) => current.config),
     );
@@ -480,9 +460,7 @@ const makeManager = (
       ),
     ).pipe(Effect.withSpan("desktop.backend.start"));
 
-    const stop = Effect.fn("desktop.backend.stop")(function* (options?: {
-      readonly timeout?: Duration.Duration;
-    }) {
+    const stop = Effect.gen(function* () {
       const { active, restartFiber } = yield* mutex.withPermits(1)(
         Ref.modify(state, (latest) => [
           { active: latest.active, restartFiber: latest.restartFiber },
@@ -502,33 +480,28 @@ const makeManager = (
       });
       yield* Option.match(active, {
         onNone: () => Effect.void,
-        onSome: (run) => {
+        onSome: (run) =>
           // Closing the run scope tears down the ChildProcessSpawner handle,
           // which sends SIGTERM and force-kills after the grace window.
-          const close = Scope.close(run.scope, Exit.void).pipe(
-            Effect.andThen(
-              Option.match(run.fiber, {
-                onNone: () => Effect.void,
-                onSome: (fiber) => Fiber.await(fiber).pipe(Effect.asVoid),
-              }),
-            ),
-          );
-          return (
-            options?.timeout
-              ? close.pipe(Effect.timeoutOption(options.timeout), Effect.asVoid)
-              : close
-          ).pipe(Effect.ignore);
-        },
+          Scope.close(run.scope, Exit.void)
+            .pipe(
+              Effect.andThen(
+                Option.match(run.fiber, {
+                  onNone: () => Effect.void,
+                  onSome: (fiber) => Fiber.await(fiber).pipe(Effect.asVoid),
+                }),
+              ),
+            )
+            .pipe(Effect.ignore),
       });
-    });
+    }).pipe(Effect.withSpan("desktop.backend.stop"));
 
-    yield* Effect.addFinalizer(() => stop());
+    yield* Effect.addFinalizer(() => stop);
 
     return {
       start,
       stop,
       currentConfig,
-      snapshot,
     } satisfies DesktopBackendManagerShape;
   });
 
