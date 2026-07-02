@@ -1,5 +1,7 @@
 import * as Schema from "effect/Schema";
 
+import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+
 export const DesktopTheme = Schema.Literals(["light", "dark", "system"]);
 export type DesktopTheme = typeof DesktopTheme.Type;
 
@@ -28,8 +30,8 @@ export type DesktopUpdateState = typeof DesktopUpdateState.Type;
 
 /** Static app identity the renderer reads synchronously at boot (branding). */
 export const DesktopAppInfo = Schema.Struct({
-  name: Schema.String,
-  version: Schema.String,
+  name: TrimmedNonEmptyString,
+  version: TrimmedNonEmptyString,
   platform: Schema.Literals(["darwin", "win32", "linux"]),
   isPackaged: Schema.Boolean,
 });
@@ -41,8 +43,8 @@ export type DesktopAppInfo = typeof DesktopAppInfo.Type;
  * know the ws URL and (separately, via `getBearerToken`) how to authenticate.
  */
 export const DesktopServerBootstrap = Schema.Struct({
-  httpBaseUrl: Schema.String,
-  wsBaseUrl: Schema.String,
+  httpBaseUrl: TrimmedNonEmptyString,
+  wsBaseUrl: TrimmedNonEmptyString,
 });
 export type DesktopServerBootstrap = typeof DesktopServerBootstrap.Type;
 

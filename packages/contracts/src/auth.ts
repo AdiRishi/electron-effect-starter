@@ -1,5 +1,7 @@
 import * as Schema from "effect/Schema";
 
+import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+
 /**
  * The single shared authorization error for every WS RPC. The server's `/ws`
  * upgrade is gated by a bearer session; a request without a valid session
@@ -25,10 +27,10 @@ export class EnvironmentAuthorizationError extends Schema.TaggedErrorClass<Envir
  * trusted child" pattern.
  */
 export const BootstrapBearerInput = Schema.Struct({
-  credential: Schema.String,
+  credential: TrimmedNonEmptyString,
   clientMetadata: Schema.optionalKey(
     Schema.Struct({
-      label: Schema.String,
+      label: TrimmedNonEmptyString,
       deviceType: Schema.Literals(["desktop", "web", "mobile"]),
     }),
   ),
@@ -36,9 +38,9 @@ export const BootstrapBearerInput = Schema.Struct({
 export type BootstrapBearerInput = typeof BootstrapBearerInput.Type;
 
 export const BearerSession = Schema.Struct({
-  access_token: Schema.String,
-  /** Unix millis when the token expires, or null for "session lifetime". */
-  expires_at: Schema.NullOr(Schema.Number),
+  access_token: TrimmedNonEmptyString,
+  /** When the token expires, or null for "session lifetime". */
+  expires_at: Schema.NullOr(Schema.DateTimeUtc),
 });
 export type BearerSession = typeof BearerSession.Type;
 

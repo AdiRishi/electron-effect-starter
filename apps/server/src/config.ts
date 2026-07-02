@@ -8,6 +8,7 @@
  * @module ServerConfig
  */
 import * as Context from "effect/Context";
+import type * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -25,8 +26,8 @@ export class ServerConfig extends Context.Service<
   {
     readonly appName: string;
     readonly version: string;
-    /** Unix millis the process resolved config / started up. */
-    readonly startedAt: number;
+    /** When the process resolved config / started up. */
+    readonly startedAt: DateTime.Utc;
     readonly host: string;
     readonly port: number;
     /** Built web assets to serve, or `undefined` when only a dev URL is set. */
