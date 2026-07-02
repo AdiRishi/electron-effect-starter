@@ -6,6 +6,7 @@
   "main": "dist-electron/main.cjs",
   "scripts": {
     "build": "vite build --mode main && vite build --mode preload",
+    "ensure:electron": "node scripts/ensure-electron-runtime.mjs",
     "start": "node scripts/start-electron.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
