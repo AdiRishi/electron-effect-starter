@@ -10,5 +10,20 @@
     "eslint/no-shadow": "off",
     "unicorn/consistent-function-scoping": "off"
   },
-  "ignorePatterns": [".repos", ".repos/**", "dist/**", "dist-electron/**", "release/**"]
+  // ".repos" (bare) prunes the directory walk so nested-config discovery never reads
+  // .repos/effect-smol/.oxlintrc.json (it needs a JS plugin we don't install);
+  // ".repos/**" additionally ignores the files themselves.
+  "ignorePatterns": [".repos", ".repos/**", "dist/**", "dist-electron/**", "release/**"],
+  "overrides": [
+    {
+      "files": ["apps/web/**/*.ts", "apps/web/**/*.tsx"],
+      "plugins": ["react"],
+      "rules": {
+        "react-hooks/rules-of-hooks": "error",
+        "react-hooks/exhaustive-deps": "warn",
+        "react/jsx-key": "error",
+        "react/react-in-jsx-scope": "off"
+      }
+    }
+  ]
 }

@@ -1,4 +1,10 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
-  "ignorePatterns": [".repos/**"]
+  "ignorePatterns": [".repos/**"],
+  "sortImports": {
+    "internalPattern": ["@app/"]
+  },
+  "sortTailwindcss": {
+    "stylesheet": "./apps/web/src/index.css"
+  }
 }
