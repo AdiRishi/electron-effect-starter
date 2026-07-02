@@ -9,8 +9,8 @@
  * @module cli/config
  */
 import { HostProcessEnvironment } from "@app/shared/hostProcess";
-import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { Flag } from "effect/unstable/cli";
@@ -72,7 +72,7 @@ export const resolveServerConfig = Effect.fn("cli.resolveServerConfig")(function
 ) {
   const env = yield* HostProcessEnvironment;
   const crypto = yield* Crypto.Crypto;
-  const startedAt = yield* Clock.currentTimeMillis;
+  const startedAt = yield* DateTime.now;
 
   const bootstrapFd = Option.getOrUndefined(flags.bootstrapFd);
   const bootstrapEnvelope =

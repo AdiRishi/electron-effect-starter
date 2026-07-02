@@ -1,15 +1,17 @@
 import * as Schema from "effect/Schema";
 
+import { NonNegativeInt, PortSchema, TrimmedNonEmptyString } from "./baseSchemas.ts";
+
 /**
  * Returned by the `server.getConfig` unary RPC. The client's first request
  * after opening the socket doubles as the initial-sync handshake, so this is
  * intentionally cheap and always-available.
  */
 export const ServerConfig = Schema.Struct({
-  appName: Schema.String,
-  version: Schema.String,
-  /** Unix millis the server process started — lets the client detect restarts. */
-  startedAt: Schema.Number,
+  appName: TrimmedNonEmptyString,
+  version: TrimmedNonEmptyString,
+  /** When the server process started — lets the client detect restarts. */
+  startedAt: Schema.DateTimeUtc,
 });
 export type ServerConfig = typeof ServerConfig.Type;
 
@@ -19,8 +21,8 @@ export type ServerConfig = typeof ServerConfig.Type;
  * agree on the secret/port bootstrap shape without sharing runtime logic.
  */
 export const ServerBootstrapEnvelope = Schema.Struct({
-  desktopBootstrapToken: Schema.String,
-  port: Schema.optional(Schema.Number),
+  desktopBootstrapToken: TrimmedNonEmptyString,
+  port: Schema.optionalKey(PortSchema),
 });
 export type ServerBootstrapEnvelope = typeof ServerBootstrapEnvelope.Type;
 
@@ -33,9 +35,9 @@ export const ServerLifecyclePhase = Schema.Literals(["starting", "ready", "drain
 export type ServerLifecyclePhase = typeof ServerLifecyclePhase.Type;
 
 export const ServerLifecycleStreamEvent = Schema.Struct({
-  sequence: Schema.Number,
+  sequence: NonNegativeInt,
   phase: ServerLifecyclePhase,
-  at: Schema.Number,
+  at: Schema.DateTimeUtc,
 });
 export type ServerLifecycleStreamEvent = typeof ServerLifecycleStreamEvent.Type;
 
@@ -45,8 +47,8 @@ export type ServerLifecycleStreamEvent = typeof ServerLifecycleStreamEvent.Type;
  * the client re-attaches the subscription across reconnects.
  */
 export const TickEvent = Schema.Struct({
-  tick: Schema.Number,
-  at: Schema.Number,
+  tick: NonNegativeInt,
+  at: Schema.DateTimeUtc,
 });
 export type TickEvent = typeof TickEvent.Type;
 
@@ -58,6 +60,6 @@ export type EchoInput = typeof EchoInput.Type;
 
 export const EchoResult = Schema.Struct({
   message: Schema.String,
-  receivedAt: Schema.Number,
+  receivedAt: Schema.DateTimeUtc,
 });
 export type EchoResult = typeof EchoResult.Type;

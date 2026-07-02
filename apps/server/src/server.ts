@@ -15,7 +15,7 @@ import * as NodeHttp from "node:http";
 
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as Clock from "effect/Clock";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
@@ -59,7 +59,7 @@ export const makeServerLayer = Layer.unwrap(
     const startingLayer = Layer.effectDiscard(
       Effect.gen(function* () {
         const lifecycle = yield* LifecycleEvents.ServerLifecycleEvents;
-        const at = yield* Clock.currentTimeMillis;
+        const at = yield* DateTime.now;
         yield* lifecycle.publish({ phase: "starting", at });
       }),
     );
@@ -79,7 +79,7 @@ export const makeServerLayer = Layer.unwrap(
             typeof address === "string" || !("port" in address) ? config.port : address.port;
 
           yield* readiness.signalReady;
-          const at = yield* Clock.currentTimeMillis;
+          const at = yield* DateTime.now;
           yield* lifecycle.publish({ phase: "ready", at });
 
           yield* Effect.logInfo("app server listening", {
@@ -90,7 +90,7 @@ export const makeServerLayer = Layer.unwrap(
         }),
         (lifecycle) =>
           Effect.gen(function* () {
-            const at = yield* Clock.currentTimeMillis;
+            const at = yield* DateTime.now;
             yield* lifecycle.publish({ phase: "draining", at });
             yield* Effect.logInfo("app server draining");
           }),

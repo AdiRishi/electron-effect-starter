@@ -17,7 +17,7 @@ import {
   type ServerLifecycleStreamEvent,
   type TickEvent,
 } from "@app/contracts";
-import * as Clock from "effect/Clock";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -70,7 +70,7 @@ const makeWsRpcLayer = () =>
             startedAt: config.startedAt,
           }),
         [WS_METHODS.echo]: (input) =>
-          Clock.currentTimeMillis.pipe(
+          DateTime.now.pipe(
             Effect.map((receivedAt) => ({
               message: input.message,
               receivedAt,
@@ -86,7 +86,7 @@ const makeWsRpcLayer = () =>
               },
             ),
             Stream.mapEffect((tick) =>
-              Clock.currentTimeMillis.pipe(Effect.map((at): TickEvent => ({ tick, at }))),
+              DateTime.now.pipe(Effect.map((at): TickEvent => ({ tick, at }))),
             ),
           ),
         [WS_METHODS.subscribeServerLifecycle]: () =>

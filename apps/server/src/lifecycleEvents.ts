@@ -10,6 +10,7 @@
  */
 import type { ServerLifecycleStreamEvent, ServerLifecyclePhase } from "@app/contracts";
 import * as Context from "effect/Context";
+import type * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
@@ -19,7 +20,7 @@ import * as Stream from "effect/Stream";
 /** A publish request: the phase + the wall-clock instant, sequence assigned here. */
 export interface LifecycleEventInput {
   readonly phase: ServerLifecyclePhase;
-  readonly at: number;
+  readonly at: DateTime.Utc;
 }
 
 export interface LifecycleSnapshot {

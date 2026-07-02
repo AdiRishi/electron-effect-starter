@@ -1,5 +1,6 @@
 import type { ConnectionPhase } from "@app/client-runtime";
 import type { DesktopTheme, ServerConfig } from "@app/contracts";
+import * as DateTime from "effect/DateTime";
 import { useCallback, useEffect, useState } from "react";
 
 import { useConnection } from "./hooks/useConnection.ts";
@@ -104,7 +105,7 @@ export function App() {
           </Row>
           <Row label="Started">
             <span className="font-mono">
-              {config ? new Date(config.startedAt).toLocaleTimeString() : "—"}
+              {config ? DateTime.toDateUtc(config.startedAt).toLocaleTimeString() : "—"}
             </span>
           </Row>
           <Row label="Lifecycle">
