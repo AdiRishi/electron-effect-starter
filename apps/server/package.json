@@ -13,7 +13,7 @@
     "dev": "node --watch src/bin.ts start",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run"
   },
   "dependencies": {
     "@app/contracts": "workspace:*",
@@ -27,8 +27,5 @@
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:"
-  },
-  "engines": {
-    "node": ">=22"
   }
 }

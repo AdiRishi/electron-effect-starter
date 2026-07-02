@@ -11,7 +11,6 @@
  * @module ws
  */
 import {
-  EnvironmentAuthorizationError,
   WS_METHODS,
   WsRpcGroup,
   type ServerLifecycleStreamEvent,
@@ -93,7 +92,7 @@ const makeWsRpcLayer = () =>
           Stream.unwrap(
             Effect.gen(function* () {
               const snapshot = yield* lifecycleEvents.snapshot;
-              const replay = [...snapshot.events].sort((a, b) => a.sequence - b.sequence);
+              const replay = snapshot.events.toSorted((a, b) => a.sequence - b.sequence);
               const live = lifecycleEvents.stream.pipe(
                 Stream.filter(
                   (event: ServerLifecycleStreamEvent) => event.sequence > snapshot.sequence,

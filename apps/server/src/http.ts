@@ -20,7 +20,7 @@ export const AUTH_BOOTSTRAP_PATH = "/api/auth/bootstrap/bearer";
 
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 
-function isLoopbackHostname(hostname: string): boolean {
+export function isLoopbackHostname(hostname: string): boolean {
   const normalized = hostname
     .trim()
     .toLowerCase()
@@ -28,7 +28,7 @@ function isLoopbackHostname(hostname: string): boolean {
   return LOOPBACK_HOSTNAMES.has(normalized);
 }
 
-function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
+export function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
   const redirectUrl = new URL(devUrl.toString());
   redirectUrl.pathname = requestUrl.pathname;
   redirectUrl.search = requestUrl.search;

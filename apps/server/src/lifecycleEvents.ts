@@ -52,7 +52,7 @@ const make = Effect.gen(function* () {
         };
         // Retain only the latest event per phase, ordered by sequence.
         const retained = current.events.filter((entry) => entry.phase !== input.phase);
-        const nextEvents = [...retained, nextEvent].sort((a, b) => a.sequence - b.sequence);
+        const nextEvents = [...retained, nextEvent].toSorted((a, b) => a.sequence - b.sequence);
         return [nextEvent, { sequence: nextSequence, events: nextEvents }] as const;
       }).pipe(Effect.tap((event) => PubSub.publish(pubsub, event))),
     snapshot: Ref.get(state),
