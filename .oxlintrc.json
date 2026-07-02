@@ -1,8 +1,5 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  // Top-level "plugins" replaces the default set (eslint/typescript/unicorn/oxc),
-  // so the defaults are listed alongside the extra plugins that apply repo-wide.
-  // Framework-specific plugins are scoped via "overrides" below.
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "node", "promise"],
   "categories": {
     "suspicious": "warn",
@@ -13,26 +10,20 @@
     "eslint/no-underscore-dangle": "off",
     "eslint/no-shadow": "off",
     "unicorn/consistent-function-scoping": "off",
-    // CSS side-effect imports are how Vite ingests stylesheets.
     "import/no-unassigned-import": ["warn", { "allow": ["**/*.css"] }],
-    // Fire-and-forget .then() at the end of a chain needs no return value.
     "promise/always-return": ["warn", { "ignoreLastCallback": true }]
   },
-  // ".repos" (bare) prunes the directory walk so nested-config discovery never reads
-  // .repos/effect-smol/.oxlintrc.json (it needs a JS plugin we don't install);
-  // ".repos/**" additionally ignores the files themselves.
+  // Bare ".repos" prunes the directory walk (else nested-config discovery reads the
+  // vendored repo's config and fails); ".repos/**" ignores the files themselves.
   "ignorePatterns": [".repos", ".repos/**", "dist/**", "dist-electron/**", "release/**"],
   "overrides": [
     {
       "files": ["apps/web/**/*.ts", "apps/web/**/*.tsx"],
       "plugins": ["react", "react-perf", "jsx-a11y"],
       "rules": {
+        // Not in any default-enabled category; this line is what turns it on.
         "react-hooks/rules-of-hooks": "error",
-        "react-hooks/exhaustive-deps": "warn",
-        "react/jsx-key": "error",
         "react/react-in-jsx-scope": "off",
-        // Inline handlers on plain DOM elements are idiomatic React; this rule
-        // targets memoized-child boundaries and hot lists we don't have.
         "react-perf/jsx-no-new-function-as-prop": "off"
       }
     },
