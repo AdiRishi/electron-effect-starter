@@ -1,21 +1,13 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  // Correctness stays at its default (error). Suspicious/perf are advisory,
-  // mirroring the categories T3 Code enables.
   "categories": {
     "suspicious": "warn",
     "perf": "warn"
   },
   "rules": {
-    // The dev-runner starts processes sequentially on purpose; T3 Code
-    // disables this rule for the same reason.
     "eslint/no-await-in-loop": "off",
-    // Allow the standard ESM __dirname shim.
     "eslint/no-underscore-dangle": "off",
-    // @effect/vitest's `it.layer(...)((it) => ...)` shadows `it` by design.
     "eslint/no-shadow": "off",
-    // Service `make()` factories define their methods inside the factory even
-    // when they capture nothing; T3 Code disables this rule for the same shape.
     "unicorn/consistent-function-scoping": "off"
   },
   "ignorePatterns": [".repos", ".repos/**", "dist/**", "dist-electron/**", "release/**"]
