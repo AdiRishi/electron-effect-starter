@@ -82,9 +82,7 @@ interface DesktopBackendReadyCallbacks {
 export interface DesktopBackendManagerShape {
   readonly start: Effect.Effect<void>;
   readonly stop: Effect.Effect<void>;
-  readonly currentConfig: Effect.Effect<
-    Option.Option<DesktopBackendStartConfig>
-  >;
+  readonly currentConfig: Effect.Effect<Option.Option<DesktopBackendStartConfig>>;
 }
 
 export class DesktopBackendManager extends Context.Service<
@@ -120,10 +118,7 @@ const initialState: ManagerState = {
 };
 
 const calculateRestartDelay = (attempt: number): Duration.Duration =>
-  Duration.min(
-    Duration.times(INITIAL_RESTART_DELAY, 2 ** attempt),
-    MAX_RESTART_DELAY,
-  );
+  Duration.min(Duration.times(INITIAL_RESTART_DELAY, 2 ** attempt), MAX_RESTART_DELAY);
 
 type ManagerServices =
   | DesktopBackendConfiguration.DesktopBackendConfiguration
@@ -133,8 +128,7 @@ type ManagerServices =
   | ChildProcessSpawner.ChildProcessSpawner
   | HttpClient.HttpClient;
 
-const { logInfo, logWarning, logError } =
-  makeComponentLogger("desktop-backend");
+const { logInfo, logWarning, logError } = makeComponentLogger("desktop-backend");
 
 // Scan for a free loopback port starting at the configured/default port.
 const resolvePort = Effect.fn("desktop.backend.resolvePort")(function* (
@@ -155,89 +149,74 @@ const resolvePort = Effect.fn("desktop.backend.resolvePort")(function* (
 });
 
 // Spawn the child + probe readiness (in a forked fiber), then wait for exit.
-const runBackendProcess = Effect.fn("desktop.backend.runBackendProcess")(
-  function* (
-    config: DesktopBackendStartConfig,
-    callbacks: {
-      readonly onStarted: (pid: number) => Effect.Effect<void>;
-      readonly onReady: Effect.Effect<void>;
-      readonly onReadinessFailure: (
-        error: DesktopBackendReadinessError,
-      ) => Effect.Effect<void>;
-    },
-  ): Effect.fn.Return<
-    void,
-    PlatformError.PlatformError | DesktopBackendBootstrapEncodeError,
-    | ChildProcessSpawner.ChildProcessSpawner
-    | HttpClient.HttpClient
-    | Scope.Scope
-  > {
-    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const bootstrapJson = yield* Schema.encodeEffect(
-      Schema.fromJsonString(ServerBootstrapEnvelope),
-    )(config.bootstrapEnvelope).pipe(
-      Effect.mapError(
-        (cause) => new DesktopBackendBootstrapEncodeError({ cause }),
-      ),
-    );
-    const command = ChildProcess.make(config.executablePath, [...config.args], {
-      cwd: config.cwd,
-      env: config.env,
-      // The primary passes ELECTRON_RUN_AS_NODE + the token/port in `env`; merge
-      // the parent env on top so PATH and friends are still available to the child.
-      extendEnv: true,
-      stdin: "ignore",
-      stdout: "inherit",
-      stderr: "inherit",
-      killSignal: "SIGTERM",
-      forceKillAfter: TERMINATE_GRACE,
-      additionalFds: {
-        fd3: {
-          type: "input",
-          stream: Stream.encodeText(Stream.make(`${bootstrapJson}\n`)),
-        },
-      },
-    });
-
-    const handle = yield* spawner.spawn(command);
-    yield* callbacks.onStarted(handle.pid);
-
-    yield* waitForHttpReady({
-      baseUrl: config.httpBaseUrl.href,
-      path: HEALTH_PATH,
-      timeoutMs: Duration.toMillis(READINESS_TIMEOUT),
-      intervalMs: Duration.toMillis(READINESS_INTERVAL),
-      probeTimeoutMs: Duration.toMillis(READINESS_REQUEST_TIMEOUT),
-      makeError: () =>
-        new DesktopBackendReadinessError({
-          url: new URL(HEALTH_PATH, config.httpBaseUrl).href,
-        }),
-    }).pipe(
-      Effect.matchEffect({
-        onFailure: callbacks.onReadinessFailure,
-        onSuccess: () => callbacks.onReady,
-      }),
-      Effect.forkScoped,
-    );
-
-    // Block on the child's exit. When it resolves the run scope closes and the
-    // finalize path decides whether to restart.
-    yield* handle.exitCode;
+const runBackendProcess = Effect.fn("desktop.backend.runBackendProcess")(function* (
+  config: DesktopBackendStartConfig,
+  callbacks: {
+    readonly onStarted: (pid: number) => Effect.Effect<void>;
+    readonly onReady: Effect.Effect<void>;
+    readonly onReadinessFailure: (error: DesktopBackendReadinessError) => Effect.Effect<void>;
   },
-);
+): Effect.fn.Return<
+  void,
+  PlatformError.PlatformError | DesktopBackendBootstrapEncodeError,
+  ChildProcessSpawner.ChildProcessSpawner | HttpClient.HttpClient | Scope.Scope
+> {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const bootstrapJson = yield* Schema.encodeEffect(Schema.fromJsonString(ServerBootstrapEnvelope))(
+    config.bootstrapEnvelope,
+  ).pipe(Effect.mapError((cause) => new DesktopBackendBootstrapEncodeError({ cause })));
+  const command = ChildProcess.make(config.executablePath, [...config.args], {
+    cwd: config.cwd,
+    env: config.env,
+    // The primary passes ELECTRON_RUN_AS_NODE + the token/port in `env`; merge
+    // the parent env on top so PATH and friends are still available to the child.
+    extendEnv: true,
+    stdin: "ignore",
+    stdout: "inherit",
+    stderr: "inherit",
+    killSignal: "SIGTERM",
+    forceKillAfter: TERMINATE_GRACE,
+    additionalFds: {
+      fd3: {
+        type: "input",
+        stream: Stream.encodeText(Stream.make(`${bootstrapJson}\n`)),
+      },
+    },
+  });
+
+  const handle = yield* spawner.spawn(command);
+  yield* callbacks.onStarted(handle.pid);
+
+  yield* waitForHttpReady({
+    baseUrl: config.httpBaseUrl.href,
+    path: HEALTH_PATH,
+    timeoutMs: Duration.toMillis(READINESS_TIMEOUT),
+    intervalMs: Duration.toMillis(READINESS_INTERVAL),
+    probeTimeoutMs: Duration.toMillis(READINESS_REQUEST_TIMEOUT),
+    makeError: () =>
+      new DesktopBackendReadinessError({
+        url: new URL(HEALTH_PATH, config.httpBaseUrl).href,
+      }),
+  }).pipe(
+    Effect.matchEffect({
+      onFailure: callbacks.onReadinessFailure,
+      onSuccess: () => callbacks.onReady,
+    }),
+    Effect.forkScoped,
+  );
+
+  // Block on the child's exit. When it resolves the run scope closes and the
+  // finalize path decides whether to restart.
+  yield* handle.exitCode;
+});
 
 // Builds a backend manager bound to the given readiness callbacks. `layer`
 // supplies the window's onReady/onNotReady hooks.
 const makeManager = (
   callbacks: DesktopBackendReadyCallbacks,
-): Effect.Effect<
-  DesktopBackendManagerShape,
-  never,
-  ManagerServices | Scope.Scope
-> =>
+): Effect.Effect<DesktopBackendManagerShape, never, ManagerServices | Scope.Scope> =>
   Effect.gen(function* () {
-    const configuration =
-      yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
+    const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
     const net = yield* NetService;
     const fileSystem = yield* FileSystem.FileSystem;
@@ -247,9 +226,7 @@ const makeManager = (
     const state = yield* Ref.make(initialState);
     const mutex = yield* Semaphore.make(1);
 
-    const currentConfig = Ref.get(state).pipe(
-      Effect.map((current) => current.config),
-    );
+    const currentConfig = Ref.get(state).pipe(Effect.map((current) => current.config));
 
     const cancelRestart = Effect.gen(function* () {
       const restartFiber = yield* Ref.modify(state, (current) => [
@@ -262,51 +239,49 @@ const makeManager = (
       });
     });
 
-    const scheduleRestart = Effect.fn("desktop.backend.scheduleRestart")(
-      function* (reason: string) {
-        const scheduled = yield* Ref.modify(state, (current) => {
-          if (!current.desiredRunning || Option.isSome(current.restartFiber)) {
-            return [Option.none<Duration.Duration>(), current] as const;
-          }
-          const delay = calculateRestartDelay(current.restartAttempt);
-          return [
-            Option.some(delay),
-            { ...current, restartAttempt: current.restartAttempt + 1 },
-          ] as const;
-        });
+    const scheduleRestart = Effect.fn("desktop.backend.scheduleRestart")(function* (
+      reason: string,
+    ) {
+      const scheduled = yield* Ref.modify(state, (current) => {
+        if (!current.desiredRunning || Option.isSome(current.restartFiber)) {
+          return [Option.none<Duration.Duration>(), current] as const;
+        }
+        const delay = calculateRestartDelay(current.restartAttempt);
+        return [
+          Option.some(delay),
+          { ...current, restartAttempt: current.restartAttempt + 1 },
+        ] as const;
+      });
 
-        yield* Option.match(scheduled, {
-          onNone: () => Effect.void,
-          onSome: (delay) =>
-            Effect.gen(function* () {
-              yield* logWarning("backend exited; restart scheduled", {
-                reason,
-                delayMs: Duration.toMillis(delay),
-              });
-              const restartFiber = yield* Effect.forkIn(
-                Effect.sleep(delay).pipe(
-                  Effect.andThen(
-                    Ref.modify(state, (current) => [
-                      current.desiredRunning,
-                      { ...current, restartFiber: Option.none() },
-                    ]),
-                  ),
-                  Effect.flatMap((shouldRestart) =>
-                    shouldRestart ? start : Effect.void,
-                  ),
-                  Effect.ignore({ log: true }),
+      yield* Option.match(scheduled, {
+        onNone: () => Effect.void,
+        onSome: (delay) =>
+          Effect.gen(function* () {
+            yield* logWarning("backend exited; restart scheduled", {
+              reason,
+              delayMs: Duration.toMillis(delay),
+            });
+            const restartFiber = yield* Effect.forkIn(
+              Effect.sleep(delay).pipe(
+                Effect.andThen(
+                  Ref.modify(state, (current) => [
+                    current.desiredRunning,
+                    { ...current, restartFiber: Option.none() },
+                  ]),
                 ),
-                parentScope,
-              );
-              yield* Ref.update(state, (current) =>
-                Option.isNone(current.restartFiber)
-                  ? { ...current, restartFiber: Option.some(restartFiber) }
-                  : current,
-              );
-            }),
-        });
-      },
-    );
+                Effect.flatMap((shouldRestart) => (shouldRestart ? start : Effect.void)),
+                Effect.ignore({ log: true }),
+              ),
+              parentScope,
+            );
+            yield* Ref.update(state, (current) =>
+              Option.isNone(current.restartFiber)
+                ? { ...current, restartFiber: Option.some(restartFiber) }
+                : current,
+            );
+          }),
+      });
+    });
 
     const start: Effect.Effect<void> = Effect.suspend(() =>
       mutex.withPermits(1)(
@@ -345,9 +320,7 @@ const makeManager = (
             .exists(config.value.entryPath)
             .pipe(Effect.orElseSucceed(() => false));
           if (!entryExists) {
-            yield* scheduleRestart(
-              `missing server entry at ${config.value.entryPath}`,
-            );
+            yield* scheduleRestart(`missing server entry at ${config.value.entryPath}`);
             return;
           }
 
@@ -366,35 +339,33 @@ const makeManager = (
             },
           ]);
 
-          const finalizeRun = Effect.fn("desktop.backend.finalizeRun")(
-            function* (reason: string) {
-              yield* mutex.withPermits(1)(
-                Effect.gen(function* () {
-                  const isCurrentRun = yield* Ref.modify(state, (latest) => {
-                    const run = Option.getOrUndefined(latest.active);
-                    if (run?.id !== runId) {
-                      return [false, latest] as const;
-                    }
-                    return [
-                      true,
-                      {
-                        ...latest,
-                        active: Option.none<ActiveRun>(),
-                        ready: false,
-                      },
-                    ] as const;
-                  });
-                  if (isCurrentRun) {
-                    yield* callbacks.onNotReady;
-                    const latest = yield* Ref.get(state);
-                    if (latest.desiredRunning) {
-                      yield* scheduleRestart(reason);
-                    }
+          const finalizeRun = Effect.fn("desktop.backend.finalizeRun")(function* (reason: string) {
+            yield* mutex.withPermits(1)(
+              Effect.gen(function* () {
+                const isCurrentRun = yield* Ref.modify(state, (latest) => {
+                  const run = Option.getOrUndefined(latest.active);
+                  if (run?.id !== runId) {
+                    return [false, latest] as const;
                   }
-                }),
-              );
-            },
-          );
+                  return [
+                    true,
+                    {
+                      ...latest,
+                      active: Option.none<ActiveRun>(),
+                      ready: false,
+                    },
+                  ] as const;
+                });
+                if (isCurrentRun) {
+                  yield* callbacks.onNotReady;
+                  const latest = yield* Ref.get(state);
+                  if (latest.desiredRunning) {
+                    yield* scheduleRestart(reason);
+                  }
+                }
+              }),
+            );
+          });
 
           const program = runBackendProcess(config.value, {
             onStarted: (pid) =>
@@ -416,10 +387,7 @@ const makeManager = (
                 if (run?.id !== runId) {
                   return [false, latest] as const;
                 }
-                return [
-                  true,
-                  { ...latest, restartAttempt: 0, ready: true },
-                ] as const;
+                return [true, { ...latest, restartAttempt: 0, ready: true }] as const;
               });
               if (!isCurrentRun) {
                 return;
@@ -434,19 +402,14 @@ const makeManager = (
                 error: error.message,
               }),
           }).pipe(
-            Effect.provideService(
-              ChildProcessSpawner.ChildProcessSpawner,
-              spawner,
-            ),
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
             Effect.provideService(HttpClient.HttpClient, httpClient),
             Scope.provide(runScope),
             Effect.matchEffect({
               onFailure: (error) => finalizeRun(error.message),
               onSuccess: () => finalizeRun("exited"),
             }),
-            Effect.ensuring(
-              Scope.close(runScope, Exit.void).pipe(Effect.ignore),
-            ),
+            Effect.ensuring(Scope.close(runScope, Exit.void).pipe(Effect.ignore)),
           );
 
           const fiber = yield* Effect.forkIn(program, parentScope);

@@ -3,8 +3,6 @@ packages:
   - packages/*
   - scripts
 
-autoInstallPeers: false
-
 # Packages allowed to run install scripts (native builds / binary downloads).
 allowBuilds:
   electron: true
@@ -12,8 +10,8 @@ allowBuilds:
   msgpackr-extract: true
 
 overrides:
-  # Pin the platform package to the same effect beta train as the catalog.
-  "@effect/platform-node-shared": 4.0.0-beta.78
+  # Force the transitive platform package onto the same effect beta train.
+  "@effect/platform-node-shared": "catalog:"
   # electron-builder's native-rebuild tooling needs a node-abi recent enough to
   # know Electron 33's ABI.
   node-abi: 4.31.0
@@ -32,15 +30,12 @@ peerDependencyRules:
 # in exactly one place. This is the pattern extracted from T3 Code.
 catalog:
   "@effect/platform-node": 4.0.0-beta.78
+  "@effect/platform-node-shared": 4.0.0-beta.78
   "@effect/vitest": 4.0.0-beta.78
   "@types/node": 24.12.4
   effect: 4.0.0-beta.78
-  prettier: ^3.9.4
+  oxfmt: ^0.57.0
+  oxlint: ^1.72.0
   typescript: ~6.0.3
   vite: ^8.0.0
   vitest: ^4.1.9
-
-onlyBuiltDependencies:
-  - electron
-  - esbuild
-  - msgpackr-extract

@@ -39,16 +39,12 @@ export const DesktopLocalEnvironmentAuthError = Schema.Union([
   DesktopLocalEnvironmentAuthBackendNotReadyError,
   DesktopLocalEnvironmentAuthSessionBootstrapError,
 ]);
-export type DesktopLocalEnvironmentAuthError =
-  typeof DesktopLocalEnvironmentAuthError.Type;
+export type DesktopLocalEnvironmentAuthError = typeof DesktopLocalEnvironmentAuthError.Type;
 
 export class DesktopLocalEnvironmentAuth extends Context.Service<
   DesktopLocalEnvironmentAuth,
   {
-    readonly getBearerToken: Effect.Effect<
-      string,
-      DesktopLocalEnvironmentAuthError
-    >;
+    readonly getBearerToken: Effect.Effect<string, DesktopLocalEnvironmentAuthError>;
   }
 >()("@app/desktop/backend/DesktopLocalEnvironmentAuth") {}
 
@@ -98,8 +94,7 @@ export const make = Effect.gen(function* () {
         }).pipe(
           Effect.flatMap((json) => decodeBearerSession(json)),
           Effect.mapError(
-            (cause) =>
-              new DesktopLocalEnvironmentAuthSessionBootstrapError({ cause }),
+            (cause) => new DesktopLocalEnvironmentAuthSessionBootstrapError({ cause }),
           ),
         );
         yield* Ref.set(tokenRef, Option.some(session.access_token));

@@ -10,8 +10,7 @@ export const THEME_STORAGE_KEY = "app:theme";
  * (`localStorage`, `window.open`, `window.confirm`). Same web build, both hosts.
  */
 function createLocalApi(): LocalApi {
-  const bridge =
-    typeof window !== "undefined" ? window.desktopBridge : undefined;
+  const bridge = typeof window !== "undefined" ? window.desktopBridge : undefined;
 
   return {
     isDesktop: isElectron,

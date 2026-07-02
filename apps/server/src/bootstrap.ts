@@ -47,18 +47,14 @@ export class BootstrapEnvelopeDecodeError extends Schema.TaggedErrorClass<Bootst
   }
 }
 
-const decodeEnvelope = Schema.decodeEffect(
-  Schema.fromJsonString(BootstrapEnvelope),
-);
+const decodeEnvelope = Schema.decodeEffect(Schema.fromJsonString(BootstrapEnvelope));
 
 /**
  * Read + decode the bootstrap envelope from the given file descriptor. Returns
  * `Option.none()` when the fd is unavailable (`EBADF`/`ENOENT`), so a missing
  * bootstrap fd is not fatal — the caller falls back to env/random tokens.
  */
-export const readBootstrapEnvelope = Effect.fn(
-  "bootstrap.readBootstrapEnvelope",
-)(function* (
+export const readBootstrapEnvelope = Effect.fn("bootstrap.readBootstrapEnvelope")(function* (
   fd: number,
 ): Effect.fn.Return<
   Option.Option<BootstrapEnvelope>,
@@ -70,14 +66,10 @@ export const readBootstrapEnvelope = Effect.fn(
   }).pipe(
     Effect.catchTag("BootstrapEnvelopeReadError", (error) => {
       const code =
-        typeof error.cause === "object" &&
-        error.cause !== null &&
-        "code" in error.cause
+        typeof error.cause === "object" && error.cause !== null && "code" in error.cause
           ? (error.cause as { code?: unknown }).code
           : undefined;
-      return code === "EBADF" || code === "ENOENT"
-        ? Effect.succeed(null)
-        : Effect.fail(error);
+      return code === "EBADF" || code === "ENOENT" ? Effect.succeed(null) : Effect.fail(error);
     }),
   );
 

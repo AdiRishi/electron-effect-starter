@@ -16,6 +16,4 @@ type RpcClientFactory = typeof makeWsRpcProtocolClient;
  * method tags come straight from `WS_METHODS`.
  */
 export type WsRpcProtocolClient =
-  RpcClientFactory extends Effect.Effect<infer Client, unknown, unknown>
-    ? Client
-    : never;
+  RpcClientFactory extends Effect.Effect<infer Client, unknown, unknown> ? Client : never;

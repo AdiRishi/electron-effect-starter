@@ -3,8 +3,7 @@
  * `window.desktopBridge` via contextBridge before any app code runs, so this is
  * reliable at module-load time.
  */
-export const isElectron =
-  typeof window !== "undefined" && window.desktopBridge !== undefined;
+export const isElectron = typeof window !== "undefined" && window.desktopBridge !== undefined;
 
 export interface ConnectionTarget {
   readonly httpBaseUrl: string;

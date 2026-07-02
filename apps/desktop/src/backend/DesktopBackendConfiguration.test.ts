@@ -34,30 +34,24 @@ const testLayer = DesktopBackendConfiguration.layer.pipe(
 );
 
 describe("DesktopBackendConfiguration", () => {
-  it.effect(
-    "resolves fd-based server bootstrap without putting the secret in env",
-    () =>
-      Effect.gen(function* () {
-        const configuration =
-          yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
+  it.effect("resolves fd-based server bootstrap without putting the secret in env", () =>
+    Effect.gen(function* () {
+      const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
 
-        const config = yield* configuration.resolve({ port: 19731 });
+      const config = yield* configuration.resolve({ port: 19731 });
 
-        assert.deepEqual(config.args, [
-          "/app/apps/server/dist/bin.mjs",
-          "start",
-          "--bootstrap-fd",
-          "3",
-        ]);
-        assert.equal(config.env.ELECTRON_RUN_AS_NODE, "1");
-        assert.equal(config.env.APP_BOOTSTRAP_TOKEN, undefined);
-        assert.equal(config.env.APP_SERVER_PORT, undefined);
-        assert.equal(config.bootstrapEnvelope.port, 19731);
-        assert.equal(
-          config.bootstrapEnvelope.desktopBootstrapToken,
-          config.bootstrapToken,
-        );
-        assert.match(config.bootstrapToken, /^[0-9a-f]{48}$/);
-      }).pipe(Effect.provide(testLayer)),
+      assert.deepEqual(config.args, [
+        "/app/apps/server/dist/bin.mjs",
+        "start",
+        "--bootstrap-fd",
+        "3",
+      ]);
+      assert.equal(config.env.ELECTRON_RUN_AS_NODE, "1");
+      assert.equal(config.env.APP_BOOTSTRAP_TOKEN, undefined);
+      assert.equal(config.env.APP_SERVER_PORT, undefined);
+      assert.equal(config.bootstrapEnvelope.port, 19731);
+      assert.equal(config.bootstrapEnvelope.desktopBootstrapToken, config.bootstrapToken);
+      assert.match(config.bootstrapToken, /^[0-9a-f]{48}$/);
+    }).pipe(Effect.provide(testLayer)),
   );
 });

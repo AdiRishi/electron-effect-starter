@@ -68,20 +68,15 @@ export interface ContextMenuItemShape {
   readonly children?: readonly ContextMenuItemShape[];
 }
 
-export const ContextMenuItemSchema: Schema.Codec<ContextMenuItemShape> =
-  Schema.Struct({
-    id: Schema.String,
-    label: Schema.String,
-    destructive: Schema.optionalKey(Schema.Boolean),
-    disabled: Schema.optionalKey(Schema.Boolean),
-    children: Schema.optionalKey(
-      Schema.Array(
-        Schema.suspend(
-          (): Schema.Codec<ContextMenuItemShape> => ContextMenuItemSchema,
-        ),
-      ),
-    ),
-  });
+export const ContextMenuItemSchema: Schema.Codec<ContextMenuItemShape> = Schema.Struct({
+  id: Schema.String,
+  label: Schema.String,
+  destructive: Schema.optionalKey(Schema.Boolean),
+  disabled: Schema.optionalKey(Schema.Boolean),
+  children: Schema.optionalKey(
+    Schema.Array(Schema.suspend((): Schema.Codec<ContextMenuItemShape> => ContextMenuItemSchema)),
+  ),
+});
 
 export const ContextMenuPosition = Schema.Struct({
   x: Schema.Number,

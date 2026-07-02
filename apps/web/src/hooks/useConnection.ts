@@ -37,8 +37,7 @@ function obtainBearerToken(httpBaseUrl: string): Effect.Effect<string, Error> {
     const bridge = window.desktopBridge;
     return Effect.tryPromise({
       try: () => bridge.getBearerToken(),
-      catch: (cause) =>
-        new Error(`Bridge failed to mint a bearer token: ${String(cause)}`),
+      catch: (cause) => new Error(`Bridge failed to mint a bearer token: ${String(cause)}`),
     });
   }
   return bootstrapRemoteBearerSession({
@@ -60,9 +59,7 @@ function socketUrl(wsBaseUrl: string, token: string): string {
 // The full runtime: the supervisor (which owns the socket + reconnect loop) over
 // the one platform seam it needs — a browser WebSocket constructor. The bearer
 // bootstrap uses the global `fetch` directly, so no HttpClient layer is needed.
-function makeRuntimeLayer(
-  connection: PreparedConnection,
-): Layer.Layer<ConnectionSupervisor> {
+function makeRuntimeLayer(connection: PreparedConnection): Layer.Layer<ConnectionSupervisor> {
   return Layer.provideMerge(
     connectionSupervisorLayer(connection),
     Socket.layerWebSocketConstructorGlobal,
@@ -110,9 +107,7 @@ export function useConnection(): ConnectionHandle {
       label: "server",
       prepareSocketUrl: obtainBearerToken(target.httpBaseUrl).pipe(
         Effect.map((token) => socketUrl(target.wsBaseUrl, token)),
-        Effect.mapError(
-          (error) => new ConnectionTransientError({ detail: error.message }),
-        ),
+        Effect.mapError((error) => new ConnectionTransientError({ detail: error.message })),
       ),
     };
 
@@ -142,10 +137,7 @@ export function useConnection(): ConnectionHandle {
   }, []);
 
   const request = useCallback(
-    <TTag extends UnaryRpcTag>(
-      tag: TTag,
-      input: RpcInput<TTag>,
-    ): Promise<RpcSuccess<TTag>> => {
+    <TTag extends UnaryRpcTag>(tag: TTag, input: RpcInput<TTag>): Promise<RpcSuccess<TTag>> => {
       const runtime = runtimeRef.current;
       if (!runtime) return Promise.reject(new Error("Not connected yet."));
       return runtime.runPromise(rpcRequest(tag, input));

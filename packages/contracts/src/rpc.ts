@@ -49,15 +49,12 @@ export const WsSubscribeTicksRpc = Rpc.make(WS_METHODS.subscribeTicks, {
 });
 
 /** Retained-snapshot + live lifecycle events (the ordered push-bus pattern). */
-export const WsSubscribeServerLifecycleRpc = Rpc.make(
-  WS_METHODS.subscribeServerLifecycle,
-  {
-    payload: Schema.Struct({}),
-    success: ServerLifecycleStreamEvent,
-    error: EnvironmentAuthorizationError,
-    stream: true,
-  },
-);
+export const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecycle, {
+  payload: Schema.Struct({}),
+  success: ServerLifecycleStreamEvent,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
 
 /**
  * The wire contract the server decodes against and the client is typed by.

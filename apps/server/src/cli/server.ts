@@ -8,11 +8,7 @@ import { Command } from "effect/unstable/cli";
 
 import { ServerConfig } from "../config.ts";
 import { runServer } from "../server.ts";
-import {
-  type CliServerFlags,
-  resolveServerConfig,
-  sharedServerCommandFlags,
-} from "./config.ts";
+import { type CliServerFlags, resolveServerConfig, sharedServerCommandFlags } from "./config.ts";
 
 export { sharedServerCommandFlags } from "./config.ts";
 

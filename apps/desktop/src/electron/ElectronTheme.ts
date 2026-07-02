@@ -23,23 +23,18 @@ export class ElectronTheme extends Context.Service<
   ElectronTheme,
   {
     readonly shouldUseDarkColors: Effect.Effect<boolean>;
-    readonly setSource: (
-      theme: DesktopTheme,
-    ) => Effect.Effect<void, ElectronThemeSetSourceError>;
+    readonly setSource: (theme: DesktopTheme) => Effect.Effect<void, ElectronThemeSetSourceError>;
   }
 >()("@app/desktop/electron/ElectronTheme") {}
 
 export const make = ElectronTheme.of({
-  shouldUseDarkColors: Effect.sync(
-    () => Electron.nativeTheme.shouldUseDarkColors,
-  ),
+  shouldUseDarkColors: Effect.sync(() => Electron.nativeTheme.shouldUseDarkColors),
   setSource: (theme) =>
     Effect.try({
       try: () => {
         Electron.nativeTheme.themeSource = theme;
       },
-      catch: (cause) =>
-        new ElectronThemeSetSourceError({ source: theme, cause }),
+      catch: (cause) => new ElectronThemeSetSourceError({ source: theme, cause }),
     }),
 });
 

@@ -44,11 +44,7 @@ export const routesLayer = Layer.mergeAll(
 ).pipe(Layer.provide(corsLayer));
 
 /** Application services shared across routes and lifecycle. */
-const RuntimeServicesLive = Layer.mergeAll(
-  Auth.layer,
-  LifecycleEvents.layer,
-  Readiness.layer,
-);
+const RuntimeServicesLive = Layer.mergeAll(Auth.layer, LifecycleEvents.layer, Readiness.layer);
 
 export const makeServerLayer = Layer.unwrap(
   Effect.gen(function* () {
@@ -80,9 +76,7 @@ export const makeServerLayer = Layer.unwrap(
 
           const address = server.address;
           const boundPort =
-            typeof address === "string" || !("port" in address)
-              ? config.port
-              : address.port;
+            typeof address === "string" || !("port" in address) ? config.port : address.port;
 
           yield* readiness.signalReady;
           const at = yield* Clock.currentTimeMillis;

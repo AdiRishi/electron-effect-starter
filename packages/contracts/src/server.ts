@@ -29,11 +29,7 @@ export type ServerBootstrapEnvelope = typeof ServerBootstrapEnvelope.Type;
  * the canonical "server-initiated push" demo: subscribers get a replay of the
  * retained snapshot followed by the live stream, ordered by `sequence`.
  */
-export const ServerLifecyclePhase = Schema.Literals([
-  "starting",
-  "ready",
-  "draining",
-]);
+export const ServerLifecyclePhase = Schema.Literals(["starting", "ready", "draining"]);
 export type ServerLifecyclePhase = typeof ServerLifecyclePhase.Type;
 
 export const ServerLifecycleStreamEvent = Schema.Struct({

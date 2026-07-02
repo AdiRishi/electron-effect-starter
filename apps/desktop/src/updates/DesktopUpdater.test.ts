@@ -108,23 +108,20 @@ describe("DesktopUpdater", () => {
     }).pipe(Effect.provide(testLayer(false, pushes)));
   });
 
-  it.effect(
-    "setChannel persists the choice and pushes it to the renderer",
-    () => {
-      const pushes: Array<Push> = [];
-      return Effect.gen(function* () {
-        const updater = yield* DesktopUpdater.DesktopUpdater;
-        const settings = yield* DesktopAppSettings.DesktopAppSettings;
+  it.effect("setChannel persists the choice and pushes it to the renderer", () => {
+    const pushes: Array<Push> = [];
+    return Effect.gen(function* () {
+      const updater = yield* DesktopUpdater.DesktopUpdater;
+      const settings = yield* DesktopAppSettings.DesktopAppSettings;
 
-        const next = yield* updater.setChannel("nightly");
-        assert.equal(next.channel, "nightly");
+      const next = yield* updater.setChannel("nightly");
+      assert.equal(next.channel, "nightly");
 
-        // Persisted through the settings store...
-        assert.equal((yield* settings.get).updateChannel, "nightly");
-        // ...and pushed to the renderer over the update-state channel.
-        const last = pushes.at(-1);
-        assert.equal(last?.channel, UPDATE_STATE_CHANNEL);
-      }).pipe(Effect.provide(testLayer(false, pushes)));
-    },
-  );
+      // Persisted through the settings store...
+      assert.equal((yield* settings.get).updateChannel, "nightly");
+      // ...and pushed to the renderer over the update-state channel.
+      const last = pushes.at(-1);
+      assert.equal(last?.channel, UPDATE_STATE_CHANNEL);
+    }).pipe(Effect.provide(testLayer(false, pushes)));
+  });
 });

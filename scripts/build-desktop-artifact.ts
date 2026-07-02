@@ -15,9 +15,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
-const REPO_ROOT = NodePath.dirname(
-  NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)),
-);
+const REPO_ROOT = NodePath.dirname(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)));
 
 const APP_ID = "com.example.desktopstarter";
 const PRODUCT_NAME = "Desktop Starter";
@@ -31,16 +29,9 @@ function arg(name: string, fallback: string): string {
 
 const platform = arg(
   "platform",
-  process.platform === "win32"
-    ? "win"
-    : process.platform === "linux"
-      ? "linux"
-      : "mac",
+  process.platform === "win32" ? "win" : process.platform === "linux" ? "linux" : "mac",
 );
-const target = arg(
-  "target",
-  platform === "mac" ? "dmg" : platform === "win" ? "nsis" : "AppImage",
-);
+const target = arg("target", platform === "mac" ? "dmg" : platform === "win" ? "nsis" : "AppImage");
 
 function sh(command: string): void {
   process.stdout.write(`\n$ ${command}\n`);
@@ -101,9 +92,7 @@ function main(): void {
   NodeFS.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
   // 4. Pack. Requires `electron-builder` (a devDependency of @app/desktop).
-  sh(
-    `pnpm --filter @app/desktop exec electron-builder --${platform} --config ${configPath}`,
-  );
+  sh(`pnpm --filter @app/desktop exec electron-builder --${platform} --config ${configPath}`);
   process.stdout.write(`\n✔ Artifacts in release/dist\n`);
 }
 

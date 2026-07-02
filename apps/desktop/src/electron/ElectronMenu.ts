@@ -101,9 +101,7 @@ export const make = ElectronMenu.of({
     }),
   setApplicationMenu: (template) =>
     Effect.sync(() => {
-      Electron.Menu.setApplicationMenu(
-        Electron.Menu.buildFromTemplate([...template]),
-      );
+      Electron.Menu.setApplicationMenu(Electron.Menu.buildFromTemplate([...template]));
     }),
 });
 

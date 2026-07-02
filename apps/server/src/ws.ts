@@ -22,12 +22,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
-import {
-  Headers,
-  HttpRouter,
-  HttpServerRequest,
-  HttpServerResponse,
-} from "effect/unstable/http";
+import { Headers, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
 import * as Auth from "./auth.ts";
@@ -38,9 +33,7 @@ import * as LifecycleEvents from "./lifecycleEvents.ts";
  * Extract a bearer token from the upgrade request: `Authorization: Bearer <t>`
  * header, or `?access_token=<t>` query param (browsers can't set WS headers).
  */
-function extractBearer(
-  request: HttpServerRequest.HttpServerRequest,
-): Option.Option<string> {
+function extractBearer(request: HttpServerRequest.HttpServerRequest): Option.Option<string> {
   const header = Headers.get(request.headers, "authorization");
   if (Option.isSome(header)) {
     const match = /^Bearer\s+(.+)$/i.exec(header.value.trim());
@@ -93,22 +86,17 @@ const makeWsRpcLayer = () =>
               },
             ),
             Stream.mapEffect((tick) =>
-              Clock.currentTimeMillis.pipe(
-                Effect.map((at): TickEvent => ({ tick, at })),
-              ),
+              Clock.currentTimeMillis.pipe(Effect.map((at): TickEvent => ({ tick, at }))),
             ),
           ),
         [WS_METHODS.subscribeServerLifecycle]: () =>
           Stream.unwrap(
             Effect.gen(function* () {
               const snapshot = yield* lifecycleEvents.snapshot;
-              const replay = [...snapshot.events].sort(
-                (a, b) => a.sequence - b.sequence,
-              );
+              const replay = [...snapshot.events].sort((a, b) => a.sequence - b.sequence);
               const live = lifecycleEvents.stream.pipe(
                 Stream.filter(
-                  (event: ServerLifecycleStreamEvent) =>
-                    event.sequence > snapshot.sequence,
+                  (event: ServerLifecycleStreamEvent) => event.sequence > snapshot.sequence,
                 ),
               );
               return Stream.concat(Stream.fromIterable(replay), live);
@@ -138,16 +126,9 @@ export const websocketRpcRouteLayer = HttpRouter.add(
       return HttpServerResponse.text("Unauthorized", { status: 401 });
     }
 
-    const rpcWebSocketHttpEffect = yield* RpcServer.toHttpEffectWebsocket(
-      WsRpcGroup,
-      {
-        disableTracing: true,
-      },
-    ).pipe(
-      Effect.provide(
-        makeWsRpcLayer().pipe(Layer.provideMerge(RpcSerialization.layerJson)),
-      ),
-    );
+    const rpcWebSocketHttpEffect = yield* RpcServer.toHttpEffectWebsocket(WsRpcGroup, {
+      disableTracing: true,
+    }).pipe(Effect.provide(makeWsRpcLayer().pipe(Layer.provideMerge(RpcSerialization.layerJson))));
 
     return yield* rpcWebSocketHttpEffect;
   }),
