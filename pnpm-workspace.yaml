@@ -3,14 +3,12 @@ packages:
   - packages/*
   - scripts
 
-# Packages allowed to run install scripts (native builds / binary downloads).
 allowBuilds:
   electron: true
   electron-winstaller: true
   msgpackr-extract: true
 
 overrides:
-  # Force the transitive platform package onto the same effect beta train.
   "@effect/platform-node-shared": "catalog:"
   # electron-builder's native-rebuild tooling needs a node-abi recent enough to
   # know Electron 33's ABI.
@@ -25,9 +23,6 @@ peerDependencyRules:
     # Optional Redis peer of @effect/platform-node-shared; unused here.
     - ioredis
 
-# Single source of truth for dependency versions. Every package pins with
-# the `catalog:` protocol (e.g. `"effect": "catalog:"`) so upgrades happen
-# in exactly one place. This is the pattern extracted from T3 Code.
 catalog:
   "@effect/platform-node": 4.0.0-beta.78
   "@effect/platform-node-shared": 4.0.0-beta.78
