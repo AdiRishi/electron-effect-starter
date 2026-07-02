@@ -1,0 +1,6 @@
+# oxlint's default ignore file (eslintignore format). Entries here prune the
+# directory walk itself, which is the only thing that keeps oxlint's nested
+# config discovery out of vendored trees — .repos/ ships its own .oxlintrc.json
+# referencing plugins we don't install, and discovery runs before the
+# ignorePatterns in .oxlintrc.json are applied.
+.repos/

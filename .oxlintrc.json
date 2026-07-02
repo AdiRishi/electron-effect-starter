@@ -1,10 +1,8 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  // The lint scripts pass the source roots (apps packages scripts) explicitly
-  // so the walker never enters .repos/ — the vendored trees ship their own
-  // oxlint configs with plugins we don't install, and config discovery runs
-  // before ignorePatterns. The .repos entries below still cover editor
-  // integrations that lint single files against this config.
+  // .repos/ is excluded in .eslintignore (oxlint's default ignore file), which
+  // prunes the walk before nested-config discovery; the ignorePatterns entries
+  // below only apply to file matching (e.g. editor single-file lints).
   // Correctness stays at its default (error). Suspicious/perf are advisory,
   // mirroring the categories T3 Code enables.
   "categories": {
