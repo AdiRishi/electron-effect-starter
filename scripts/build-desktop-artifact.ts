@@ -84,8 +84,6 @@ function main(): void {
     mac: { target: [target], category: "public.app-category.developer-tools" },
     win: { target: [target] },
     linux: { target: [target], category: "Development" },
-    // TODO(you): add `icon`, code-signing (`mac.identity` / `win.certificateFile`),
-    // and notarization (`afterSign`) for real releases.
   };
   const configPath = NodePath.join(REPO_ROOT, "release/electron-builder.json");
   NodeFS.mkdirSync(NodePath.dirname(configPath), { recursive: true });

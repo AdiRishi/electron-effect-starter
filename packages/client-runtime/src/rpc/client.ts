@@ -69,10 +69,6 @@ const currentSession = Effect.fn("clientRuntime.rpc.currentSession")(function* (
 /**
  * Issue a unary RPC against the currently-live session. Fails fast with
  * `RpcUnavailableError` if disconnected — callers decide whether to retry.
- *
- * ── DESIGN SEAM (add RPC calls) ──
- * New unary methods added to `WsRpcGroup` (contracts) are callable immediately:
- * `request("your.method", input)` type-checks against the generated client.
  */
 export const request = Effect.fn("clientRuntime.rpc.request")(function* <TTag extends UnaryRpcTag>(
   tag: TTag,
@@ -96,10 +92,6 @@ export const request = Effect.fn("clientRuntime.rpc.request")(function* <TTag ex
  * dropped mid-stream) is logged and swallowed — the next session re-attaches us.
  * Every other failure (a domain error the server actually returned) propagates
  * to the consumer.
- *
- * ── DESIGN SEAM (add RPC calls) ──
- * New `stream: true` methods on `WsRpcGroup` work here too:
- * `subscribe("your.subscription", input)` re-attaches automatically.
  */
 export const subscribe = <TTag extends StreamRpcTag>(
   tag: TTag,
