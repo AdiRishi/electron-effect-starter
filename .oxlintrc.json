@@ -1,5 +1,8 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+  // This file is the ONLY lint config: the lint scripts pass
+  // --disable-nested-config so configs inside vendored trees (.repos/**
+  // ships its own .oxlintrc.json with plugins we don't install) are ignored.
   // Correctness stays at its default (error). Suspicious/perf are advisory,
   // mirroring the categories T3 Code enables.
   "categories": {
