@@ -17,6 +17,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "dist:desktop": "node scripts/build-desktop-artifact.ts",
+    "sync:repos": "node scripts/sync-reference-repos.ts",
     "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/*/dist apps/*/dist-electron packages/*/dist"
   },
   "devDependencies": {
