@@ -235,6 +235,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.9(@types/node@24.12.4)(vite@8.1.1(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0))
 
 packages:
 

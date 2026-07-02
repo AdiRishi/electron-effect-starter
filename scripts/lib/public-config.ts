@@ -27,7 +27,7 @@ export function loadRepoEnv({
   return { ...rootEnv, ...localEnv, ...baseEnv };
 }
 
-function readEnvFile(filePath: string): Record<string, string> {
+export function readEnvFile(filePath: string): Record<string, string> {
   let raw: string;
   try {
     raw = NodeFS.readFileSync(filePath, "utf8");

@@ -23,11 +23,14 @@ const BASE_SERVER_PORT = 13773;
 const BASE_WEB_PORT = 5733;
 const MAX_PORT = 65_535;
 
-const mode = (process.argv[2] ?? "dev") as Mode;
-if (!MODES.includes(mode)) {
-  process.stderr.write(`Unknown mode "${mode}". Use one of: ${MODES.join(", ")}\n`);
+const isMode = (value: string): value is Mode => (MODES as readonly string[]).includes(value);
+
+const modeArgument = process.argv[2] ?? "dev";
+if (!isMode(modeArgument)) {
+  process.stderr.write(`Unknown mode "${modeArgument}". Use one of: ${MODES.join(", ")}\n`);
   process.exit(1);
 }
+const mode = modeArgument;
 
 /** Stable per-checkout offset so multiple clones don't fight over ports. */
 function repoPortOffset(): number {
