@@ -11,6 +11,7 @@
     "build:desktop": "pnpm --filter @app/web build && pnpm --filter @app/server build && pnpm --filter @app/desktop build",
     "start:desktop": "pnpm --filter @app/desktop start",
     "typecheck": "pnpm -r --if-present --workspace-concurrency=2 typecheck",
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check",
     "test": "pnpm -r --if-present test",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
