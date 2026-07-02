@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Vendors read-only reference repositories under `.repos/` as squashed git
 // subtrees, pinned to the version of the dependency this workspace installs.
-// See `.repos/README.md` for the rules that apply to the vendored copies.
+// The vendored copies are reference material only: never edit them, never
+// import from them, and re-sync them whenever the pinned dependency is bumped.
 //
 // Usage:
 //   pnpm sync:repos                 sync every configured repo
