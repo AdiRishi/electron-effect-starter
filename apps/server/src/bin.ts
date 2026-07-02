@@ -1,5 +1,5 @@
 /**
- * CLI entrypoint. `app-server [start] [cwd]` runs the server; the root command
+ * CLI entrypoint. `app-server [start]` runs the server; the root command
  * defaults to the same behavior as `start`.
  *
  * @module bin

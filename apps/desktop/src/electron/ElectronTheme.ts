@@ -2,7 +2,6 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
 
 import * as Electron from "electron";
 
@@ -27,9 +26,6 @@ export class ElectronTheme extends Context.Service<
     readonly setSource: (
       theme: DesktopTheme,
     ) => Effect.Effect<void, ElectronThemeSetSourceError>;
-    readonly onUpdated: (
-      listener: () => void,
-    ) => Effect.Effect<void, never, Scope.Scope>;
   }
 >()("@app/desktop/electron/ElectronTheme") {}
 
@@ -45,16 +41,6 @@ export const make = ElectronTheme.of({
       catch: (cause) =>
         new ElectronThemeSetSourceError({ source: theme, cause }),
     }),
-  onUpdated: (listener) =>
-    Effect.acquireRelease(
-      Effect.sync(() => {
-        Electron.nativeTheme.on("updated", listener);
-      }),
-      () =>
-        Effect.sync(() => {
-          Electron.nativeTheme.removeListener("updated", listener);
-        }),
-    ).pipe(Effect.asVoid),
 });
 
 export const layer = Layer.succeed(ElectronTheme, make);

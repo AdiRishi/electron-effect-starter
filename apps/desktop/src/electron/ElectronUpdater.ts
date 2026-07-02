@@ -59,7 +59,6 @@ export class ElectronUpdater extends Context.Service<
     ) => Effect.Effect<void>;
     readonly setAutoDownload: (value: boolean) => Effect.Effect<void>;
     readonly setChannel: (channel: string) => Effect.Effect<void>;
-    readonly setAllowPrerelease: (value: boolean) => Effect.Effect<void>;
     readonly checkForUpdates: Effect.Effect<
       void,
       ElectronUpdaterCheckForUpdatesError
@@ -93,11 +92,6 @@ export const make = ElectronUpdater.of({
   setChannel: (channel) =>
     Effect.suspend(() => {
       autoUpdater.channel = channel;
-      return Effect.void;
-    }),
-  setAllowPrerelease: (value) =>
-    Effect.suspend(() => {
-      autoUpdater.allowPrerelease = value;
       return Effect.void;
     }),
   checkForUpdates: Effect.suspend(() => {

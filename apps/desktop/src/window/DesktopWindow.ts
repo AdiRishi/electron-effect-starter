@@ -31,16 +31,9 @@ export type DesktopWindowError = ElectronWindow.ElectronWindowCreateError;
 export class DesktopWindow extends Context.Service<
   DesktopWindow,
   {
-    readonly createMain: Effect.Effect<
-      Electron.BrowserWindow,
-      DesktopWindowError
-    >;
-    readonly ensureMain: Effect.Effect<
-      Electron.BrowserWindow,
-      DesktopWindowError
-    >;
+    // Reveal the main window, creating it first if the backend is ready
+    // (macOS dock-click / second-instance behaviour).
     readonly activate: Effect.Effect<void, DesktopWindowError>;
-    readonly createMainIfBackendReady: Effect.Effect<void, DesktopWindowError>;
     // Marks the backend ready and opens the main window. Reports the resolved
     // config for the readiness log; the renderer is served same-origin so the
     // URL is derived from the environment, not this callback.
@@ -177,14 +170,6 @@ export const make = Effect.gen(function* () {
     return window;
   }).pipe(Effect.withSpan("desktop.window.createMain"));
 
-  const ensureMain = Effect.gen(function* () {
-    const existing = yield* electronWindow.currentMainOrFirst;
-    if (Option.isSome(existing)) {
-      return existing.value;
-    }
-    return yield* createMain;
-  }).pipe(Effect.withSpan("desktop.window.ensureMain"));
-
   const createMainIfBackendReady = Effect.gen(function* () {
     if (!(yield* Ref.get(backendReadyRef))) return;
     const existing = yield* electronWindow.currentMainOrFirst;
@@ -192,11 +177,15 @@ export const make = Effect.gen(function* () {
     yield* createMain;
   }).pipe(Effect.withSpan("desktop.window.createMainIfBackendReady"));
 
+  // Re-open the window first if it can point at a ready backend; if none exists
+  // (e.g. a menu click during startup) there is nothing to receive the action.
   const dispatchMenuAction = Effect.fn("desktop.window.dispatchMenuAction")(
     function* (action: string) {
-      const window = yield* ensureMain;
-      yield* electronWindow.send(window, MENU_ACTION_CHANNEL, action);
-      yield* electronWindow.reveal(window);
+      yield* createMainIfBackendReady;
+      const window = yield* electronWindow.currentMainOrFirst;
+      if (Option.isNone(window)) return;
+      yield* electronWindow.send(window.value, MENU_ACTION_CHANNEL, action);
+      yield* electronWindow.reveal(window.value);
     },
   );
 
@@ -216,9 +205,6 @@ export const make = Effect.gen(function* () {
   }).pipe(Effect.withSpan("desktop.window.installApplicationMenu"));
 
   return DesktopWindow.of({
-    createMain,
-    ensureMain,
-    createMainIfBackendReady,
     activate: Effect.gen(function* () {
       const existing = yield* electronWindow.currentMainOrFirst;
       if (Option.isSome(existing)) {

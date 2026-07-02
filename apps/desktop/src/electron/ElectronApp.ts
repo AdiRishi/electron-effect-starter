@@ -14,7 +14,6 @@ import * as Electron from "electron";
 
 export interface ElectronAppMetadata {
   readonly appVersion: string;
-  readonly appPath: string;
   readonly isPackaged: boolean;
   readonly resourcesPath: string;
 }
@@ -22,7 +21,7 @@ export interface ElectronAppMetadata {
 export class ElectronAppMetadataReadError extends Schema.TaggedErrorClass<ElectronAppMetadataReadError>()(
   "ElectronAppMetadataReadError",
   {
-    property: Schema.Literals(["app-version", "app-path"]),
+    property: Schema.Literals(["app-version"]),
     cause: Schema.Defect(),
   },
 ) {
@@ -50,15 +49,12 @@ export class ElectronApp extends Context.Service<
       ElectronAppMetadata,
       ElectronAppMetadataReadError
     >;
-    readonly name: Effect.Effect<string>;
     readonly whenReady: Effect.Effect<void, ElectronAppWhenReadyError>;
     readonly quit: Effect.Effect<void>;
-    readonly exit: (code: number) => Effect.Effect<void>;
     readonly setPath: (
       name: Parameters<Electron.App["setPath"]>[0],
       path: string,
     ) => Effect.Effect<void>;
-    readonly setName: (name: string) => Effect.Effect<void>;
     readonly requestSingleInstanceLock: Effect.Effect<boolean>;
     readonly on: <Args extends ReadonlyArray<unknown>>(
       eventName: string,
@@ -88,20 +84,13 @@ export const make = ElectronApp.of({
       catch: (cause) =>
         new ElectronAppMetadataReadError({ property: "app-version", cause }),
     });
-    const appPath = yield* Effect.try({
-      try: () => Electron.app.getAppPath(),
-      catch: (cause) =>
-        new ElectronAppMetadataReadError({ property: "app-path", cause }),
-    });
 
     return {
       appVersion,
-      appPath,
       isPackaged: Electron.app.isPackaged,
       resourcesPath: process.resourcesPath,
     };
   }),
-  name: Effect.sync(() => Electron.app.name),
   whenReady: Effect.gen(function* () {
     const isPackaged = Electron.app.isPackaged;
     yield* Effect.tryPromise({
@@ -112,17 +101,9 @@ export const make = ElectronApp.of({
   quit: Effect.sync(() => {
     Electron.app.quit();
   }),
-  exit: (code) =>
-    Effect.sync(() => {
-      Electron.app.exit(code);
-    }),
   setPath: (name, path) =>
     Effect.sync(() => {
       Electron.app.setPath(name, path);
-    }),
-  setName: (name) =>
-    Effect.sync(() => {
-      Electron.app.setName(name);
     }),
   requestSingleInstanceLock: Effect.sync(() =>
     Electron.app.requestSingleInstanceLock(),

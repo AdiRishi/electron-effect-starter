@@ -2,8 +2,8 @@
  * Composition root.
  *
  * Wires the route layers over an HTTP server, provides the platform + services,
- * and drives the lifecycle: publish `starting`, mark HTTP listening once bound,
- * open the readiness gate, then publish `ready`.
+ * and drives the lifecycle: publish `starting`, open the readiness gate and
+ * publish `ready` once the HTTP server is bound, publish `draining` on shutdown.
  *
  * Only `ServerConfig` is provided by the CLI — nothing else leaks into the
  * launch layer.
@@ -18,7 +18,6 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
 import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
 
 import * as Auth from "./auth.ts";
@@ -31,7 +30,6 @@ import {
 } from "./http.ts";
 import * as LifecycleEvents from "./lifecycleEvents.ts";
 import * as Readiness from "./readiness.ts";
-import { clearRuntimeState, writeRuntimeState } from "./runtimeState.ts";
 import { websocketRpcRouteLayer } from "./ws.ts";
 
 /**
@@ -55,11 +53,6 @@ const RuntimeServicesLive = Layer.mergeAll(
 export const makeServerLayer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
-    const path = yield* Path.Path;
-    const runtimeStatePath = path.resolve(
-      process.cwd(),
-      ".app-server-runtime.json",
-    );
 
     const httpServerLayer = NodeHttpServer.layer(NodeHttp.createServer, {
       host: config.host,
@@ -75,8 +68,9 @@ export const makeServerLayer = Layer.unwrap(
       }),
     );
 
-    // Once the HTTP server is bound: mark listening, persist runtime state,
-    // open the readiness gate, and publish `ready`.
+    // Once the HTTP server is bound: open the readiness gate and publish
+    // `ready`. On shutdown the release runs first (before the HTTP server
+    // closes), so `draining` reaches live subscribers ahead of the socket drop.
     const readyLayer = Layer.effectDiscard(
       Effect.acquireRelease(
         Effect.gen(function* () {
@@ -84,22 +78,11 @@ export const makeServerLayer = Layer.unwrap(
           const readiness = yield* Readiness.ReadinessGate;
           const lifecycle = yield* LifecycleEvents.ServerLifecycleEvents;
 
-          yield* readiness.markHttpListening;
-
           const address = server.address;
           const boundPort =
             typeof address === "string" || !("port" in address)
               ? config.port
               : address.port;
-
-          yield* writeRuntimeState({
-            path: runtimeStatePath,
-            state: {
-              port: boundPort,
-              pid: process.pid,
-              startedAt: config.startedAt,
-            },
-          }).pipe(Effect.ignore);
 
           yield* readiness.signalReady;
           const at = yield* Clock.currentTimeMillis;
@@ -109,8 +92,14 @@ export const makeServerLayer = Layer.unwrap(
             host: config.host,
             port: boundPort,
           });
+          return lifecycle;
         }),
-        () => clearRuntimeState(runtimeStatePath).pipe(Effect.ignore),
+        (lifecycle) =>
+          Effect.gen(function* () {
+            const at = yield* Clock.currentTimeMillis;
+            yield* lifecycle.publish({ phase: "draining", at });
+            yield* Effect.logInfo("app server draining");
+          }),
       ),
     );
 

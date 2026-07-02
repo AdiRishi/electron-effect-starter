@@ -17,7 +17,6 @@ const desktopEnvironmentLayer = Layer.effect(
         homeDirectory: "/home/user",
         platform: "darwin",
         appVersion: "0.0.0",
-        appPath: "/app",
         isPackaged: false,
         resourcesPath: "/app/resources",
         serverEntryOverride: Option.some("/app/apps/server/dist/bin.mjs"),

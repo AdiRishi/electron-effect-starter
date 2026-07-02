@@ -10,10 +10,12 @@ import * as DesktopState from "./DesktopState.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import { makeComponentLogger } from "./DesktopObservability.ts";
 
-// Bridges Electron's app events into the Effect world. `register` installs
-// scoped listeners: `window-all-closed` and `before-quit` request shutdown (the
-// scoped program's finalizers then run), and `activate` re-opens/reveals the
-// main window (macOS dock behaviour).
+// Bridges Electron's app events into the Effect world. `register` first claims
+// the single-instance lock (a second launch quits itself; the first instance
+// reveals its window on `second-instance`), then installs scoped listeners:
+// `window-all-closed` and `before-quit` request shutdown (the scoped program's
+// finalizers then run), and `activate` re-opens/reveals the main window (macOS
+// dock behaviour).
 
 const { logInfo } = makeComponentLogger("desktop-lifecycle");
 
@@ -40,6 +42,15 @@ export const make = Effect.gen(function* () {
   });
 
   const register = Effect.gen(function* () {
+    if (!(yield* electronApp.requestSingleInstanceLock)) {
+      yield* logInfo("another instance holds the lock; quitting");
+      yield* electronApp.quit;
+      return yield* Effect.interrupt;
+    }
+    yield* electronApp.on("second-instance", () => {
+      runFork(window.activate.pipe(Effect.ignore({ log: true })));
+    });
+
     yield* electronApp.on("window-all-closed", () => {
       runFork(
         logInfo("all windows closed; requesting shutdown").pipe(

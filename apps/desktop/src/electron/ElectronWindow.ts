@@ -37,7 +37,6 @@ const ElectronWindowOperation = Schema.Literals([
   "send-window-message",
   "add-window-listener",
   "set-open-handler",
-  "destroy-window",
 ]);
 
 export class ElectronWindowCreateError extends Schema.TaggedErrorClass<ElectronWindowCreateError>()(
@@ -92,7 +91,6 @@ export class ElectronWindow extends Context.Service<
       window: Electron.BrowserWindow,
       url: string,
     ) => Effect.Effect<void, ElectronWindowLoadUrlError>;
-    readonly main: Effect.Effect<Option.Option<Electron.BrowserWindow>>;
     readonly currentMainOrFirst: Effect.Effect<
       Option.Option<Electron.BrowserWindow>
     >;
@@ -128,7 +126,6 @@ export class ElectronWindow extends Context.Service<
       window: Electron.BrowserWindow,
       handler: Parameters<Electron.WebContents["setWindowOpenHandler"]>[0],
     ) => Effect.Effect<void>;
-    readonly destroyAll: Effect.Effect<void>;
   }
 >()("@app/desktop/electron/ElectronWindow") {}
 
@@ -231,7 +228,6 @@ export const make = Effect.gen(function* () {
         catch: (cause) =>
           new ElectronWindowLoadUrlError({ url, windowId: window.id, cause }),
       }),
-    main: liveMain,
     currentMainOrFirst,
     focusedMainOrFirst,
     setMain: (window) => Ref.set(mainWindowRef, Option.some(window)),
@@ -348,21 +344,6 @@ export const make = Effect.gen(function* () {
             cause,
           }),
       }).pipe(Effect.orDie),
-    destroyAll: Effect.gen(function* () {
-      for (const window of yield* listWindows) {
-        yield* Effect.try({
-          try: () => window.destroy(),
-          catch: (cause) =>
-            new ElectronWindowOperationError({
-              operation: "destroy-window",
-              platform,
-              windowId: window.id,
-              channel: null,
-              cause,
-            }),
-        }).pipe(Effect.orDie);
-      }
-    }),
   });
 });
 

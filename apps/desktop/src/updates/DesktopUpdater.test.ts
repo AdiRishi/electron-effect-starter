@@ -28,7 +28,6 @@ const fakeElectronWindowLayer = (pushes: Array<Push>) =>
     ElectronWindow.ElectronWindow.of({
       create: () => Effect.die("ElectronWindow.create unused in this test"),
       loadUrl: () => Effect.void,
-      main: Effect.succeed(Option.none()),
       currentMainOrFirst: Effect.succeed(Option.none()),
       focusedMainOrFirst: Effect.succeed(Option.none()),
       setMain: () => Effect.void,
@@ -42,7 +41,6 @@ const fakeElectronWindowLayer = (pushes: Array<Push>) =>
       onReadyToShow: () => Effect.void,
       onClosed: () => Effect.void,
       setWindowOpenHandler: () => Effect.void,
-      destroyAll: Effect.void,
     }),
   );
 
@@ -53,7 +51,6 @@ const fakeElectronUpdaterLayer = Layer.succeed(
     setFeedURL: () => Effect.void,
     setAutoDownload: () => Effect.void,
     setChannel: () => Effect.void,
-    setAllowPrerelease: () => Effect.void,
     checkForUpdates: Effect.void,
     downloadUpdate: Effect.void,
     quitAndInstall: () => Effect.void,
@@ -71,7 +68,6 @@ const environmentLayer = (isPackaged: boolean) =>
           homeDirectory: "/home/user",
           platform: "darwin",
           appVersion: "0.0.0",
-          appPath: "/app",
           isPackaged,
           resourcesPath: "/app/resources",
           serverEntryOverride: Option.none(),
