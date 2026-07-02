@@ -80,7 +80,9 @@ export const connect = (
       ),
     );
 
-    const protocolContext = yield* Layer.build(protocolLayer);
+    const protocolContext = yield* Layer.build(protocolLayer).pipe(
+      Effect.withSpan("clientRuntime.websocket.connect"),
+    );
     const client = yield* makeWsRpcProtocolClient.pipe(Effect.provide(protocolContext));
 
     return {

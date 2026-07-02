@@ -1,4 +1,4 @@
-import type { ConnectionPhase } from "@app/client-runtime";
+import type { ConnectionPhase } from "@app/client-runtime/connection";
 import type { DesktopTheme, ServerConfig } from "@app/contracts";
 import * as DateTime from "effect/DateTime";
 import { useCallback, useEffect, useState } from "react";
