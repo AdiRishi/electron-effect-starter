@@ -38,19 +38,6 @@ const READINESS_INTERVAL = Duration.millis(100);
 const READINESS_REQUEST_TIMEOUT = Duration.seconds(1);
 const TERMINATE_GRACE = Duration.seconds(2);
 const HEALTH_PATH = "/.well-known/app/health";
-const MAX_TCP_PORT = 65_535;
-
-export class DesktopBackendPortUnavailableError extends Schema.TaggedErrorClass<DesktopBackendPortUnavailableError>()(
-  "DesktopBackendPortUnavailableError",
-  {
-    startPort: Schema.Int,
-    maxPort: Schema.Int,
-  },
-) {
-  override get message(): string {
-    return `No backend port is available between ${this.startPort} and ${this.maxPort}.`;
-  }
-}
 
 export class DesktopBackendReadinessError extends Schema.TaggedErrorClass<DesktopBackendReadinessError>()(
   "DesktopBackendReadinessError",
@@ -130,22 +117,15 @@ type ManagerServices =
 
 const { logInfo, logWarning, logError } = makeComponentLogger("desktop-backend");
 
-// Scan for a free loopback port starting at the configured/default port.
+// Resolve the backend port: the configured/default port when free on both
+// loopback stacks, otherwise a fresh ephemeral loopback port.
 const resolvePort = Effect.fn("desktop.backend.resolvePort")(function* (
   net: NetService["Service"],
   configuredPort: Option.Option<number>,
   defaultPort: number,
 ) {
-  const startPort = Option.getOrElse(configuredPort, () => defaultPort);
-  for (let port = startPort; port <= MAX_TCP_PORT; port += 1) {
-    if (yield* net.canListenOnHost(port, "127.0.0.1")) {
-      return port;
-    }
-  }
-  return yield* new DesktopBackendPortUnavailableError({
-    startPort,
-    maxPort: MAX_TCP_PORT,
-  });
+  const preferredPort = Option.getOrElse(configuredPort, () => defaultPort);
+  return yield* net.findAvailablePort(preferredPort);
 });
 
 // Spawn the child + probe readiness (in a forked fiber), then wait for exit.
