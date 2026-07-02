@@ -3,7 +3,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-
 import * as Electron from "electron";
 
 const CONFIRM_BUTTON_INDEX = 1;

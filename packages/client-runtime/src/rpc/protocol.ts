@@ -1,6 +1,7 @@
-import { WsRpcGroup } from "@app/contracts";
 import type * as Effect from "effect/Effect";
 import * as RpcClient from "effect/unstable/rpc/RpcClient";
+
+import { WsRpcGroup } from "@app/contracts";
 
 /**
  * The factory that materializes a typed client for every method in `WsRpcGroup`.

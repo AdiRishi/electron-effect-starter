@@ -1,4 +1,3 @@
-import { BearerSession, type BootstrapBearerInput } from "@app/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -6,6 +5,8 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+
+import { BearerSession, type BootstrapBearerInput } from "@app/contracts";
 
 import * as DesktopBackendManager from "./DesktopBackendManager.ts";
 
