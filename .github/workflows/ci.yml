@@ -17,10 +17,15 @@ jobs:
           node-version-file: .nvmrc
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
-      # electron's postinstall can exit without downloading the binary, and the
-      # desktop unit tests load the `electron` package. Its install.js verifies
-      # and repairs, so rebuilding is a no-op when the runtime is healthy.
+      # Diagnostic (temporary): what electron-related env does the runner set?
+      - run: printenv | grep -i electron || true
+      # electron's install.js skips the binary download when
+      # ELECTRON_SKIP_BINARY_DOWNLOAD is set, and the desktop unit tests load
+      # the `electron` package. Rebuild with the skip cleared; install.js
+      # verifies first, so this is a no-op when the runtime is healthy.
       - run: pnpm --filter @app/desktop rebuild electron
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: ""
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
