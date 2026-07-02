@@ -1,10 +1,19 @@
-// Electron's postinstall does not reliably produce a working runtime: on CI it
-// can exit 0 without downloading, and pnpm's side-effects cache can replay the
-// package without `dist/` or `path.txt`. Anything that loads the `electron`
-// package then throws "Electron failed to install correctly" — including unit
-// tests that merely import a module which imports `electron`. So the runtime
-// is verified (and repaired from GitHub releases) instead of assumed; same
-// approach as T3 Code's ensure-electron-runtime script.
+// Electron's postinstall does not reliably produce a working runtime, and
+// `pnpm rebuild electron` inherits both failure modes (verified on CI):
+//
+// - On Node >= 24.16 / >= 26.1, electron's install.js exits 0 without
+//   installing: its extract-zip dependency never settles its promise, the
+//   event loop drains, and the process dies silently before writing `dist/`
+//   or `path.txt` (https://github.com/electron/electron/issues/51619).
+// - pnpm's side-effects cache can replay the package without `dist/` or
+//   `path.txt`, skipping the postinstall entirely.
+//
+// Anything that loads the `electron` package then throws "Electron failed to
+// install correctly" — including unit tests that merely import a module which
+// imports `electron`. So the runtime is verified (and repaired from GitHub
+// releases, bypassing install.js) instead of assumed; same approach as T3
+// Code's ensure-electron-runtime script. Deletable once the upstream installer
+// is fixed and the workspace floor is past the broken Node range.
 
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";

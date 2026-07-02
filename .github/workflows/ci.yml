@@ -17,8 +17,9 @@ jobs:
           node-version-file: .nvmrc
           cache: "pnpm"
       - run: pnpm install --frozen-lockfile
-      # electron's postinstall can silently skip the binary download, and the
-      # desktop unit tests import modules that load the `electron` package.
+      # electron's postinstall exits 0 without installing on Node >= 24.16
+      # (electron#51619), and the desktop unit tests load the `electron`
+      # package. The ensure script repairs the runtime, bypassing install.js.
       - run: pnpm --filter @app/desktop ensure:electron
       - run: pnpm typecheck
       - run: pnpm lint
