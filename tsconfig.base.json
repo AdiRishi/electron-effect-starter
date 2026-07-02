@@ -17,32 +17,6 @@
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "resolveJsonModule": true,
-    "plugins": [
-      {
-        "name": "@effect/language-service",
-        "namespaceImportPackages": ["@effect/platform-node", "effect"],
-        "diagnosticSeverity": {
-          "importFromBarrel": "error",
-          "anyUnknownInErrorContext": "error",
-          "missingEffectServiceDependency": "error",
-          "leakingRequirements": "error",
-          "globalErrorInEffectCatch": "error",
-          "unknownInEffectCatch": "error",
-          "preferSchemaOverJson": "error",
-          "nodeBuiltinImport": "error",
-          "globalDate": "error",
-          "globalDateInEffect": "error",
-          "globalConsole": "error",
-          "globalConsoleInEffect": "error",
-          "globalRandom": "error",
-          "globalRandomInEffect": "error",
-          "globalTimers": "error",
-          "globalTimersInEffect": "error",
-          "globalFetch": "error",
-          "globalFetchInEffect": "error"
-        }
-      }
-    ]
+    "resolveJsonModule": true
   }
 }

@@ -9,11 +9,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
-import {
-  HttpRouter,
-  HttpServerRequest,
-  HttpServerResponse,
-} from "effect/unstable/http";
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 
 import * as Auth from "./auth.ts";
 import * as ServerConfig from "./config.ts";
@@ -43,9 +39,7 @@ function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
 /** Paths that must never be redirected/served as SPA navigations. */
 function isReservedPath(pathname: string): boolean {
   return (
-    pathname.startsWith("/api") ||
-    pathname.startsWith("/ws") ||
-    pathname.startsWith("/.well-known")
+    pathname.startsWith("/api") || pathname.startsWith("/ws") || pathname.startsWith("/.well-known")
   );
 }
 
@@ -85,9 +79,9 @@ export const authBootstrapRouteLayer = HttpRouter.add(
   AUTH_BOOTSTRAP_PATH,
   Effect.gen(function* () {
     const auth = yield* Auth.BearerSessionStore;
-    const input = yield* HttpServerRequest.schemaBodyJson(
-      BootstrapBearerInput,
-    ).pipe(Effect.orElseSucceed(() => null));
+    const input = yield* HttpServerRequest.schemaBodyJson(BootstrapBearerInput).pipe(
+      Effect.orElseSucceed(() => null),
+    );
     if (input === null) {
       return HttpServerResponse.text("Bad Request", { status: 400 });
     }
@@ -124,30 +118,22 @@ export const staticAndDevRouteLayer = HttpRouter.add(
       !isReservedPath(url.value.pathname) &&
       isLoopbackHostname(url.value.hostname)
     ) {
-      return HttpServerResponse.redirect(
-        resolveDevRedirectUrl(config.devWebUrl, url.value),
-        {
-          status: 302,
-        },
-      );
+      return HttpServerResponse.redirect(resolveDevRedirectUrl(config.devWebUrl, url.value), {
+        status: 302,
+      });
     }
 
-    const staticDir =
-      config.staticDir ?? (yield* ServerConfig.resolveStaticDir());
+    const staticDir = config.staticDir ?? (yield* ServerConfig.resolveStaticDir());
     if (!staticDir) {
-      return HttpServerResponse.text(
-        "No static directory configured and no dev URL set.",
-        {
-          status: 503,
-        },
-      );
+      return HttpServerResponse.text("No static directory configured and no dev URL set.", {
+        status: 503,
+      });
     }
 
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const staticRoot = path.resolve(staticDir);
-    const requestPath =
-      url.value.pathname === "/" ? "/index.html" : url.value.pathname;
+    const requestPath = url.value.pathname === "/" ? "/index.html" : url.value.pathname;
     const rawRelative = requestPath.replace(/^[/\\]+/, "");
     const hasRawLeadingParent = rawRelative.startsWith("..");
     const relative = path.normalize(rawRelative).replace(/^[/\\]+/, "");
@@ -164,9 +150,7 @@ export const staticAndDevRouteLayer = HttpRouter.add(
 
     const isWithinRoot = (candidate: string) =>
       candidate === staticRoot ||
-      candidate.startsWith(
-        staticRoot.endsWith(path.sep) ? staticRoot : `${staticRoot}${path.sep}`,
-      );
+      candidate.startsWith(staticRoot.endsWith(path.sep) ? staticRoot : `${staticRoot}${path.sep}`);
 
     let filePath = path.resolve(staticRoot, relative);
     if (!isWithinRoot(filePath)) {
@@ -183,9 +167,7 @@ export const staticAndDevRouteLayer = HttpRouter.add(
       }
     }
 
-    const info = yield* fileSystem
-      .stat(filePath)
-      .pipe(Effect.orElseSucceed(() => null));
+    const info = yield* fileSystem.stat(filePath).pipe(Effect.orElseSucceed(() => null));
     if (!info || info.type !== "File") {
       // SPA fallback: serve index.html for unknown routes.
       const indexData = yield* fileSystem
@@ -201,9 +183,7 @@ export const staticAndDevRouteLayer = HttpRouter.add(
     }
 
     return yield* HttpServerResponse.file(filePath, { status: 200 }).pipe(
-      Effect.orElseSucceed(() =>
-        HttpServerResponse.text("Internal Server Error", { status: 500 }),
-      ),
+      Effect.orElseSucceed(() => HttpServerResponse.text("Internal Server Error", { status: 500 })),
     );
   }),
 );

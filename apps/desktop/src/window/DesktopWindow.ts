@@ -43,9 +43,7 @@ export class DesktopWindow extends Context.Service<
     // Clears the latch so a dock-click while the backend is down can't open a
     // window pointing at nothing.
     readonly handleBackendNotReady: Effect.Effect<void>;
-    readonly dispatchMenuAction: (
-      action: string,
-    ) => Effect.Effect<void, DesktopWindowError>;
+    readonly dispatchMenuAction: (action: string) => Effect.Effect<void, DesktopWindowError>;
     // Builds the native application menu and installs it. Call once, after the
     // app is ready; menu clicks dispatch actions to the renderer.
     readonly installApplicationMenu: Effect.Effect<void>;
@@ -179,15 +177,15 @@ export const make = Effect.gen(function* () {
 
   // Re-open the window first if it can point at a ready backend; if none exists
   // (e.g. a menu click during startup) there is nothing to receive the action.
-  const dispatchMenuAction = Effect.fn("desktop.window.dispatchMenuAction")(
-    function* (action: string) {
-      yield* createMainIfBackendReady;
-      const window = yield* electronWindow.currentMainOrFirst;
-      if (Option.isNone(window)) return;
-      yield* electronWindow.send(window.value, MENU_ACTION_CHANNEL, action);
-      yield* electronWindow.reveal(window.value);
-    },
-  );
+  const dispatchMenuAction = Effect.fn("desktop.window.dispatchMenuAction")(function* (
+    action: string,
+  ) {
+    yield* createMainIfBackendReady;
+    const window = yield* electronWindow.currentMainOrFirst;
+    if (Option.isNone(window)) return;
+    yield* electronWindow.send(window.value, MENU_ACTION_CHANNEL, action);
+    yield* electronWindow.reveal(window.value);
+  });
 
   // Menu clicks arrive as raw Electron callbacks, so bridge each back into the
   // Effect world via `runPromise` (a dispatch failure is logged, not thrown).
@@ -196,9 +194,7 @@ export const make = Effect.gen(function* () {
       environment.displayName,
       environment.platform,
       (action) => {
-        void runPromise(
-          dispatchMenuAction(action).pipe(Effect.ignore({ log: true })),
-        );
+        void runPromise(dispatchMenuAction(action).pipe(Effect.ignore({ log: true })));
       },
     );
     yield* electronMenu.setApplicationMenu(template);
@@ -213,18 +209,16 @@ export const make = Effect.gen(function* () {
       }
       yield* createMainIfBackendReady;
     }).pipe(Effect.withSpan("desktop.window.activate")),
-    handleBackendReady: Effect.fn("desktop.window.handleBackendReady")(
-      function* (config) {
-        yield* Ref.set(backendReadyRef, true);
-        // In production the window loads the backend's own origin; in dev it stays
-        // on the web dev server. Only advance the URL when we're not in dev.
-        if (!environment.isDevelopment) {
-          yield* Ref.set(applicationUrlRef, config.httpBaseUrl.href);
-        }
-        yield* logInfo("backend ready", { url: config.httpBaseUrl.href });
-        yield* createMainIfBackendReady;
-      },
-    ),
+    handleBackendReady: Effect.fn("desktop.window.handleBackendReady")(function* (config) {
+      yield* Ref.set(backendReadyRef, true);
+      // In production the window loads the backend's own origin; in dev it stays
+      // on the web dev server. Only advance the URL when we're not in dev.
+      if (!environment.isDevelopment) {
+        yield* Ref.set(applicationUrlRef, config.httpBaseUrl.href);
+      }
+      yield* logInfo("backend ready", { url: config.httpBaseUrl.href });
+      yield* createMainIfBackendReady;
+    }),
     handleBackendNotReady: Ref.set(backendReadyRef, false).pipe(
       Effect.withSpan("desktop.window.handleBackendNotReady"),
     ),

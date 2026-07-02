@@ -9,18 +9,14 @@ import * as Path from "effect/Path";
  * unique-per-write token (e.g. a random hex string) to avoid concurrent-write
  * collisions.
  */
-export const atomicWriteString = Effect.fn(
-  "shared.atomicWrite.atomicWriteString",
-)(function* (input: {
-  readonly path: string;
-  readonly contents: string;
-  readonly suffix: string;
-}) {
-  const fileSystem = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const directory = path.dirname(input.path);
-  const tempPath = `${input.path}.${input.suffix}.tmp`;
-  yield* fileSystem.makeDirectory(directory, { recursive: true });
-  yield* fileSystem.writeFileString(tempPath, input.contents);
-  yield* fileSystem.rename(tempPath, input.path);
-});
+export const atomicWriteString = Effect.fn("shared.atomicWrite.atomicWriteString")(
+  function* (input: { readonly path: string; readonly contents: string; readonly suffix: string }) {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const directory = path.dirname(input.path);
+    const tempPath = `${input.path}.${input.suffix}.tmp`;
+    yield* fileSystem.makeDirectory(directory, { recursive: true });
+    yield* fileSystem.writeFileString(tempPath, input.contents);
+    yield* fileSystem.rename(tempPath, input.path);
+  },
+);

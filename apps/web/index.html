@@ -2,20 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
-    />
-    <meta
-      name="theme-color"
-      content="#ffffff"
-      media="(prefers-color-scheme: light)"
-    />
-    <meta
-      name="theme-color"
-      content="#0b0b0c"
-      media="(prefers-color-scheme: dark)"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)" />
     <script>
       // Pre-mount theme guard: toggle `.dark` before React renders so there is
       // no flash of the wrong theme. Mirrors the logic in hooks/useTheme.ts.
@@ -23,14 +12,9 @@
         try {
           const stored = window.localStorage.getItem("app:theme");
           const theme =
-            stored === "light" || stored === "dark" || stored === "system"
-              ? stored
-              : "system";
-          const prefersDark = window.matchMedia(
-            "(prefers-color-scheme: dark)",
-          ).matches;
-          const isDark =
-            theme === "dark" || (theme === "system" && prefersDark);
+            stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+          const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          const isDark = theme === "dark" || (theme === "system" && prefersDark);
           document.documentElement.classList.toggle("dark", isDark);
         } catch {
           document.documentElement.classList.add("dark");

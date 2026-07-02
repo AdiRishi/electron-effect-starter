@@ -13,9 +13,7 @@ export function parseSafeExternalUrl(rawUrl: unknown): Option.Option<string> {
   }
   try {
     const url = new URL(rawUrl);
-    return SAFE_EXTERNAL_PROTOCOLS.has(url.protocol)
-      ? Option.some(url.href)
-      : Option.none();
+    return SAFE_EXTERNAL_PROTOCOLS.has(url.protocol) ? Option.some(url.href) : Option.none();
   } catch {
     return Option.none();
   }

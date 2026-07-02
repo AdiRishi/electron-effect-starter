@@ -39,9 +39,7 @@ export class ConnectionSupervisor extends Context.Service<
   ConnectionSupervisor,
   {
     readonly state: SubscriptionRef.SubscriptionRef<ConnectionState>;
-    readonly session: SubscriptionRef.SubscriptionRef<
-      Option.Option<RpcSession.RpcSession>
-    >;
+    readonly session: SubscriptionRef.SubscriptionRef<Option.Option<RpcSession.RpcSession>>;
   }
 >()("@app/client-runtime/connection/ConnectionSupervisor") {}
 
@@ -111,12 +109,10 @@ export const start = (
   Scope.Scope | Socket.WebSocketConstructor
 > =>
   Effect.gen(function* () {
-    const state = yield* SubscriptionRef.make<ConnectionState>(
-      INITIAL_CONNECTION_STATE,
+    const state = yield* SubscriptionRef.make<ConnectionState>(INITIAL_CONNECTION_STATE);
+    const session = yield* SubscriptionRef.make<Option.Option<RpcSession.RpcSession>>(
+      Option.none(),
     );
-    const session = yield* SubscriptionRef.make<
-      Option.Option<RpcSession.RpcSession>
-    >(Option.none());
     const supervisor = ConnectionSupervisor.of({ state, session });
     yield* Effect.forkScoped(runLoop(supervisor, connection));
     return supervisor;

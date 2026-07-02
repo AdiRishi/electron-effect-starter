@@ -37,11 +37,7 @@ function readVersion(info: unknown): string | null {
 }
 
 function readPercent(progress: unknown): string | null {
-  if (
-    typeof progress === "object" &&
-    progress !== null &&
-    "percent" in progress
-  ) {
+  if (typeof progress === "object" && progress !== null && "percent" in progress) {
     const value = (progress as { percent?: unknown }).percent;
     return typeof value === "number" ? `${Math.round(value)}%` : null;
   }
@@ -58,19 +54,10 @@ const UPDATER_EVENTS: ReadonlyArray<
   readonly [string, (...args: ReadonlyArray<unknown>) => UpdateStatePatch]
 > = [
   ["checking-for-update", () => ({ status: "checking", message: null })],
-  [
-    "update-available",
-    (info) => ({ status: "available", version: readVersion(info) }),
-  ],
+  ["update-available", (info) => ({ status: "available", version: readVersion(info) })],
   ["update-not-available", () => ({ status: "up-to-date", version: null })],
-  [
-    "download-progress",
-    (progress) => ({ status: "downloading", message: readPercent(progress) }),
-  ],
-  [
-    "update-downloaded",
-    (info) => ({ status: "downloaded", version: readVersion(info) }),
-  ],
+  ["download-progress", (progress) => ({ status: "downloading", message: readPercent(progress) })],
+  ["update-downloaded", (info) => ({ status: "downloaded", version: readVersion(info) })],
   ["error", (error) => ({ status: "error", message: describeError(error) })],
 ];
 
@@ -79,9 +66,7 @@ export class DesktopUpdater extends Context.Service<
   {
     readonly configure: Effect.Effect<void>;
     readonly getState: Effect.Effect<DesktopUpdateState>;
-    readonly setChannel: (
-      channel: DesktopUpdateChannel,
-    ) => Effect.Effect<DesktopUpdateState>;
+    readonly setChannel: (channel: DesktopUpdateChannel) => Effect.Effect<DesktopUpdateState>;
     readonly check: Effect.Effect<void>;
     readonly download: Effect.Effect<void>;
     readonly install: Effect.Effect<void>;
@@ -131,12 +116,9 @@ export const make = Effect.gen(function* () {
   // (Layer.scoped ties the listeners to the layer scope).
   if (enabled) {
     for (const [eventName, toPatch] of UPDATER_EVENTS) {
-      yield* electronUpdater.on(
-        eventName,
-        (...args: ReadonlyArray<unknown>) => {
-          runFork(applyPatch(toPatch(...args)));
-        },
-      );
+      yield* electronUpdater.on(eventName, (...args: ReadonlyArray<unknown>) => {
+        runFork(applyPatch(toPatch(...args)));
+      });
     }
   }
 
@@ -148,9 +130,7 @@ export const make = Effect.gen(function* () {
   ) =>
     applyPatch(start).pipe(
       Effect.andThen(action),
-      Effect.catch((error) =>
-        applyPatch({ status: "error", message: error.message }),
-      ),
+      Effect.catch((error) => applyPatch({ status: "error", message: error.message })),
       Effect.asVoid,
     );
 
@@ -189,27 +169,21 @@ export const make = Effect.gen(function* () {
         }),
       ),
     check: enabled
-      ? runAction(
-          { status: "checking", message: null },
-          electronUpdater.checkForUpdates,
-        ).pipe(Effect.withSpan("desktop.updater.check"))
+      ? runAction({ status: "checking", message: null }, electronUpdater.checkForUpdates).pipe(
+          Effect.withSpan("desktop.updater.check"),
+        )
       : Effect.void.pipe(Effect.withSpan("desktop.updater.check")),
     download: enabled
-      ? runAction(
-          { status: "downloading", message: null },
-          electronUpdater.downloadUpdate,
-        ).pipe(Effect.withSpan("desktop.updater.download"))
+      ? runAction({ status: "downloading", message: null }, electronUpdater.downloadUpdate).pipe(
+          Effect.withSpan("desktop.updater.download"),
+        )
       : Effect.void.pipe(Effect.withSpan("desktop.updater.download")),
     install: enabled
-      ? electronUpdater
-          .quitAndInstall({ isSilent: false, isForceRunAfter: true })
-          .pipe(
-            Effect.catch((error) =>
-              applyPatch({ status: "error", message: error.message }),
-            ),
-            Effect.asVoid,
-            Effect.withSpan("desktop.updater.install"),
-          )
+      ? electronUpdater.quitAndInstall({ isSilent: false, isForceRunAfter: true }).pipe(
+          Effect.catch((error) => applyPatch({ status: "error", message: error.message })),
+          Effect.asVoid,
+          Effect.withSpan("desktop.updater.install"),
+        )
       : Effect.void.pipe(Effect.withSpan("desktop.updater.install")),
   });
 });

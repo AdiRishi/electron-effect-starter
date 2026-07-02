@@ -16,9 +16,7 @@ import * as Schema from "effect/Schema";
 
 import { resolveServerConfig, type CliServerFlags } from "./config.ts";
 
-const encodeBootstrapEnvelope = Schema.encodeSync(
-  Schema.fromJsonString(ServerBootstrapEnvelope),
-);
+const encodeBootstrapEnvelope = Schema.encodeSync(Schema.fromJsonString(ServerBootstrapEnvelope));
 
 const baseFlags: CliServerFlags = {
   port: Option.none(),
@@ -33,9 +31,7 @@ function withBootstrapFd<A, E, R>(
 ): Effect.Effect<A, E, R> {
   return Effect.acquireUseRelease(
     Effect.sync(() => {
-      const dir = NodeFS.mkdtempSync(
-        NodePath.join(NodeOS.tmpdir(), "desktop-starter-bootstrap-"),
-      );
+      const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "desktop-starter-bootstrap-"));
       const path = NodePath.join(dir, "bootstrap.json");
       NodeFS.writeFileSync(path, `${encodeBootstrapEnvelope(envelope)}\n`);
       return { dir, fd: NodeFS.openSync(path, "r") };
@@ -50,28 +46,24 @@ function withBootstrapFd<A, E, R>(
 }
 
 describe("resolveServerConfig", () => {
-  it.effect(
-    "prefers the bootstrap fd envelope over inherited environment values",
-    () =>
-      withBootstrapFd(
-        { desktopBootstrapToken: "fd-token", port: 19731 },
-        (fd) =>
-          Effect.gen(function* () {
-            const config = yield* resolveServerConfig({
-              ...baseFlags,
-              bootstrapFd: Option.some(fd),
-            });
+  it.effect("prefers the bootstrap fd envelope over inherited environment values", () =>
+    withBootstrapFd({ desktopBootstrapToken: "fd-token", port: 19731 }, (fd) =>
+      Effect.gen(function* () {
+        const config = yield* resolveServerConfig({
+          ...baseFlags,
+          bootstrapFd: Option.some(fd),
+        });
 
-            assert.equal(config.bootstrapToken, "fd-token");
-            assert.equal(config.port, 19731);
-            assert.equal(config.devWebUrl?.href, "http://127.0.0.1:5173/");
-          }),
-      ).pipe(
-        Effect.provideService(HostProcessEnvironment, {
-          APP_BOOTSTRAP_TOKEN: "env-token",
-          APP_SERVER_PORT: "3000",
-        }),
-        Effect.provide(NodeServices.layer),
-      ),
+        assert.equal(config.bootstrapToken, "fd-token");
+        assert.equal(config.port, 19731);
+        assert.equal(config.devWebUrl?.href, "http://127.0.0.1:5173/");
+      }),
+    ).pipe(
+      Effect.provideService(HostProcessEnvironment, {
+        APP_BOOTSTRAP_TOKEN: "env-token",
+        APP_SERVER_PORT: "3000",
+      }),
+      Effect.provide(NodeServices.layer),
+    ),
   );
 });

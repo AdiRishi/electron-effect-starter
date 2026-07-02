@@ -2,10 +2,7 @@
 // specifics (a WebSocket constructor, an HttpClient / fetch) at the edge.
 
 // Bearer bootstrap (browser path of the auth handshake).
-export {
-  BearerBootstrapError,
-  bootstrapRemoteBearerSession,
-} from "./authorization.ts";
+export { BearerBootstrapError, bootstrapRemoteBearerSession } from "./authorization.ts";
 
 // Connection model + reconnect supervisor.
 export {
@@ -22,10 +19,7 @@ export {
 } from "./connection/supervisor.ts";
 
 // Typed RPC surface.
-export {
-  makeWsRpcProtocolClient,
-  type WsRpcProtocolClient,
-} from "./rpc/protocol.ts";
+export { makeWsRpcProtocolClient, type WsRpcProtocolClient } from "./rpc/protocol.ts";
 export { type RpcSession, connect } from "./rpc/session.ts";
 export {
   type RpcInput,

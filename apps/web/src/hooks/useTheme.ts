@@ -65,11 +65,7 @@ function getSnapshot(): DesktopTheme {
  * preference and a setter; the effective light/dark is applied to `<html>`.
  */
 export function useTheme() {
-  const theme = useSyncExternalStore(
-    subscribe,
-    getSnapshot,
-    () => DEFAULT_THEME,
-  );
+  const theme = useSyncExternalStore(subscribe, getSnapshot, () => DEFAULT_THEME);
 
   const setTheme = useCallback((next: DesktopTheme) => {
     void localApi().setTheme(next);

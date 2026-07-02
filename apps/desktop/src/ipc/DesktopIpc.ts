@@ -16,10 +16,7 @@ export interface DesktopIpcSyncEvent {
   returnValue: unknown;
 }
 
-export type DesktopIpcHandleListener = (
-  event: unknown,
-  raw: unknown,
-) => unknown | Promise<unknown>;
+export type DesktopIpcHandleListener = (event: unknown, raw: unknown) => unknown | Promise<unknown>;
 
 export type DesktopIpcSyncListener = (event: DesktopIpcSyncEvent) => void;
 
@@ -97,10 +94,7 @@ export const make = (ipcMain: DesktopIpcMain): DesktopIpc["Service"] =>
                 Effect.gen(function* () {
                   yield* Effect.annotateCurrentSpan({ channel });
                   return yield* handler(raw);
-                }).pipe(
-                  Effect.annotateLogs({ channel }),
-                  Effect.withSpan("desktop.ipc.invoke"),
-                ),
+                }).pipe(Effect.annotateLogs({ channel }), Effect.withSpan("desktop.ipc.invoke")),
               ),
             );
           },
@@ -169,8 +163,7 @@ export const make = (ipcMain: DesktopIpcMain): DesktopIpc["Service"] =>
     }),
   });
 
-export const layer = (ipcMain: DesktopIpcMain) =>
-  Layer.succeed(DesktopIpc, make(ipcMain));
+export const layer = (ipcMain: DesktopIpcMain) => Layer.succeed(DesktopIpc, make(ipcMain));
 
 // ── Codec-validated method helpers ──
 
@@ -185,18 +178,8 @@ export interface DesktopIpcMethodRegistration<
   ResultEncodingServices = never,
 > {
   readonly channel: string;
-  readonly payload: Schema.Codec<
-    Payload,
-    EncodedPayload,
-    PayloadDecodingServices,
-    never
-  >;
-  readonly result: Schema.Codec<
-    Result,
-    EncodedResult,
-    never,
-    ResultEncodingServices
-  >;
+  readonly payload: Schema.Codec<Payload, EncodedPayload, PayloadDecodingServices, never>;
+  readonly result: Schema.Codec<Result, EncodedResult, never, ResultEncodingServices>;
   readonly handler: (input: Payload) => Effect.Effect<Result, E, R>;
 }
 
@@ -248,29 +231,12 @@ export interface DesktopSyncIpcMethodRegistration<
   ResultEncodingServices = never,
 > {
   readonly channel: string;
-  readonly result: Schema.Codec<
-    Result,
-    EncodedResult,
-    never,
-    ResultEncodingServices
-  >;
+  readonly result: Schema.Codec<Result, EncodedResult, never, ResultEncodingServices>;
   readonly handler: () => Effect.Effect<Result, E, R>;
 }
 
-export const makeSyncIpcMethod = <
-  Result,
-  EncodedResult,
-  E,
-  R,
-  ResultEncodingServices = never,
->(
-  method: DesktopSyncIpcMethodRegistration<
-    Result,
-    EncodedResult,
-    E,
-    R,
-    ResultEncodingServices
-  >,
+export const makeSyncIpcMethod = <Result, EncodedResult, E, R, ResultEncodingServices = never>(
+  method: DesktopSyncIpcMethodRegistration<Result, EncodedResult, E, R, ResultEncodingServices>,
 ): DesktopSyncIpcMethod<E | Schema.SchemaError, R | ResultEncodingServices> => {
   const encode = Schema.encodeUnknownEffect(method.result);
 

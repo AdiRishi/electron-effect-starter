@@ -26,10 +26,7 @@ const decodeBearerSession = Schema.decodeUnknownEffect(BearerSession);
 const describeCause = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
 
-const bearerBootstrapError = (
-  httpBaseUrl: string,
-  cause: unknown,
-): BearerBootstrapError =>
+const bearerBootstrapError = (httpBaseUrl: string, cause: unknown): BearerBootstrapError =>
   new BearerBootstrapError({
     detail: `Could not bootstrap a bearer session from ${httpBaseUrl}: ${describeCause(cause)}`,
   });
@@ -50,10 +47,7 @@ export const bootstrapRemoteBearerSession = (input: {
   readonly clientMetadata?: BootstrapBearerInput["clientMetadata"];
 }): Effect.Effect<BearerSession, BearerBootstrapError> =>
   Effect.gen(function* () {
-    const url = new URL(
-      "/api/auth/bootstrap/bearer",
-      input.httpBaseUrl,
-    ).toString();
+    const url = new URL("/api/auth/bootstrap/bearer", input.httpBaseUrl).toString();
 
     const body: BootstrapBearerInput = {
       credential: input.credential,
@@ -76,9 +70,7 @@ export const bootstrapRemoteBearerSession = (input: {
     }).pipe(
       Effect.flatMap((json) =>
         decodeBearerSession(json).pipe(
-          Effect.mapError((cause) =>
-            bearerBootstrapError(input.httpBaseUrl, cause),
-          ),
+          Effect.mapError((cause) => bearerBootstrapError(input.httpBaseUrl, cause)),
         ),
       ),
       Effect.timeoutOrElse({

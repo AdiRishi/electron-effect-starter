@@ -48,19 +48,17 @@ export const make = Effect.gen(function* () {
   // stable token for the lifetime of the process. The first caller mints it;
   // everyone after reuses it.
   const tokenRef = yield* SynchronizedRef.make(Option.none<string>());
-  const getOrCreateBootstrapToken = SynchronizedRef.modifyEffect(
-    tokenRef,
-    (current) =>
-      Option.match(current, {
-        onSome: (token) => Effect.succeed([token, current] as const),
-        onNone: () =>
-          crypto.randomBytes(24).pipe(
-            Effect.map((bytes) => {
-              const token = Encoding.encodeHex(bytes);
-              return [token, Option.some(token)] as const;
-            }),
-          ),
-      }),
+  const getOrCreateBootstrapToken = SynchronizedRef.modifyEffect(tokenRef, (current) =>
+    Option.match(current, {
+      onSome: (token) => Effect.succeed([token, current] as const),
+      onNone: () =>
+        crypto.randomBytes(24).pipe(
+          Effect.map((bytes) => {
+            const token = Encoding.encodeHex(bytes);
+            return [token, Option.some(token)] as const;
+          }),
+        ),
+    }),
   );
 
   return DesktopBackendConfiguration.of({

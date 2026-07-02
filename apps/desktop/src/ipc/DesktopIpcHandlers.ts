@@ -22,9 +22,7 @@ import {
 // Registers every IPC handler in one place. Called once during bootstrap; each
 // `handle`/`handleSync` is scoped, so the whole set is removed when the app
 // scope closes.
-export const installDesktopIpcHandlers = Effect.fn(
-  "desktop.ipc.installHandlers",
-)(function* () {
+export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers")(function* () {
   const ipc = yield* DesktopIpc.DesktopIpc;
 
   yield* ipc.handleSync(getAppInfo);

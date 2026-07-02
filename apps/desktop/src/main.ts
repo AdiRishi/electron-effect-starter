@@ -79,9 +79,7 @@ const desktopFoundationLayer = Layer.mergeAll(
 ).pipe(Layer.provideMerge(desktopEnvironmentLayer));
 
 // The window needs the environment + electron shell/theme/window wrappers.
-const desktopWindowLayer = DesktopWindow.layer.pipe(
-  Layer.provideMerge(desktopFoundationLayer),
-);
+const desktopWindowLayer = DesktopWindow.layer.pipe(Layer.provideMerge(desktopFoundationLayer));
 
 // The backend manager depends on the window (readiness callbacks) + config +
 // NetService + platform services.
@@ -107,7 +105,4 @@ const desktopRuntimeLayer = desktopApplicationLayer.pipe(
   Layer.provideMerge(electronLayer),
 );
 
-DesktopApp.program.pipe(
-  Effect.provide(desktopRuntimeLayer),
-  NodeRuntime.runMain,
-);
+DesktopApp.program.pipe(Effect.provide(desktopRuntimeLayer), NodeRuntime.runMain);

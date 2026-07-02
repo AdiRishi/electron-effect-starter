@@ -16,44 +16,31 @@ import { start } from "./supervisor.ts";
 // WebSocket constructor is provided but never actually used.
 
 describe("ConnectionSupervisor", () => {
-  it.effect(
-    "keeps retrying when the credential mint fails, without freezing",
-    () =>
-      Effect.gen(function* () {
-        const attempts = yield* Ref.make(0);
-        const connection: PreparedConnection = {
-          label: "test",
-          prepareSocketUrl: Ref.update(attempts, (n) => n + 1).pipe(
-            Effect.andThen(
-              Effect.fail(
-                new ConnectionTransientError({ detail: "mint failed" }),
-              ),
-            ),
-          ),
-        };
+  it.effect("keeps retrying when the credential mint fails, without freezing", () =>
+    Effect.gen(function* () {
+      const attempts = yield* Ref.make(0);
+      const connection: PreparedConnection = {
+        label: "test",
+        prepareSocketUrl: Ref.update(attempts, (n) => n + 1).pipe(
+          Effect.andThen(Effect.fail(new ConnectionTransientError({ detail: "mint failed" }))),
+        ),
+      };
 
-        const supervisor = yield* start(connection);
+      const supervisor = yield* start(connection);
 
-        // Wait for a failure to surface as a reconnecting state.
-        const reconnecting = yield* SubscriptionRef.changes(
-          supervisor.state,
-        ).pipe(
-          Stream.filter((state) => state.phase === "reconnecting"),
-          Stream.runHead,
-        );
+      // Wait for a failure to surface as a reconnecting state.
+      const reconnecting = yield* SubscriptionRef.changes(supervisor.state).pipe(
+        Stream.filter((state) => state.phase === "reconnecting"),
+        Stream.runHead,
+      );
 
-        assert.isTrue(Option.isSome(reconnecting));
-        if (Option.isSome(reconnecting)) {
-          assert.equal(reconnecting.value.lastError, "mint failed");
-        }
-        // The mint was actually attempted, and no live session is exposed.
-        assert.isTrue((yield* Ref.get(attempts)) >= 1);
-        assert.isTrue(
-          Option.isNone(yield* SubscriptionRef.get(supervisor.session)),
-        );
-      }).pipe(
-        Effect.scoped,
-        Effect.provide(Socket.layerWebSocketConstructorGlobal),
-      ),
+      assert.isTrue(Option.isSome(reconnecting));
+      if (Option.isSome(reconnecting)) {
+        assert.equal(reconnecting.value.lastError, "mint failed");
+      }
+      // The mint was actually attempted, and no live session is exposed.
+      assert.isTrue((yield* Ref.get(attempts)) >= 1);
+      assert.isTrue(Option.isNone(yield* SubscriptionRef.get(supervisor.session)));
+    }).pipe(Effect.scoped, Effect.provide(Socket.layerWebSocketConstructorGlobal)),
   );
 });

@@ -11,10 +11,7 @@ import * as Layer from "effect/Layer";
 export class NetService extends Context.Service<
   NetService,
   {
-    readonly canListenOnHost: (
-      port: number,
-      host: string,
-    ) => Effect.Effect<boolean>;
+    readonly canListenOnHost: (port: number, host: string) => Effect.Effect<boolean>;
   }
 >()("@app/shared/Net/NetService") {}
 
