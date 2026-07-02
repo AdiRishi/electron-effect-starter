@@ -17,6 +17,7 @@ import * as Path from "effect/Path";
 export const DEFAULT_PORT = 13773;
 export const DEFAULT_HOST = "127.0.0.1";
 export const APP_NAME = "Desktop Starter";
+export const APP_VERSION = "0.0.0";
 
 /**
  * ServerConfig - service tag for the resolved server runtime configuration.

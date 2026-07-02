@@ -10,8 +10,7 @@ import * as Effect from "effect/Effect";
 import { Command } from "effect/unstable/cli";
 
 import { runServerCommand, sharedServerCommandFlags, startCommand } from "./cli/server.ts";
-
-const APP_VERSION = "0.0.0";
+import { APP_VERSION } from "./config.ts";
 
 export const cli = Command.make("app-server", {
   ...sharedServerCommandFlags,

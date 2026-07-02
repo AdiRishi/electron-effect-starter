@@ -15,10 +15,8 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { Flag } from "effect/unstable/cli";
 
-import { readBootstrapEnvelope } from "../bootstrap.ts";
+import { type BootstrapEnvelope, readBootstrapEnvelope } from "../bootstrap.ts";
 import * as ServerConfig from "../config.ts";
-
-const APP_VERSION = "0.0.0";
 
 export const portFlag = Flag.integer("port").pipe(
   Flag.withDescription("Port for the HTTP/WebSocket server (default 13773 or APP_SERVER_PORT)."),
@@ -78,7 +76,7 @@ export const resolveServerConfig = Effect.fn("cli.resolveServerConfig")(function
   const bootstrapEnvelope =
     bootstrapFd !== undefined
       ? yield* readBootstrapEnvelope(bootstrapFd)
-      : Option.none<{ desktopBootstrapToken: string; port?: number }>();
+      : Option.none<BootstrapEnvelope>();
   const bootstrap = Option.getOrUndefined(bootstrapEnvelope);
 
   const port =
@@ -109,7 +107,7 @@ export const resolveServerConfig = Effect.fn("cli.resolveServerConfig")(function
 
   return ServerConfig.make({
     appName: ServerConfig.APP_NAME,
-    version: APP_VERSION,
+    version: ServerConfig.APP_VERSION,
     startedAt,
     host,
     port,
