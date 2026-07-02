@@ -1,5 +1,5 @@
 {
-  "name": "@app/monorepo",
+  "name": "electron-effect-starter",
   "private": true,
   "type": "module",
   "scripts": {

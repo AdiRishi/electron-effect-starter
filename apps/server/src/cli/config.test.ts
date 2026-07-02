@@ -31,7 +31,9 @@ function withBootstrapFd<A, E, R>(
 ): Effect.Effect<A, E, R> {
   return Effect.acquireUseRelease(
     Effect.sync(() => {
-      const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "desktop-starter-bootstrap-"));
+      const dir = NodeFS.mkdtempSync(
+        NodePath.join(NodeOS.tmpdir(), "electron-effect-starter-bootstrap-"),
+      );
       const path = NodePath.join(dir, "bootstrap.json");
       NodeFS.writeFileSync(path, `${encodeBootstrapEnvelope(envelope)}\n`);
       return { dir, fd: NodeFS.openSync(path, "r") };

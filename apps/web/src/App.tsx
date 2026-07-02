@@ -83,7 +83,7 @@ export function App() {
       <div className="w-full max-w-md rounded-2xl border border-[--color-border] bg-[--color-card] p-6 shadow-sm">
         <header className="mb-5 flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-semibold">Desktop Starter</h1>
+            <h1 className="text-lg font-semibold">Electron Effect Starter</h1>
             <p className="text-sm text-[--color-muted]">
               {conn.state.lastError ? conn.state.lastError : "Effect RPC over WebSocket"}
             </p>
