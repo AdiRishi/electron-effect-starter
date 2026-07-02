@@ -11,13 +11,14 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+
 import {
   ServerBootstrapEnvelope,
   type ServerBootstrapEnvelope as ServerBootstrapEnvelopeValue,
 } from "@app/contracts";
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
 
 /** Shape written by the shell into the bootstrap fd. */
 export const BootstrapEnvelope = ServerBootstrapEnvelope;

@@ -5,14 +5,15 @@ import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+
 import {
   ServerBootstrapEnvelope,
   type ServerBootstrapEnvelope as ServerBootstrapEnvelopeValue,
 } from "@app/contracts";
 import { HostProcessEnvironment } from "@app/shared/hostProcess";
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
 
 import { resolveServerConfig, type CliServerFlags } from "./config.ts";
 

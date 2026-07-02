@@ -1,19 +1,20 @@
-import {
-  type DesktopUpdateChannel,
-  type DesktopUpdateState,
-  type DesktopUpdateStatus,
-} from "@app/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 
+import {
+  type DesktopUpdateChannel,
+  type DesktopUpdateState,
+  type DesktopUpdateStatus,
+} from "@app/contracts";
+
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
-import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import { UPDATE_STATE_CHANNEL } from "../ipc/channels.ts";
+import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 
 // Holds the current update state, drives `electron-updater` when packaged, and
 // pushes every change to the renderer over UPDATE_STATE_CHANNEL. When the app is

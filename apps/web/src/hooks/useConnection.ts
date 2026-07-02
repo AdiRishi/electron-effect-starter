@@ -1,3 +1,12 @@
+import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
+import * as ManagedRuntime from "effect/ManagedRuntime";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+import * as Socket from "effect/unstable/socket/Socket";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import { bootstrapRemoteBearerSession } from "@app/client-runtime/authorization";
 import {
   ConnectionSupervisor,
@@ -16,14 +25,6 @@ import {
   subscribe as rpcSubscribe,
   type UnaryRpcTag,
 } from "@app/client-runtime/rpc";
-import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
-import * as Layer from "effect/Layer";
-import * as ManagedRuntime from "effect/ManagedRuntime";
-import * as Stream from "effect/Stream";
-import * as SubscriptionRef from "effect/SubscriptionRef";
-import * as Socket from "effect/unstable/socket/Socket";
-import { useCallback, useEffect, useRef, useState } from "react";
 
 import { isElectron, resolveConnectionTarget } from "../env.ts";
 

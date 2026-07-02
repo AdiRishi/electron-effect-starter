@@ -4,7 +4,6 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
-
 import * as Electron from "electron";
 
 import { HostProcessPlatform } from "@app/shared/hostProcess";

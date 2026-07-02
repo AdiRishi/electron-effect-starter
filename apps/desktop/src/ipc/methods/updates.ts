@@ -1,6 +1,7 @@
-import { DesktopUpdateChannel, DesktopUpdateState } from "@app/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+
+import { DesktopUpdateChannel, DesktopUpdateState } from "@app/contracts";
 
 import * as DesktopUpdater from "../../updates/DesktopUpdater.ts";
 import * as IpcChannels from "../channels.ts";

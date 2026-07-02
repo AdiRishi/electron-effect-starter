@@ -62,21 +62,16 @@ export interface ContextMenuItem<T extends string = string> {
   readonly children?: readonly ContextMenuItem<T>[];
 }
 
-export interface ContextMenuItemShape {
-  readonly id: string;
-  readonly label: string;
-  readonly destructive?: boolean;
-  readonly disabled?: boolean;
-  readonly children?: readonly ContextMenuItemShape[];
-}
-
-export const ContextMenuItemSchema: Schema.Codec<ContextMenuItemShape> = Schema.Struct({
+// Recursive schemas need an explicit type annotation (`Schema.suspend` breaks
+// inference), so the schema is typed by the interface's default instantiation.
+// It keeps the `Schema` suffix because the interface owns the bare name.
+export const ContextMenuItemSchema: Schema.Codec<ContextMenuItem> = Schema.Struct({
   id: Schema.String,
   label: Schema.String,
   destructive: Schema.optionalKey(Schema.Boolean),
   disabled: Schema.optionalKey(Schema.Boolean),
   children: Schema.optionalKey(
-    Schema.Array(Schema.suspend((): Schema.Codec<ContextMenuItemShape> => ContextMenuItemSchema)),
+    Schema.Array(Schema.suspend((): Schema.Codec<ContextMenuItem> => ContextMenuItemSchema)),
   ),
 });
 

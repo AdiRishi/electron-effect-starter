@@ -1,3 +1,9 @@
+import * as Crypto from "effect/Crypto";
+import * as DateTime from "effect/DateTime";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import { Flag } from "effect/unstable/cli";
+
 /**
  * CLI → ServerConfig resolution.
  *
@@ -9,11 +15,6 @@
  * @module cli/config
  */
 import { HostProcessEnvironment } from "@app/shared/hostProcess";
-import * as Crypto from "effect/Crypto";
-import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
-import { Flag } from "effect/unstable/cli";
 
 import { type BootstrapEnvelope, readBootstrapEnvelope } from "../bootstrap.ts";
 import * as ServerConfig from "../config.ts";

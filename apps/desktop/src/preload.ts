@@ -1,5 +1,6 @@
-import type { DesktopBridge } from "@app/contracts";
 import { contextBridge, ipcRenderer } from "electron";
+
+import type { DesktopBridge } from "@app/contracts";
 
 import * as IpcChannels from "./ipc/channels.ts";
 

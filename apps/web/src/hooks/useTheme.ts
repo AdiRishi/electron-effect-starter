@@ -1,5 +1,6 @@
-import type { DesktopTheme } from "@app/contracts";
 import { useCallback, useSyncExternalStore } from "react";
+
+import type { DesktopTheme } from "@app/contracts";
 
 import { localApi, THEME_STORAGE_KEY } from "../localApi.ts";
 

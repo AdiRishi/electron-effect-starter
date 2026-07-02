@@ -1,7 +1,8 @@
-import { BearerSession, type BootstrapBearerInput } from "@app/contracts";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+
+import { BearerSession, type BootstrapBearerInput } from "@app/contracts";
 
 const BOOTSTRAP_TIMEOUT = Duration.seconds(10);
 

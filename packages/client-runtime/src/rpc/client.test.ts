@@ -1,4 +1,3 @@
-import { EnvironmentAuthorizationError, WS_METHODS, type TickEvent } from "@app/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -12,11 +11,13 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { RpcClientError } from "effect/unstable/rpc";
 
+import { EnvironmentAuthorizationError, WS_METHODS, type TickEvent } from "@app/contracts";
+
 import { INITIAL_CONNECTION_STATE, type ConnectionState } from "../connection/model.ts";
 import { ConnectionSupervisor } from "../connection/supervisor.ts";
-import type { RpcSession } from "./session.ts";
-import type { WsRpcProtocolClient } from "./protocol.ts";
 import { RpcUnavailableError, request, subscribe } from "./client.ts";
+import type { WsRpcProtocolClient } from "./protocol.ts";
+import type { RpcSession } from "./session.ts";
 
 const AT = DateTime.makeUnsafe(0);
 

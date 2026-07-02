@@ -1,14 +1,14 @@
+import * as NodeOS from "node:os";
+
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as NodeOS from "node:os";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { FetchHttpClient } from "effect/unstable/http";
-
 import * as Electron from "electron";
 
-import * as NetService from "@app/shared/Net";
 import { HostProcessPlatform } from "@app/shared/hostProcess";
+import * as NetService from "@app/shared/Net";
 
 import * as DesktopApp from "./app/DesktopApp.ts";
 import * as DesktopEnvironment from "./app/DesktopEnvironment.ts";
