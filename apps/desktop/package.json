@@ -8,7 +8,7 @@
     "build": "vite build --mode main && vite build --mode preload",
     "start": "node scripts/start-electron.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run"
   },
   "dependencies": {
     "@app/contracts": "workspace:*",
