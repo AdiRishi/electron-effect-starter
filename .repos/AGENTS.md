@@ -10,5 +10,3 @@ agents.
   configured repository.
 - When updating a dependency with a configured vendored subtree, sync that subtree in the same change so
   `.repos/` matches the installed dependency version.
-- When writing Effect code, read `.repos/effect-smol/LLMS.md` first and inspect `.repos/effect-smol/` for
-  examples of idiomatic usage, tests, module structure, and API design.
