@@ -1,8 +1,10 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  // This file is the ONLY lint config: the lint scripts pass
-  // --disable-nested-config so configs inside vendored trees (.repos/**
-  // ships its own .oxlintrc.json with plugins we don't install) are ignored.
+  // The lint scripts pass the source roots (apps packages scripts) explicitly
+  // so the walker never enters .repos/ — the vendored trees ship their own
+  // oxlint configs with plugins we don't install, and config discovery runs
+  // before ignorePatterns. The .repos entries below still cover editor
+  // integrations that lint single files against this config.
   // Correctness stays at its default (error). Suspicious/perf are advisory,
   // mirroring the categories T3 Code enables.
   "categories": {
@@ -21,5 +23,5 @@
     // when they capture nothing; T3 Code disables this rule for the same shape.
     "unicorn/consistent-function-scoping": "off"
   },
-  "ignorePatterns": [".repos/**", "dist/**", "dist-electron/**", "release/**"]
+  "ignorePatterns": [".repos", ".repos/**", "dist/**", "dist-electron/**", "release/**"]
 }
