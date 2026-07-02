@@ -1,4 +1,5 @@
 import { builtinModules } from "node:module";
+
 import { defineConfig, type ConfigEnv, type UserConfig } from "vite";
 
 // Two CJS entries bundled into `dist-electron`: the Electron main process and

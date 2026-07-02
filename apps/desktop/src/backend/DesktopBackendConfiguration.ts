@@ -1,4 +1,3 @@
-import type { ServerBootstrapEnvelope } from "@app/contracts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -7,6 +6,8 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 import * as SynchronizedRef from "effect/SynchronizedRef";
+
+import type { ServerBootstrapEnvelope } from "@app/contracts";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 

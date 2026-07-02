@@ -1,4 +1,5 @@
 import { builtinModules } from "node:module";
+
 import { defineConfig } from "vite";
 
 // Bundle every non-Node dependency into the single-file CLI so the packaged

@@ -3,19 +3,19 @@ import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Ref from "effect/Ref";
 
-import { installDesktopIpcHandlers } from "../ipc/DesktopIpcHandlers.ts";
 import * as DesktopBackendManager from "../backend/DesktopBackendManager.ts";
+import * as ElectronApp from "../electron/ElectronApp.ts";
+import * as ElectronDialog from "../electron/ElectronDialog.ts";
+import * as ElectronTheme from "../electron/ElectronTheme.ts";
+import { installDesktopIpcHandlers } from "../ipc/DesktopIpcHandlers.ts";
+import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+import * as DesktopUpdater from "../updates/DesktopUpdater.ts";
+import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopLifecycle from "./DesktopLifecycle.ts";
 import { makeComponentLogger } from "./DesktopObservability.ts";
 import * as DesktopShutdown from "./DesktopShutdown.ts";
 import * as DesktopState from "./DesktopState.ts";
-import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
-import * as DesktopUpdater from "../updates/DesktopUpdater.ts";
-import * as DesktopWindow from "../window/DesktopWindow.ts";
-import * as ElectronApp from "../electron/ElectronApp.ts";
-import * as ElectronDialog from "../electron/ElectronDialog.ts";
-import * as ElectronTheme from "../electron/ElectronTheme.ts";
 
 // The application program. It is `Effect.scoped`: `startup` brings the app up,
 // then it blocks on `shutdown.awaitRequest`. When shutdown fires (all windows

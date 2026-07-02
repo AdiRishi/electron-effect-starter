@@ -5,10 +5,10 @@ import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 
 import * as ElectronApp from "../electron/ElectronApp.ts";
-import * as DesktopShutdown from "./DesktopShutdown.ts";
-import * as DesktopState from "./DesktopState.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import { makeComponentLogger } from "./DesktopObservability.ts";
+import * as DesktopShutdown from "./DesktopShutdown.ts";
+import * as DesktopState from "./DesktopState.ts";
 
 // Bridges Electron's app events into the Effect world. `register` first claims
 // the single-instance lock (a second launch quits itself; the first instance

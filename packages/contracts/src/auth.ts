@@ -31,7 +31,7 @@ export const BootstrapBearerInput = Schema.Struct({
   clientMetadata: Schema.optionalKey(
     Schema.Struct({
       label: TrimmedNonEmptyString,
-      deviceType: Schema.Literals(["desktop", "web", "mobile"]),
+      deviceType: Schema.Literals(["desktop", "web"]),
     }),
   ),
 });

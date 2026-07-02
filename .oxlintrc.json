@@ -1,5 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "node", "promise"],
   "categories": {
     "suspicious": "warn",
     "perf": "warn"
@@ -8,7 +9,27 @@
     "eslint/no-await-in-loop": "off",
     "eslint/no-underscore-dangle": "off",
     "eslint/no-shadow": "off",
-    "unicorn/consistent-function-scoping": "off"
+    "unicorn/consistent-function-scoping": "off",
+    "import/no-unassigned-import": ["warn", { "allow": ["**/*.css"] }],
+    "promise/always-return": ["warn", { "ignoreLastCallback": true }]
   },
-  "ignorePatterns": [".repos", ".repos/**", "dist/**", "dist-electron/**", "release/**"]
+  // Bare ".repos" prunes the directory walk (else nested-config discovery reads the
+  // vendored repo's config and fails); ".repos/**" ignores the files themselves.
+  "ignorePatterns": [".repos", ".repos/**", "dist/**", "dist-electron/**", "release/**"],
+  "overrides": [
+    {
+      "files": ["apps/web/**/*.ts", "apps/web/**/*.tsx"],
+      "plugins": ["react", "react-perf", "jsx-a11y"],
+      "rules": {
+        // Not in any default-enabled category; this line is what turns it on.
+        "react-hooks/rules-of-hooks": "error",
+        "react/react-in-jsx-scope": "off",
+        "react-perf/jsx-no-new-function-as-prop": "off"
+      }
+    },
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx"],
+      "plugins": ["vitest"]
+    }
+  ]
 }

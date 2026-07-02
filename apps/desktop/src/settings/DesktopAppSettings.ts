@@ -1,5 +1,3 @@
-import { DesktopTheme, DesktopUpdateChannel } from "@app/contracts";
-import { writeFileStringAtomically } from "@app/shared/atomicWrite";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -8,6 +6,9 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as SynchronizedRef from "effect/SynchronizedRef";
+
+import { DesktopTheme, DesktopUpdateChannel } from "@app/contracts";
+import { writeFileStringAtomically } from "@app/shared/atomicWrite";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 

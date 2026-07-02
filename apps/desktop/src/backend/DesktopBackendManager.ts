@@ -16,14 +16,14 @@ import { HttpClient } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { ServerBootstrapEnvelope } from "@app/contracts";
-import { NetService } from "@app/shared/Net";
 import { waitForHttpReady } from "@app/shared/httpReadiness";
+import { NetService } from "@app/shared/Net";
 
-import * as DesktopBackendConfiguration from "./DesktopBackendConfiguration.ts";
-import type { DesktopBackendStartConfig } from "./DesktopBackendConfiguration.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
+import * as DesktopBackendConfiguration from "./DesktopBackendConfiguration.ts";
+import type { DesktopBackendStartConfig } from "./DesktopBackendConfiguration.ts";
 
 // Supervises the single local server child: picks a free port, spawns the
 // process, probes HTTP readiness before revealing the window, restarts with
