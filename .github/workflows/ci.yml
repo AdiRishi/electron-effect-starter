@@ -21,4 +21,4 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
-      - run: pnpm fmt:check
+      - run: pnpm format:check
