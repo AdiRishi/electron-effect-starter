@@ -3,20 +3,26 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
 /**
- * Write a file atomically: write to a temp sibling, then rename over the
- * target. A crash mid-write leaves the previous file intact instead of a
- * truncated one. Used by the desktop settings store. `suffix` should be a
- * unique-per-write token (e.g. a random hex string) to avoid concurrent-write
- * collisions.
+ * Write a file atomically: write into a scoped temp directory next to the
+ * target, then rename over it. A crash mid-write leaves the previous file
+ * intact instead of a truncated one, and the scoped temp directory is cleaned
+ * up even when the write or rename fails. Used by the desktop settings store.
  */
-export const atomicWriteString = Effect.fn("shared.atomicWrite.atomicWriteString")(
-  function* (input: { readonly path: string; readonly contents: string; readonly suffix: string }) {
-    const fileSystem = yield* FileSystem.FileSystem;
+export const writeFileStringAtomically = Effect.fn("shared.atomicWrite.writeFileStringAtomically")(
+  function* (input: { readonly filePath: string; readonly contents: string }) {
+    const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const directory = path.dirname(input.path);
-    const tempPath = `${input.path}.${input.suffix}.tmp`;
-    yield* fileSystem.makeDirectory(directory, { recursive: true });
-    yield* fileSystem.writeFileString(tempPath, input.contents);
-    yield* fileSystem.rename(tempPath, input.path);
+    const targetDirectory = path.dirname(input.filePath);
+
+    yield* fs.makeDirectory(targetDirectory, { recursive: true });
+    const tempDirectory = yield* fs.makeTempDirectoryScoped({
+      directory: targetDirectory,
+      prefix: `${path.basename(input.filePath)}.`,
+    });
+    const tempPath = path.join(tempDirectory, "contents.tmp");
+
+    yield* fs.writeFileString(tempPath, input.contents);
+    yield* fs.rename(tempPath, input.filePath);
   },
+  Effect.scoped,
 );

@@ -1,9 +1,7 @@
 import { DesktopTheme, DesktopUpdateChannel } from "@app/contracts";
-import { atomicWriteString } from "@app/shared/atomicWrite";
+import { writeFileStringAtomically } from "@app/shared/atomicWrite";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -132,7 +130,6 @@ export const make = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
   const settingsRef = yield* SynchronizedRef.make(environment.defaultDesktopSettings);
 
   const persist = (
@@ -144,14 +141,12 @@ export const make = Effect.gen(function* () {
         return Effect.succeed([settingsChange(settings, false), settings] as const);
       }
       return Effect.gen(function* () {
-        const suffix = Encoding.encodeHex(yield* crypto.randomBytes(8));
         const contents = yield* encodeDesktopSettingsJson(
           toDocument(nextSettings, environment.defaultDesktopSettings),
         );
-        yield* atomicWriteString({
-          path: environment.desktopSettingsPath,
+        yield* writeFileStringAtomically({
+          filePath: environment.desktopSettingsPath,
           contents: `${contents}\n`,
-          suffix,
         });
         return [settingsChange(nextSettings, true), nextSettings] as const;
       }).pipe(
