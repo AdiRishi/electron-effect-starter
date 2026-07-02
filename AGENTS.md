@@ -29,3 +29,9 @@ Long term maintainability is a core priority. If you add new functionality, firs
 - `packages/shared`: Runtime utilities consumed by multiple apps. Explicit subpath exports (e.g. `@app/shared/Net`) — no barrel index.
 - `packages/client-runtime`: Client transport: the connection supervisor and typed RPC client. Subpath exports only (`/connection`, `/rpc`, `/authorization`).
 - `scripts`: Repo tooling — dev runner, desktop packaging, reference-repo sync.
+
+## Vendored Repositories
+
+`.repos/` holds read-only vendored reference repos. See `.repos/AGENTS.md` for more details.
+
+- When writing Effect code, read `.repos/effect-smol/LLMS.md` first and inspect `.repos/effect-smol/` for examples of idiomatic usage, tests, module structure, and API design.
