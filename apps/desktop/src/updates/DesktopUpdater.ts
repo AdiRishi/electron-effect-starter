@@ -139,11 +139,6 @@ export const make = Effect.gen(function* () {
       ? Effect.gen(function* () {
           yield* electronUpdater.setAutoDownload(false);
           yield* electronUpdater.setChannel(persisted.updateChannel);
-          // ── DESIGN SEAM (updates) ── point the updater at your release feed:
-          //   yield* electronUpdater.setFeedURL({
-          //     provider: "generic",
-          //     url: "https://updates.example.com/latest",
-          //   });
           yield* logInfo("updater configured", {
             channel: persisted.updateChannel,
           });

@@ -56,13 +56,7 @@ export const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServer
   stream: true,
 });
 
-/**
- * The wire contract the server decodes against and the client is typed by.
- * ── DESIGN SEAM #2 ──
- * Add your app's RPCs here: define a schema in `server.ts` (or a new module),
- * make an `Rpc.make("your.method", { payload, success, error })`, and list it
- * below. `stream: true` turns any method into a server-push subscription.
- */
+/** The wire contract the server decodes against and the client is typed by. */
 export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsEchoRpc,

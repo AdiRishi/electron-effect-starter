@@ -19,10 +19,6 @@ export type Unsubscribe = () => void;
  *
  * Sync methods (`ipcRenderer.sendSync`) return values directly; everything
  * else is `ipcRenderer.invoke` and returns a Promise.
- *
- * ── DESIGN SEAM (bridge surface) ──
- * Add a method here, wire a channel in the desktop `ipc/` layer, implement the
- * preload delegate, and it's typed end-to-end.
  */
 export interface DesktopBridge {
   /** Synchronous: static identity read at boot for branding. */

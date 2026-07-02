@@ -15,10 +15,6 @@ import { DEFAULT_DESKTOP_SETTINGS } from "../settings/DesktopAppSettings.ts";
 // once in `main.ts` from injected Electron metadata + host process values, so
 // every consumer sees the same resolved values and nothing downstream touches
 // `process`/`__dirname` directly.
-//
-// ── DESIGN SEAM (branding + paths) ──
-// The app name, port default, and path layout are all decided here. Change them
-// in one place and the window title, settings location, and log dir follow.
 
 const APP_BASE_NAME = "Electron Effect Starter";
 const DEFAULT_BACKEND_PORT = 13773;

@@ -15,11 +15,6 @@ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 // optional on disk (so an old settings file with missing keys still decodes)
 // and normalized back to defaults on load. Writes go through a temp-sibling +
 // rename so a crash mid-write can't corrupt the file.
-//
-// ── DESIGN SEAM #3: add your app's settings fields here ──
-// TODO(you): add your app's settings fields here — add the field to
-// `DesktopSettings`, `DEFAULT_DESKTOP_SETTINGS`, `DesktopSettingsDocument`,
-// `normalizeDocument`, `toDocument`, plus a setter on the service interface.
 
 export interface DesktopSettings {
   readonly theme: DesktopTheme;
