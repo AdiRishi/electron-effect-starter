@@ -47,8 +47,8 @@ export function App() {
     }
     let alive = true;
     request("server.getConfig", {})
-      .then((next) => {
-        if (alive) setConfig(next);
+      .then((serverConfig) => {
+        if (alive) setConfig(serverConfig);
       })
       .catch(() => {
         if (alive) setConfig(null);
@@ -123,9 +123,15 @@ export function App() {
         </dl>
 
         <div className="mt-5 border-t border-[--color-border] pt-5">
-          <label className="mb-1.5 block text-xs font-medium text-[--color-muted]">Echo</label>
+          <label
+            htmlFor="echo-input"
+            className="mb-1.5 block text-xs font-medium text-[--color-muted]"
+          >
+            Echo
+          </label>
           <div className="flex gap-2">
             <input
+              id="echo-input"
               value={echoInput}
               onChange={(e) => setEchoInput(e.target.value)}
               className="flex-1 rounded-lg border border-[--color-border] bg-transparent px-3 py-1.5 text-sm outline-none focus:border-[--color-accent]"
