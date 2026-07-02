@@ -11,7 +11,7 @@ export interface ConnectionTarget {
 }
 
 /** Turn a ws(s) URL into its http(s) origin form. */
-function toHttpOrigin(wsUrl: string): string {
+export function toHttpOrigin(wsUrl: string): string {
   const url = new URL(wsUrl);
   url.protocol = url.protocol === "wss:" ? "https:" : "http:";
   url.pathname = "";
@@ -21,7 +21,7 @@ function toHttpOrigin(wsUrl: string): string {
 }
 
 /** Turn an http(s) origin into its ws(s) form. */
-function toWsOrigin(httpUrl: string): string {
+export function toWsOrigin(httpUrl: string): string {
   const url = new URL(httpUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = "";
