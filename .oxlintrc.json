@@ -11,7 +11,12 @@
     // disables this rule for the same reason.
     "eslint/no-await-in-loop": "off",
     // Allow the standard ESM __dirname shim.
-    "eslint/no-underscore-dangle": "off"
+    "eslint/no-underscore-dangle": "off",
+    // @effect/vitest's `it.layer(...)((it) => ...)` shadows `it` by design.
+    "eslint/no-shadow": "off",
+    // Service `make()` factories define their methods inside the factory even
+    // when they capture nothing; T3 Code disables this rule for the same shape.
+    "unicorn/consistent-function-scoping": "off"
   },
   "ignorePatterns": ["dist/**", "dist-electron/**", "release/**"]
 }
