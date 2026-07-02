@@ -20,7 +20,7 @@ import { DEFAULT_DESKTOP_SETTINGS } from "../settings/DesktopAppSettings.ts";
 // The app name, port default, and path layout are all decided here. Change them
 // in one place and the window title, settings location, and log dir follow.
 
-const APP_BASE_NAME = "App";
+const APP_BASE_NAME = "Electron Effect Starter";
 const DEFAULT_BACKEND_PORT = 13773;
 
 export interface MakeDesktopEnvironmentInput {
@@ -49,7 +49,7 @@ export class DesktopEnvironment extends Context.Service<
     readonly appVersion: string;
     readonly resourcesPath: string;
     readonly homeDirectory: string;
-    /** Base app-data dir, e.g. ~/.app-starter — settings + logs live under here. */
+    /** Base app-data dir, e.g. ~/.electron-effect-starter — settings + logs live under here. */
     readonly baseDir: string;
     readonly desktopSettingsPath: string;
     readonly logDir: string;
@@ -84,7 +84,7 @@ export function makeWith(
   const isDevelopment = Option.isSome(input.devServerUrl);
   const displayName = isDevelopment ? `${APP_BASE_NAME} (Dev)` : APP_BASE_NAME;
 
-  const baseDir = path.join(input.homeDirectory, ".app-starter");
+  const baseDir = path.join(input.homeDirectory, ".electron-effect-starter");
   const logDir = path.join(baseDir, "logs");
   const desktopSettingsPath = path.join(baseDir, "desktop-settings.json");
   const preloadPath = path.join(input.dirname, "preload.cjs");

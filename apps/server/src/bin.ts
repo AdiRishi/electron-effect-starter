@@ -15,7 +15,7 @@ import { APP_VERSION } from "./config.ts";
 export const cli = Command.make("app-server", {
   ...sharedServerCommandFlags,
 }).pipe(
-  Command.withDescription("Run the Desktop Starter server."),
+  Command.withDescription("Run the Electron Effect Starter server."),
   Command.withHandler((flags) => runServerCommand(flags)),
   Command.withSubcommands([startCommand]),
 );

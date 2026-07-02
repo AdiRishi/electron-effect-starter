@@ -21,6 +21,6 @@ export const runServerCommand = (flags: CliServerFlags) =>
 export const startCommand = Command.make("start", {
   ...sharedServerCommandFlags,
 }).pipe(
-  Command.withDescription("Run the Desktop Starter server."),
+  Command.withDescription("Run the Electron Effect Starter server."),
   Command.withHandler((flags) => runServerCommand(flags)),
 );
