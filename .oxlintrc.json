@@ -18,5 +18,5 @@
     // when they capture nothing; T3 Code disables this rule for the same shape.
     "unicorn/consistent-function-scoping": "off"
   },
-  "ignorePatterns": ["dist/**", "dist-electron/**", "release/**"]
+  "ignorePatterns": [".repos/**", "dist/**", "dist-electron/**", "release/**"]
 }
