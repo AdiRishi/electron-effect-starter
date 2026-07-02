@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-import { NonNegativeInt, PortSchema, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { NonNegativeInt, Port, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 /**
  * Returned by the `server.getConfig` unary RPC. The client's first request
@@ -22,7 +22,7 @@ export type ServerConfig = typeof ServerConfig.Type;
  */
 export const ServerBootstrapEnvelope = Schema.Struct({
   desktopBootstrapToken: TrimmedNonEmptyString,
-  port: Schema.optionalKey(PortSchema),
+  port: Schema.optionalKey(Port),
 });
 export type ServerBootstrapEnvelope = typeof ServerBootstrapEnvelope.Type;
 
