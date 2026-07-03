@@ -10,7 +10,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstab
  *
  * @module http
  */
-import { BootstrapBearerInput, type BearerSession } from "@app/contracts";
+import { BearerSessionJson, BootstrapBearerInput, type BearerSession } from "@app/contracts";
 
 import * as Auth from "./auth.ts";
 import * as ServerConfig from "./config.ts";
@@ -18,6 +18,11 @@ import * as Readiness from "./readiness.ts";
 
 export const HEALTH_PATH = "/.well-known/app/health";
 export const AUTH_BOOTSTRAP_PATH = "/api/auth/bootstrap/bearer";
+
+// Encodes via the JSON wire codec so `expires_at` leaves as an ISO string —
+// `HttpServerResponse.json` alone would stringify the raw DateTime instance,
+// which the client's decoder rejects.
+const respondBearerSession = HttpServerResponse.schemaJson(BearerSessionJson);
 
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 
@@ -96,7 +101,8 @@ export const authBootstrapRouteLayer = HttpRouter.add(
       access_token: minted.value,
       expires_at: null,
     };
-    return yield* HttpServerResponse.json(session, { status: 200 });
+    // Encoding a value we just constructed can only fail on a schema bug — die.
+    return yield* respondBearerSession(session).pipe(Effect.orDie);
   }),
 );
 

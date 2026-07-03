@@ -13,8 +13,8 @@ import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
  * The four `WsRpcGroup` methods are registered via `WsRpcGroup.toLayer`:
  *  - `server.getConfig` (unary)
  *  - `echo` (unary)
- *  - `subscribeTicks` (stream)
- *  - `subscribeServerLifecycle` (stream, ordered push bus)
+ *  - `server.subscribeTicks` (stream)
+ *  - `server.subscribeLifecycle` (stream, ordered push bus)
  *
  * @module ws
  */
@@ -52,7 +52,7 @@ function extractBearer(request: HttpServerRequest.HttpServerRequest): Option.Opt
 }
 
 /**
- * Register the four RPC handlers. `subscribeServerLifecycle` replays the retained
+ * Register the four RPC handlers. `server.subscribeLifecycle` replays the retained
  * snapshot (sorted by sequence) then follows the live stream filtered to events
  * newer than the snapshot boundary.
  */
@@ -69,14 +69,14 @@ const makeWsRpcLayer = () =>
             version: config.version,
             startedAt: config.startedAt,
           }),
-        [WS_METHODS.echo]: (input) =>
+        [WS_METHODS.serverEcho]: (input) =>
           DateTime.now.pipe(
             Effect.map((receivedAt) => ({
               message: input.message,
               receivedAt,
             })),
           ),
-        [WS_METHODS.subscribeTicks]: () =>
+        [WS_METHODS.serverSubscribeTicks]: () =>
           Stream.tick("1 second").pipe(
             Stream.mapAccum(
               () => 0,
@@ -89,7 +89,7 @@ const makeWsRpcLayer = () =>
               DateTime.now.pipe(Effect.map((at): TickEvent => ({ tick, at }))),
             ),
           ),
-        [WS_METHODS.subscribeServerLifecycle]: () =>
+        [WS_METHODS.serverSubscribeLifecycle]: () =>
           Stream.unwrap(
             Effect.gen(function* () {
               const snapshot = yield* lifecycleEvents.snapshot;

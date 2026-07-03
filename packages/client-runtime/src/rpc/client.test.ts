@@ -51,7 +51,7 @@ describe("rpc client", () => {
     Effect.gen(function* () {
       const { supervisor } = yield* makeHarness;
 
-      const exit = yield* request(WS_METHODS.echo, { message: "hello" }).pipe(
+      const exit = yield* request(WS_METHODS.serverEcho, { message: "hello" }).pipe(
         Effect.provideService(ConnectionSupervisor, supervisor),
         Effect.exit,
       );
@@ -70,12 +70,12 @@ describe("rpc client", () => {
     Effect.gen(function* () {
       const { activeSession, supervisor } = yield* makeHarness;
       const client = {
-        [WS_METHODS.echo]: (input: { readonly message: string }) =>
+        [WS_METHODS.serverEcho]: (input: { readonly message: string }) =>
           Effect.succeed({ message: input.message, receivedAt: AT }),
       } as unknown as WsRpcProtocolClient;
       yield* SubscriptionRef.set(activeSession, Option.some(session(client)));
 
-      const result = yield* request(WS_METHODS.echo, { message: "hello" }).pipe(
+      const result = yield* request(WS_METHODS.serverEcho, { message: "hello" }).pipe(
         Effect.provideService(ConnectionSupervisor, supervisor),
       );
 
@@ -89,10 +89,10 @@ describe("rpc client", () => {
       const firstTicks = yield* Queue.unbounded<TickEvent>();
       const secondTicks = yield* Queue.unbounded<TickEvent>();
       const firstClient = {
-        [WS_METHODS.subscribeTicks]: () => Stream.fromQueue(firstTicks),
+        [WS_METHODS.serverSubscribeTicks]: () => Stream.fromQueue(firstTicks),
       } as unknown as WsRpcProtocolClient;
       const secondClient = {
-        [WS_METHODS.subscribeTicks]: () => Stream.fromQueue(secondTicks),
+        [WS_METHODS.serverSubscribeTicks]: () => Stream.fromQueue(secondTicks),
       } as unknown as WsRpcProtocolClient;
 
       const values = yield* Ref.make<ReadonlyArray<number>>([]);
@@ -100,7 +100,7 @@ describe("rpc client", () => {
       const sawSecond = yield* Deferred.make<void>();
 
       const consumer = yield* Effect.forkChild(
-        subscribe(WS_METHODS.subscribeTicks, {}).pipe(
+        subscribe(WS_METHODS.serverSubscribeTicks, {}).pipe(
           Stream.runForEach((event) =>
             Ref.updateAndGet(values, (current) => [...current, event.tick]).pipe(
               Effect.flatMap((current) =>
@@ -136,18 +136,18 @@ describe("rpc client", () => {
     Effect.gen(function* () {
       const { activeSession, supervisor } = yield* makeHarness;
       const failingClient = {
-        [WS_METHODS.subscribeTicks]: () => Stream.fail(transportError()),
+        [WS_METHODS.serverSubscribeTicks]: () => Stream.fail(transportError()),
       } as unknown as WsRpcProtocolClient;
       const nextTicks = yield* Queue.unbounded<TickEvent>();
       const nextClient = {
-        [WS_METHODS.subscribeTicks]: () => Stream.fromQueue(nextTicks),
+        [WS_METHODS.serverSubscribeTicks]: () => Stream.fromQueue(nextTicks),
       } as unknown as WsRpcProtocolClient;
 
       const values = yield* Ref.make<ReadonlyArray<number>>([]);
       const sawValue = yield* Deferred.make<void>();
 
       const consumer = yield* Effect.forkChild(
-        subscribe(WS_METHODS.subscribeTicks, {}).pipe(
+        subscribe(WS_METHODS.serverSubscribeTicks, {}).pipe(
           Stream.runForEach((event) =>
             Ref.update(values, (current) => [...current, event.tick]).pipe(
               Effect.andThen(Deferred.succeed(sawValue, undefined)),
@@ -174,12 +174,12 @@ describe("rpc client", () => {
     Effect.gen(function* () {
       const { activeSession, supervisor } = yield* makeHarness;
       const rejectingClient = {
-        [WS_METHODS.subscribeTicks]: () =>
+        [WS_METHODS.serverSubscribeTicks]: () =>
           Stream.fail(new EnvironmentAuthorizationError({ reason: "expired" })),
       } as unknown as WsRpcProtocolClient;
       yield* SubscriptionRef.set(activeSession, Option.some(session(rejectingClient)));
 
-      const exit = yield* subscribe(WS_METHODS.subscribeTicks, {}).pipe(
+      const exit = yield* subscribe(WS_METHODS.serverSubscribeTicks, {}).pipe(
         Stream.runCollect,
         Effect.provideService(ConnectionSupervisor, supervisor),
         Effect.exit,

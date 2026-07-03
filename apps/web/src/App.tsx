@@ -62,9 +62,12 @@ export function App() {
   // watches the session and re-attaches on every reconnect by itself, so we must
   // NOT gate on `connected` — that would tear the stream down and rebuild it on
   // each blip, defeating the transport's built-in re-attach.
-  useEffect(() => subscribe("subscribeTicks", {}, (event) => setTick(event.tick)), [subscribe]);
   useEffect(
-    () => subscribe("subscribeServerLifecycle", {}, (event) => setLifecycle(event.phase)),
+    () => subscribe("server.subscribeTicks", {}, (event) => setTick(event.tick)),
+    [subscribe],
+  );
+  useEffect(
+    () => subscribe("server.subscribeLifecycle", {}, (event) => setLifecycle(event.phase)),
     [subscribe],
   );
 
@@ -73,7 +76,7 @@ export function App() {
 
   const runEcho = useCallback(() => {
     setEchoing(true);
-    request("echo", { message: echoInput })
+    request("server.echo", { message: echoInput })
       .then((result) => setEchoResult(result.message))
       .catch((error: unknown) => setEchoResult(`error: ${String(error)}`))
       .finally(() => setEchoing(false));
