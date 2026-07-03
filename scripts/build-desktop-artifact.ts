@@ -29,6 +29,7 @@ function arg(name: string, fallback: string): string {
 
 const platform = arg(
   "platform",
+  // oxlint-disable-next-line app/no-global-process-runtime -- Standalone Node script has no Effect runtime (see dev-runner.ts header).
   process.platform === "win32" ? "win" : process.platform === "linux" ? "linux" : "mac",
 );
 const target = arg("target", platform === "mac" ? "dmg" : platform === "win" ? "nsis" : "AppImage");

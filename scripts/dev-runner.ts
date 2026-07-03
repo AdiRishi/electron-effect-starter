@@ -71,6 +71,7 @@ function run(
     cwd: REPO_ROOT,
     env: { ...process.env, ...env },
     stdio: "inherit",
+    // oxlint-disable-next-line app/no-global-process-runtime -- Standalone Node script has no Effect runtime (see file header).
     shell: process.platform === "win32",
   });
   child.on("exit", (code) => {

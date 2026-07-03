@@ -39,6 +39,10 @@ const READINESS_REQUEST_TIMEOUT = Duration.seconds(1);
 const TERMINATE_GRACE = Duration.seconds(2);
 const HEALTH_PATH = "/.well-known/app/health";
 
+const encodeBootstrapEnvelopeJson = Schema.encodeEffect(
+  Schema.fromJsonString(ServerBootstrapEnvelope),
+);
+
 export class DesktopBackendReadinessError extends Schema.TaggedErrorClass<DesktopBackendReadinessError>()(
   "DesktopBackendReadinessError",
   {
@@ -142,9 +146,9 @@ const runBackendProcess = Effect.fn("desktop.backend.runBackendProcess")(functio
   ChildProcessSpawner.ChildProcessSpawner | HttpClient.HttpClient | Scope.Scope
 > {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const bootstrapJson = yield* Schema.encodeEffect(Schema.fromJsonString(ServerBootstrapEnvelope))(
-    config.bootstrapEnvelope,
-  ).pipe(Effect.mapError((cause) => new DesktopBackendBootstrapEncodeError({ cause })));
+  const bootstrapJson = yield* encodeBootstrapEnvelopeJson(config.bootstrapEnvelope).pipe(
+    Effect.mapError((cause) => new DesktopBackendBootstrapEncodeError({ cause })),
+  );
   const command = ChildProcess.make(config.executablePath, [...config.args], {
     cwd: config.cwd,
     env: config.env,
