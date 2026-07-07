@@ -70,6 +70,17 @@ interface DesktopBackendReadyCallbacks {
   readonly onNotReady: Effect.Effect<void>;
 }
 
+/**
+ * Where the child's stdout/stderr go. Dev keeps `inherit` so `pnpm dev`
+ * streams to the terminal; packaged apps have no console, so output is
+ * captured to `logDir/server-child.log` — otherwise a failing production
+ * backend leaves no artifact at all. Appended across runs; no rotation (a
+ * starter's log volume is a few lines per boot).
+ */
+type BackendOutputTarget =
+  | { readonly _tag: "inherit" }
+  | { readonly _tag: "file"; readonly directory: string; readonly filePath: string };
+
 export interface DesktopBackendManagerShape {
   readonly start: Effect.Effect<void>;
   readonly stop: Effect.Effect<void>;
@@ -135,6 +146,7 @@ const resolvePort = Effect.fn("desktop.backend.resolvePort")(function* (
 // Spawn the child + probe readiness (in a forked fiber), then wait for exit.
 const runBackendProcess = Effect.fn("desktop.backend.runBackendProcess")(function* (
   config: DesktopBackendStartConfig,
+  output: BackendOutputTarget,
   callbacks: {
     readonly onStarted: (pid: number) => Effect.Effect<void>;
     readonly onReady: Effect.Effect<void>;
@@ -143,12 +155,16 @@ const runBackendProcess = Effect.fn("desktop.backend.runBackendProcess")(functio
 ): Effect.fn.Return<
   void,
   PlatformError.PlatformError | DesktopBackendBootstrapEncodeError,
-  ChildProcessSpawner.ChildProcessSpawner | HttpClient.HttpClient | Scope.Scope
+  | ChildProcessSpawner.ChildProcessSpawner
+  | FileSystem.FileSystem
+  | HttpClient.HttpClient
+  | Scope.Scope
 > {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const bootstrapJson = yield* encodeBootstrapEnvelopeJson(config.bootstrapEnvelope).pipe(
     Effect.mapError((cause) => new DesktopBackendBootstrapEncodeError({ cause })),
   );
+  const stdio = output._tag === "file" ? ("pipe" as const) : ("inherit" as const);
   const command = ChildProcess.make(config.executablePath, [...config.args], {
     cwd: config.cwd,
     env: config.env,
@@ -156,8 +172,8 @@ const runBackendProcess = Effect.fn("desktop.backend.runBackendProcess")(functio
     // the parent env on top so PATH and friends are still available to the child.
     extendEnv: true,
     stdin: "ignore",
-    stdout: "inherit",
-    stderr: "inherit",
+    stdout: stdio,
+    stderr: stdio,
     killSignal: "SIGTERM",
     forceKillAfter: TERMINATE_GRACE,
     additionalFds: {
@@ -170,6 +186,23 @@ const runBackendProcess = Effect.fn("desktop.backend.runBackendProcess")(functio
 
   const handle = yield* spawner.spawn(command);
   yield* callbacks.onStarted(handle.pid);
+
+  if (output._tag === "file") {
+    // Scoped file: closed when this run's scope closes. Log I/O failures must
+    // never take the backend down, so the drain is fire-and-forget with logging.
+    yield* Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      yield* fileSystem.makeDirectory(output.directory, { recursive: true });
+      const file = yield* fileSystem.open(output.filePath, { flag: "a" });
+      const header = `--- backend start pid=${handle.pid} port=${config.port}\n`;
+      yield* file.writeAll(new TextEncoder().encode(header));
+      yield* handle.all.pipe(
+        Stream.runForEach((chunk) => file.writeAll(chunk)),
+        Effect.ignore({ log: true }),
+        Effect.forkScoped,
+      );
+    }).pipe(Effect.ignore({ log: true }));
+  }
 
   yield* waitForHttpReady({
     baseUrl: config.httpBaseUrl.href,
@@ -195,8 +228,9 @@ const runBackendProcess = Effect.fn("desktop.backend.runBackendProcess")(functio
 });
 
 // Builds a backend manager bound to the given readiness callbacks. `layer`
-// supplies the window's onReady/onNotReady hooks.
-const makeManager = (
+// supplies the window's onReady/onNotReady hooks. Exported for tests, which
+// drive it with scripted spawner/net/http services and recording callbacks.
+export const makeManager = (
   callbacks: DesktopBackendReadyCallbacks,
 ): Effect.Effect<DesktopBackendManagerShape, never, ManagerServices | Scope.Scope> =>
   Effect.gen(function* () {
@@ -209,6 +243,14 @@ const makeManager = (
     const parentScope = yield* Scope.Scope;
     const state = yield* Ref.make(initialState);
     const mutex = yield* Semaphore.make(1);
+
+    const outputTarget: BackendOutputTarget = environment.isPackaged
+      ? {
+          _tag: "file",
+          directory: environment.logDir,
+          filePath: environment.path.join(environment.logDir, "server-child.log"),
+        }
+      : { _tag: "inherit" };
 
     const currentConfig = Ref.get(state).pipe(Effect.map((current) => current.config));
 
@@ -351,7 +393,7 @@ const makeManager = (
             );
           });
 
-          const program = runBackendProcess(config.value, {
+          const program = runBackendProcess(config.value, outputTarget, {
             onStarted: (pid) =>
               Effect.gen(function* () {
                 yield* Ref.update(state, (latest) => ({
@@ -387,6 +429,7 @@ const makeManager = (
               }),
           }).pipe(
             Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
             Effect.provideService(HttpClient.HttpClient, httpClient),
             Scope.provide(runScope),
             Effect.matchEffect({
