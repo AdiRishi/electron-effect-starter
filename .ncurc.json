@@ -3,5 +3,5 @@
   "root": true,
   "workspaces": true,
   "cooldown": "1d",
-  "reject": ["effect", "@effect/*", "electron", "@types/node"]
+  "reject": ["electron", "@types/node"]
 }
