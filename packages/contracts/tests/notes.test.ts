@@ -2,7 +2,13 @@ import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
 
-import { Note, NoteCreateInput, NoteId, NoteNotFoundError, NotesStreamEvent } from "../src/notes.ts";
+import {
+  Note,
+  NoteCreateInput,
+  NoteId,
+  NoteNotFoundError,
+  NotesStreamEvent,
+} from "../src/notes.ts";
 
 // The RPC layer wraps schemas in `Schema.toCodecJson`, so the JSON forms
 // below (ISO date strings) are the wire contract these tests pin.
@@ -10,6 +16,7 @@ const decodeNote = Schema.decodeUnknownSync(Schema.toCodecJson(Note));
 const encodeNote = Schema.encodeSync(Schema.toCodecJson(Note));
 const decodeStreamEvent = Schema.decodeUnknownSync(Schema.toCodecJson(NotesStreamEvent));
 const decodeCreateInput = Schema.decodeUnknownSync(NoteCreateInput);
+const decodeNoteId = Schema.decodeUnknownSync(NoteId);
 
 const WIRE_NOTE = {
   id: "note-1",
@@ -57,7 +64,7 @@ describe("NotesStreamEvent", () => {
 
 describe("NoteNotFoundError", () => {
   it("carries the id in its tag and message", () => {
-    const error = new NoteNotFoundError({ id: Schema.decodeUnknownSync(NoteId)("missing") });
+    const error = new NoteNotFoundError({ id: decodeNoteId("missing") });
     assert.strictEqual(error._tag, "NoteNotFoundError");
     assert.include(error.message, "missing");
   });

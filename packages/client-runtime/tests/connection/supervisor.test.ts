@@ -8,14 +8,14 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
 import * as Socket from "effect/unstable/socket/Socket";
 
-import type { WsRpcProtocolClient } from "../../src/rpc/protocol.ts";
-import { RpcSessionFactory, type RpcSession } from "../../src/rpc/session.ts";
 import {
   ConnectionTransientError,
   type ConnectionState,
   type PreparedConnection,
 } from "../../src/connection/model.ts";
 import { start } from "../../src/connection/supervisor.ts";
+import type { WsRpcProtocolClient } from "../../src/rpc/protocol.ts";
+import { RpcSessionFactory, type RpcSession } from "../../src/rpc/session.ts";
 
 const CONNECTION: PreparedConnection = {
   label: "test",

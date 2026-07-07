@@ -2,7 +2,11 @@ import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
 
-import { BearerSessionJson, BootstrapBearerInput, EnvironmentAuthorizationError } from "../src/auth.ts";
+import {
+  BearerSessionJson,
+  BootstrapBearerInput,
+  EnvironmentAuthorizationError,
+} from "../src/auth.ts";
 
 // The wire codec is the contract: raw `BearerSession` only validates in-memory
 // `DateTime.Utc` instances and cannot decode the HTTP response JSON.

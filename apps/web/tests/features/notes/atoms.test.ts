@@ -20,7 +20,11 @@ import {
 } from "@app/client-runtime/rpc";
 import { NoteId, type Note, type NotesStreamEvent } from "@app/contracts";
 
-import { applyNotesEvent, createNotesAtoms, INITIAL_NOTES_VIEW } from "../../../src/features/notes/atoms.ts";
+import {
+  applyNotesEvent,
+  createNotesAtoms,
+  INITIAL_NOTES_VIEW,
+} from "../../../src/features/notes/atoms.ts";
 
 const decodeNoteId = Schema.decodeUnknownSync(NoteId);
 

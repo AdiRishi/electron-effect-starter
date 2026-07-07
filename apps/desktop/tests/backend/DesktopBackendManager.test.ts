@@ -19,7 +19,10 @@ import { NetService, type NetServiceShape } from "@app/shared/Net";
 
 import * as DesktopEnvironment from "../../src/app/DesktopEnvironment.ts";
 import * as DesktopBackendConfiguration from "../../src/backend/DesktopBackendConfiguration.ts";
-import { makeManager, type DesktopBackendManagerShape } from "../../src/backend/DesktopBackendManager.ts";
+import {
+  makeManager,
+  type DesktopBackendManagerShape,
+} from "../../src/backend/DesktopBackendManager.ts";
 
 const PORT = 34_567;
 
