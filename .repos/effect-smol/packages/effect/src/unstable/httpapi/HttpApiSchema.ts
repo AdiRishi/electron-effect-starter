@@ -7,44 +7,15 @@
  * can choose response status codes, content types, body codecs, multipart
  * handling, and no-body response behavior.
  *
- * **Mental model**
- *
- * Keep the `Schema` as the source of validation and transformation, then add
- * HTTP-specific annotations with helpers such as {@link status}, {@link asJson},
- * {@link asMultipart}, and {@link asNoContent}. The same annotated schema can be
- * read later by server builders, clients, and OpenAPI generation.
- *
- * **Common tasks**
- *
- * Use {@link status}, {@link NoContent}, {@link Created}, {@link Accepted}, or
- * {@link Empty} to describe response statuses. Use {@link asFormUrlEncoded},
- * {@link asText}, {@link asUint8Array}, or {@link asJson} to override the
- * default JSON encoding. Use {@link asMultipart} or
- * {@link asMultipartStream} for multipart request payloads. Use
- * {@link asNoContent} when the wire response has no body but the client should
- * decode a useful value.
- *
- * **Gotchas**
- *
- * {@link status} only stores an annotation: unannotated success responses
- * default to `200`, and unannotated error responses default to `500` when the
- * surrounding HttpApi context interprets them. Missing body and response
- * encodings default to JSON, while payload schemas for methods without request
- * bodies fall back to form-url-encoded metadata. Multipart encodings are
- * payload-only, and response multipart is rejected when response encoding is
- * resolved.
- *
- * **See also**
- *
- * `HttpApiEndpoint` for route contracts that consume these annotations and
- * `HttpApi` for reflection over status and encoding metadata.
- *
  * @since 4.0.0
  */
 import { constVoid, type LazyArg } from "../../Function.ts"
+import * as Predicate from "../../Predicate.ts"
 import * as Schema from "../../Schema.ts"
 import * as SchemaAST from "../../SchemaAST.ts"
 import * as SchemaTransformation from "../../SchemaTransformation.ts"
+import * as Stream from "../../Stream.ts"
+import type * as Sse from "../encoding/Sse.ts"
 import { hasBody, type HttpMethod } from "../http/HttpMethod.ts"
 import type * as Multipart_ from "../http/Multipart.ts"
 
@@ -63,13 +34,18 @@ declare module "../../Schema.ts" {
 }
 
 /**
- * @internal
+ * HTTP API body encoding metadata used by payloads and responses.
+ *
+ * @category models
+ * @since 4.0.0
  */
 export type Encoding = PayloadEncoding | ResponseEncoding
 
 /**
- * Encodings for payloads
- * @internal
+ * HTTP API request payload encoding metadata.
+ *
+ * @category models
+ * @since 4.0.0
  */
 export type PayloadEncoding =
   | {
@@ -84,8 +60,10 @@ export type PayloadEncoding =
   }
 
 /**
- * Encodings for responses
- * @internal
+ * HTTP API response body encoding metadata.
+ *
+ * @category models
+ * @since 4.0.0
  */
 export type ResponseEncoding = {
   readonly _tag: "Json" | "FormUrlEncoded" | "Uint8Array" | "Text"
@@ -157,6 +135,8 @@ const statusCodeByLiteral = {
   NetworkAuthenticationRequired: 511
 } as const
 
+const StreamSchemaTypeId = "~effect/httpapi/HttpApiSchema/Stream"
+
 /**
  * Common HTTP status code literals accepted by {@link status}.
  *
@@ -177,13 +157,15 @@ export type StatusLiteral = keyof typeof statusCodeByLiteral
  * @category status
  * @since 4.0.0
  */
-export function status(code: number): <S extends Schema.Top>(self: S) => S["Rebuild"]
-export function status(code: StatusLiteral): <S extends Schema.Top>(self: S) => S["Rebuild"]
+export function status(code: number): {
+  <S extends Schema.Top>(self: S): S["Rebuild"]
+}
+export function status(code: StatusLiteral): {
+  <S extends Schema.Top>(self: S): S["Rebuild"]
+}
 export function status(code: number | StatusLiteral) {
   const statusCode = typeof code === "string" ? statusCodeByLiteral[code] : code
-  return <S extends Schema.Top>(self: S): S["Rebuild"] => {
-    return self.annotate({ httpApiStatus: statusCode })
-  }
+  return <S extends Schema.Top>(self: S): S["Rebuild"] => self.annotate({ httpApiStatus: statusCode })
 }
 
 /**
@@ -251,7 +233,7 @@ export const Accepted: Accepted = Empty(202)
  * @category schemas
  * @since 4.0.0
  */
-export interface asNoContent<S extends Schema.Top> extends Schema.decodeTo<Schema.toType<S>, Schema.Void> {}
+export interface asNoContent<S extends Schema.Constraint> extends Schema.decodeTo<Schema.toType<S>, Schema.Void> {}
 
 /**
  * Marks a schema as a no-content response while preserving a decoded client value.
@@ -267,7 +249,7 @@ export interface asNoContent<S extends Schema.Top> extends Schema.decodeTo<Schem
  * @category encoding
  * @since 4.0.0
  */
-export function asNoContent<S extends Schema.Top>(options: {
+export function asNoContent<S extends Schema.Constraint>(options: {
   readonly decode: LazyArg<S["Type"]>
 }) {
   return (self: S): asNoContent<S> => {
@@ -280,6 +262,200 @@ export function asNoContent<S extends Schema.Top>(options: {
         })
       )
     )
+  }
+}
+
+type StreamMode = "sse" | "uint8array"
+
+/**
+ * Mode describing whether an SSE stream emits full events or raw data values.
+ *
+ * @category models
+ * @since 4.0.0
+ */
+export type StreamSseMode = "events" | "data"
+
+/**
+ * Schema for a Server-Sent Events success response.
+ *
+ * **Details**
+ *
+ * `events` describes successful application events emitted by the stream, and
+ * `error` describes typed stream failures that will be encoded by later
+ * endpoint/server/client integrations using the reserved failure event. If
+ * `error` is omitted, it defaults to `Schema.Never`. When `StreamSse` is
+ * constructed from `data`, handlers and clients expose raw data values while
+ * the server and client still use an SSE event schema internally.
+ *
+ * @category models
+ * @since 4.0.0
+ */
+export interface StreamSse<
+  Events extends Sse.EventCodec,
+  Error extends Schema.Constraint,
+  Value = Events["Type"]
+> extends
+  Schema.BottomLazy<
+    SchemaAST.Declaration,
+    StreamSse<Events, Error, Value>
+  >
+{
+  readonly "Type": Stream.Stream<Value, Error["Type"], never>
+  readonly "Encoded": Stream.Stream<Value, Error["Type"], never>
+  readonly "DecodingServices": Events["DecodingServices"] | Error["DecodingServices"]
+  readonly "EncodingServices": Events["EncodingServices"] | Error["EncodingServices"]
+  readonly "Rebuild": StreamSse<Events, Error, Value>
+  readonly "~type.make.in": Stream.Stream<Value, Error["Type"], never>
+  readonly "~type.make": Stream.Stream<Value, Error["Type"], never>
+  readonly "Iso": Stream.Stream<Value, Error["Type"], never>
+  readonly [StreamSchemaTypeId]: typeof StreamSchemaTypeId
+  readonly _tag: "StreamSse"
+  readonly mode: "sse"
+  readonly sseMode: StreamSseMode
+  readonly contentType: string
+  readonly events: Events
+  readonly error: Error
+  readonly "~Value"?: Value | undefined
+}
+
+/**
+ * Event schema produced when {@link StreamSse} is constructed from a JSON data schema.
+ *
+ * @category models
+ * @since 4.0.0
+ */
+export interface SseEventFromData<Data extends Schema.Constraint> extends
+  Schema.Codec<
+    {
+      readonly id: string | undefined
+      readonly event: string
+      readonly data: Data["Type"]
+    },
+    {
+      readonly id?: string | undefined
+      readonly event?: string | undefined
+      readonly data: string
+    },
+    Data["DecodingServices"],
+    Data["EncodingServices"]
+  >
+{}
+
+/**
+ * Schema for a streaming `Uint8Array` success response.
+ *
+ * **Details**
+ *
+ * This declaration stores the response content type for later endpoint,
+ * server, client, and OpenAPI integrations. It is intentionally separate from
+ * the buffered `asUint8Array` response encoding.
+ *
+ * @category models
+ * @since 4.0.0
+ */
+export interface StreamUint8Array extends
+  Schema.Bottom<
+    Stream.Stream<Uint8Array, unknown, never>,
+    Stream.Stream<Uint8Array, unknown, never>,
+    never,
+    never,
+    SchemaAST.Declaration,
+    StreamUint8Array
+  >
+{
+  readonly "Rebuild": StreamUint8Array
+  readonly [StreamSchemaTypeId]: typeof StreamSchemaTypeId
+  readonly _tag: "StreamUint8Array"
+  readonly mode: "uint8array"
+  readonly contentType: string
+}
+
+/**
+ * Schema for a streaming HTTP API success response.
+ *
+ * @category models
+ * @since 4.0.0
+ */
+export type StreamSchema = StreamSse<Sse.EventCodec, Schema.Top, unknown> | StreamUint8Array
+
+const streamSchema = Schema.declare(Stream.isStream)
+
+/**
+ * Creates a Server-Sent Events streaming success response schema.
+ *
+ * @category constructors
+ * @since 4.0.0
+ */
+export const StreamSse: {
+  <Events extends Sse.EventCodec, Error extends Schema.Constraint = Schema.Never>(options: {
+    readonly contentType?: string | undefined
+    readonly events: Events
+    readonly error?: Error | undefined
+  }): StreamSse<Events, Error, Events["Type"]>
+  <Data extends Schema.Constraint, Error extends Schema.Constraint = Schema.Never>(options: {
+    readonly contentType?: string | undefined
+    readonly data: Data
+    readonly error?: Error | undefined
+  }): StreamSse<SseEventFromData<Data>, Error, Data["Type"]>
+} = (options: {
+  readonly contentType?: string | undefined
+  readonly events?: Sse.EventCodec | undefined
+  readonly data?: Schema.Constraint | undefined
+  readonly error?: Schema.Constraint | undefined
+}): StreamSse<Sse.EventCodec, Schema.Top, unknown> => {
+  const events = options.events ?? (options.data === undefined ? undefined : Schema.Struct({
+    id: Schema.UndefinedOr(Schema.String),
+    event: Schema.String,
+    data: Schema.fromJsonString(options.data)
+  }))
+  if (events === undefined) {
+    throw new Error("StreamSse requires either an events schema or a data schema")
+  }
+  return Schema.make<StreamSse<Sse.EventCodec, Schema.Top, unknown>>(streamSchema.ast, {
+    [StreamSchemaTypeId]: StreamSchemaTypeId,
+    _tag: "StreamSse",
+    mode: "sse",
+    sseMode: options.events === undefined ? "data" : "events",
+    contentType: options.contentType ?? defaultStreamContentType("sse"),
+    events,
+    error: options.error ?? Schema.Never
+  })
+}
+
+/**
+ * Creates a streaming `Uint8Array` success response schema.
+ *
+ * @category constructors
+ * @since 4.0.0
+ */
+export const StreamUint8Array = (options?: {
+  readonly contentType?: string | undefined
+}): StreamUint8Array =>
+  Schema.make<StreamUint8Array>(streamSchema.ast, {
+    [StreamSchemaTypeId]: StreamSchemaTypeId,
+    _tag: "StreamUint8Array",
+    mode: "uint8array",
+    contentType: options?.contentType ?? defaultStreamContentType("uint8array")
+  })
+
+/** @internal */
+export const isStreamSchema = (u: unknown): u is StreamSchema =>
+  Schema.isSchema(u) && Predicate.hasProperty(u, StreamSchemaTypeId)
+
+/** @internal */
+export const isStreamSse = (u: unknown): u is StreamSse<Sse.EventCodec, Schema.Top, unknown> =>
+  isStreamSchema(u) && u._tag === "StreamSse"
+
+/** @internal */
+export const isStreamUint8Array = (u: unknown): u is StreamUint8Array =>
+  isStreamSchema(u) && u._tag === "StreamUint8Array"
+
+function defaultStreamContentType(mode: StreamMode): string {
+  switch (mode) {
+    case "sse":
+      return "text/event-stream"
+    case "uint8array":
+      return "application/octet-stream"
   }
 }
 
@@ -517,6 +693,11 @@ export function getResponseEncoding(ast: SchemaAST.AST): ResponseEncoding {
 /** @internal */
 export function getStatusSuccess(self: SchemaAST.AST): number {
   return resolveHttpApiStatus(self) ?? 200
+}
+
+/** @internal */
+export function getStatusStream(self: StreamSchema): number {
+  return getStatusSuccess(self.ast)
 }
 
 /** @internal */

@@ -1,27 +1,12 @@
 /**
- * The `Prompt` module provides composable, effectful building blocks for
- * interactive command-line questions. A `Prompt<A>` describes terminal UI that
- * renders frames, reads keyboard input, validates responses, and eventually
- * produces a value of type `A`.
+ * Builds interactive terminal prompts for CLI applications.
  *
- * **Common tasks**
- *
- * - Ask for text, password, hidden, list, confirm, toggle, number, or date input
- * - Let users choose from select, autocomplete, multi-select, and file prompts
- * - Combine prompts with {@link all}, {@link map}, and {@link flatMap}
- * - Build specialized prompts with {@link custom}
- * - Run a prompt against the current terminal with {@link run}
- *
- * **Gotchas**
- *
- * - Prompts require terminal services and may fail with `Terminal.QuitError`
- *   when input ends or the prompt is quit
- * - Rendering is frame-based: custom prompts must return ANSI output from
- *   `render` and matching ANSI clearing output from `clear`
- * - Choices and file lists are paged by `maxPerPage`, so keyboard navigation
- *   and filtering should account for hidden off-page entries
- * - `password` and `hidden` return `Redacted` values; unwrap them only at the
- *   boundary where the secret is needed
+ * A `Prompt<A>` describes a small terminal UI that renders frames, reads
+ * keyboard input, validates responses, and eventually produces an `A`. Prompts
+ * can ask for simple values, selections, lists, files, hidden text, or custom
+ * interactions. This module includes prompt constructors, tools for combining
+ * and transforming prompt output, and support for running prompts through the
+ * `Terminal` service.
  *
  * @since 4.0.0
  */
@@ -81,8 +66,8 @@ export const isPrompt = (u: unknown): u is Prompt<unknown> => Predicate.hasPrope
 export type Environment = FileSystem.FileSystem | Path.Path | Terminal.Terminal
 
 /**
- * Represents the action that should be taken by a `Prompt` based upon the
- * user input received during the current frame.
+ * Represents the action that should be taken by a `Prompt` based upon user
+ * input or an external event received during the current frame.
  *
  * @category models
  * @since 4.0.0
@@ -109,6 +94,18 @@ export interface ActionDefinition extends Data.TaggedEnum.WithGenerics<2> {
 }
 
 /**
+ * Represents the input that should be processed by a `Prompt` based upon user
+ * input or an external event received during the current frame.
+ *
+ * @category models
+ * @since 4.0.0
+ */
+export type ProcessInput<A> = Data.TaggedEnum<{
+  readonly Input: { readonly input: Terminal.UserInput }
+  readonly Event: { readonly value: A }
+}>
+
+/**
  * Represents the set of handlers used by a `Prompt`.
  *
  * **Details**
@@ -119,7 +116,7 @@ export interface ActionDefinition extends Data.TaggedEnum.WithGenerics<2> {
  * @category models
  * @since 4.0.0
  */
-export interface Handlers<State, Output> {
+export interface Handlers<State, Output, Input = Terminal.UserInput> {
   /**
    * A function that is called to render the current frame of the `Prompt`.
    */
@@ -132,7 +129,7 @@ export interface Handlers<State, Output> {
    * `Prompt.Action` that should be taken.
    */
   readonly process: (
-    input: Terminal.UserInput,
+    input: Input,
     state: State
   ) => Effect.Effect<Action<State, Output>, never, Environment>
   /**
@@ -766,19 +763,41 @@ export const confirm = (options: ConfirmOptions): Prompt<boolean> => {
  * next prompt action, and `clear` returns ANSI output used to clear the previous
  * frame.
  *
+ * Optionally, an external `events` dequeue can be provided as the third
+ * argument. When present, the render loop will race user input against events
+ * from the dequeue, allowing background events to trigger re-renders without
+ * waiting for a keypress. When an event is received from the dequeue, the
+ * `receive` handler is called instead of `process`.
+ *
  * @category constructors
  * @since 4.0.0
  */
-export const custom = <State, Output>(
+export const custom: {
+  <State, Output>(
+    initialState: State | Effect.Effect<State, never, Environment>,
+    handlers: Handlers<State, Output>
+  ): Prompt<Output>
+  <State, Output, A>(
+    initialState: State | Effect.Effect<State, never, Environment>,
+    events: Queue.Dequeue<A, never>,
+    handlers: Handlers<State, Output, ProcessInput<A>>
+  ): Prompt<Output>
+} = <State, Output, A>(
   initialState: State | Effect.Effect<State, never, Environment>,
-  handlers: Handlers<State, Output>
+  ...args:
+    | [handlers: Handlers<State, Output, Terminal.UserInput>]
+    | [events: Queue.Dequeue<A, never>, handlers: Handlers<State, Output, ProcessInput<A>>]
 ): Prompt<Output> => {
+  const [events, handlers] = args.length === 1
+    ? [undefined, args[0]] as const
+    : [args[0], args[1]] as const
   const op = Object.create(proto)
   op._tag = "Loop"
   op.initialState = initialState
   op.render = handlers.render
   op.process = handlers.process
   op.clear = handlers.clear
+  op.events = events
   return op
 }
 
@@ -1267,8 +1286,12 @@ interface Loop extends
   Op<"Loop", {
     readonly initialState: unknown | Effect.Effect<unknown, never, Environment>
     readonly render: Handlers<unknown, unknown>["render"]
-    readonly process: Handlers<unknown, unknown>["process"]
+    readonly process: (
+      input: unknown,
+      state: unknown
+    ) => Effect.Effect<Action<unknown, unknown>, never, Environment>
     readonly clear: Handlers<unknown, unknown>["clear"]
+    readonly events: Queue.Dequeue<unknown, never> | undefined
   }>
 {}
 
@@ -1339,8 +1362,19 @@ const runLoop = Effect.fnUntraced(
     while (true) {
       const msg = yield* loop.render(state, action)
       yield* Effect.orDie(terminal.display(msg))
-      const event = yield* Queue.take(input)
-      action = yield* loop.process(event, state)
+      if (loop.events) {
+        const takeInput = Queue.take(input).pipe(
+          Effect.map((input) => ({ _tag: "Input" as const, input }))
+        )
+        const result = yield* Effect.raceFirst(
+          takeInput,
+          Queue.take(loop.events).pipe(Effect.map((value) => ({ _tag: "Event" as const, value })))
+        )
+        action = yield* loop.process(result, state)
+      } else {
+        const result = yield* Queue.take(input)
+        action = yield* loop.process(result, state)
+      }
       switch (action._tag) {
         case "Beep":
           continue
