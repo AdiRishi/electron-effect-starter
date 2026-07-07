@@ -52,14 +52,3 @@ export type BearerSession = typeof BearerSession.Type;
  * explicitly on both ends.
  */
 export const BearerSessionJson = Schema.toCodecJson(BearerSession);
-
-export class BootstrapBearerError extends Schema.TaggedErrorClass<BootstrapBearerError>()(
-  "BootstrapBearerError",
-  {
-    reason: Schema.Literals(["invalid-credential", "server-unreachable"]),
-  },
-) {
-  override get message(): string {
-    return `Failed to bootstrap a bearer session (${this.reason}).`;
-  }
-}
