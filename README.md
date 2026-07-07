@@ -35,6 +35,8 @@ pnpm test           # vitest across every package
 
 No `.env` needed — ports are derived per checkout, so multiple clones never collide.
 
+Dependency updates: run [`ncu`](https://www.npmjs.com/package/npm-check-updates) — `.ncurc.json` enables workspace mode, which also checks the `pnpm-workspace.yaml` catalog. It excludes the packages that must move deliberately, not mechanically: the `effect` family (pinned in lockstep to the T3 Code reference; bumping it means re-vendoring `.repos/` via `pnpm sync:repos`), `electron` (majors change the bundled Node and the `node-abi` override), and `@types/node` (tracks the Node major in `engines`, not npm latest).
+
 ## 🏗️ How it works
 
 ```
