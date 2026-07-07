@@ -7,12 +7,14 @@
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 
-  --color-background: #ffffff;
+  --color-background: #fafafa;
   --color-foreground: #18181b;
   --color-card: #ffffff;
   --color-muted: #71717a;
   --color-border: #e4e4e7;
-  --color-accent: #6366f1;
+  /* Teal doubles as the liveness color: accent = "the bus is up". */
+  --color-accent: #0f766e;
+  --color-accent-contrast: #ffffff;
 }
 
 /* Dark palette. Tailwind v4 reads these custom properties at usage sites. */
@@ -22,10 +24,32 @@
   --color-card: #131316;
   --color-muted: #a1a1aa;
   --color-border: #27272a;
-  --color-accent: #818cf8;
+  --color-accent: #2dd4bf;
+  --color-accent-contrast: #073731;
 }
 
 body {
   background: var(--color-background);
   color: var(--color-foreground);
+}
+
+/* Sync flash: a note row briefly tints when a change round-trips through the
+   server — remounted with a fresh key per revision (see NotesPanel). */
+@keyframes note-flash {
+  from {
+    background-color: color-mix(in oklab, var(--color-accent) 22%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+.note-flash {
+  animation: note-flash 0.9s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .note-flash {
+    animation: none;
+  }
 }

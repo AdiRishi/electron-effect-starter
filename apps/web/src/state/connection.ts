@@ -129,36 +129,21 @@ export function createConnectionAtoms<R, E>(
     Option.getOrElse(AsyncResult.value(get(serverConfigResultAtom)), () => null),
   ).pipe(Atom.withLabel("server-config"));
 
-  // Live streams. The client-runtime subscription watches the session ref and
-  // re-attaches across reconnects by itself, so these atoms subscribe once for
-  // as long as they stay mounted.
-  const tickResultAtom = runtime.atom(
-    rpcSubscribe("server.subscribeTicks", {}).pipe(Stream.map((event) => event.tick)),
-  );
-
+  // Live lifecycle stream. The client-runtime subscription watches the session
+  // ref and re-attaches across reconnects by itself, so the atom subscribes
+  // once for as long as it stays mounted.
   const lifecycleResultAtom = runtime.atom(
     rpcSubscribe("server.subscribeLifecycle", {}).pipe(Stream.map((event) => event.phase)),
   );
-
-  const tickAtom = Atom.make((get): number | null =>
-    Option.getOrNull(AsyncResult.value(get(tickResultAtom))),
-  ).pipe(Atom.withLabel("server-tick"));
 
   const lifecycleAtom = Atom.make((get): ServerLifecyclePhase | null =>
     Option.getOrNull(AsyncResult.value(get(lifecycleResultAtom))),
   ).pipe(Atom.withLabel("server-lifecycle"));
 
-  /** Imperative echo call; consumers read the `AsyncResult` for pending/result. */
-  const echoAtom = runtime.fn((input: { readonly message: string }) =>
-    rpcRequest("server.echo", input),
-  );
-
   return {
     state: stateAtom,
     serverConfig: serverConfigAtom,
-    tick: tickAtom,
     lifecycle: lifecycleAtom,
-    echo: echoAtom,
   } as const;
 }
 
