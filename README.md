@@ -23,6 +23,7 @@ Requires Node 24 and pnpm 11.
 
 ```bash
 pnpm install
+pnpm rename my-app com.mycompany  # make the starter yours (name, product name, app id, data dir)
 pnpm dev            # server + web UI in your browser, with HMR
 ```
 
