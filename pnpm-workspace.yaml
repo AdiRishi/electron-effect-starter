@@ -27,9 +27,9 @@ peerDependencyRules:
 catalog:
   "@effect/atom-react": 4.0.0-beta.78
   "@effect/platform-node": 4.0.0-beta.78
-  "@oxlint/plugins": ^1.72.0
   "@effect/platform-node-shared": 4.0.0-beta.78
   "@effect/vitest": 4.0.0-beta.78
+  "@oxlint/plugins": ^1.72.0
   "@types/node": 24.12.4
   effect: 4.0.0-beta.78
   oxfmt: ^0.57.0
