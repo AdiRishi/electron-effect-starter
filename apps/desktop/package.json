@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@app/client-runtime": "workspace:*",
     "@app/contracts": "workspace:*",
     "@app/shared": "workspace:*",
     "@effect/platform-node": "catalog:",
