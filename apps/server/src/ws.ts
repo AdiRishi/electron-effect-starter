@@ -1,11 +1,3 @@
-import * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Stream from "effect/Stream";
-import { Headers, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
-import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
-
 /**
  * WebSocket RPC route + handler registration.
  *
@@ -18,6 +10,14 @@ import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
  *
  * @module ws
  */
+import * as DateTime from "effect/DateTime";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
+import { Headers, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
+import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
+
 import {
   WS_METHODS,
   WsRpcGroup,
