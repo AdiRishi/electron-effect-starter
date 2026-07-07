@@ -128,6 +128,7 @@ function NoteEditor({
   return (
     <div className="flex items-center gap-2 py-2">
       <input
+        // oxlint-disable-next-line jsx-a11y/no-autofocus -- Focus follows the user's explicit Edit action; this is not a page-load focus steal.
         autoFocus
         value={text}
         onChange={(event) => setText(event.target.value)}
