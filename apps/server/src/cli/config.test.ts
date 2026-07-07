@@ -69,4 +69,21 @@ describe("resolveServerConfig", () => {
       Effect.provide(NodeServices.layer),
     ),
   );
+
+  it.effect("APP_DATA_DIR overrides the default home-directory data dir", () =>
+    Effect.gen(function* () {
+      const overridden = yield* resolveServerConfig(baseFlags).pipe(
+        Effect.provideService(HostProcessEnvironment, {
+          APP_BOOTSTRAP_TOKEN: "env-token",
+          APP_DATA_DIR: "/tmp/custom-data",
+        }),
+      );
+      assert.equal(overridden.dataDir, "/tmp/custom-data");
+
+      const defaulted = yield* resolveServerConfig(baseFlags).pipe(
+        Effect.provideService(HostProcessEnvironment, { APP_BOOTSTRAP_TOKEN: "env-token" }),
+      );
+      assert.equal(defaulted.dataDir, NodePath.join(NodeOS.homedir(), ".electron-effect-starter"));
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
 });

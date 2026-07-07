@@ -43,13 +43,6 @@ const makeScriptedHarness = () => {
 
   const fakeClient = {
     "server.getConfig": () => Effect.succeed(SERVER_CONFIG),
-    "server.echo": (input: { readonly message: string }) =>
-      Effect.succeed({ message: input.message, receivedAt: AT }),
-    "server.subscribeTicks": () =>
-      Stream.fromIterable([
-        { tick: 1, at: AT },
-        { tick: 2, at: AT },
-      ]).pipe(Stream.concat(Stream.never)),
     "server.subscribeLifecycle": () =>
       Stream.fromIterable([{ sequence: 1, phase: "ready" as const, at: AT }]).pipe(
         Stream.concat(Stream.never),
@@ -87,7 +80,7 @@ const makeScriptedHarness = () => {
 };
 
 describe("connection atoms", () => {
-  it("reaches connected and syncs config, ticks, and lifecycle", async () => {
+  it("reaches connected and syncs config and lifecycle", async () => {
     const harness = makeScriptedHarness();
     const atoms = createConnectionAtoms(Atom.runtime(harness.layer));
     const registry = AtomRegistry.make();
@@ -95,14 +88,12 @@ describe("connection atoms", () => {
     const unmounts = [
       registry.mount(atoms.state),
       registry.mount(atoms.serverConfig),
-      registry.mount(atoms.tick),
       registry.mount(atoms.lifecycle),
     ];
 
     await vi.waitFor(() => {
       expect(registry.get(atoms.state).phase).toBe("connected");
       expect(registry.get(atoms.serverConfig)).toEqual(SERVER_CONFIG);
-      expect(registry.get(atoms.tick)).toBe(2);
       expect(registry.get(atoms.lifecycle)).toBe("ready");
     });
 
@@ -125,27 +116,6 @@ describe("connection atoms", () => {
     await vi.waitFor(() => {
       expect(registry.get(atoms.serverConfig)).toBeNull();
       expect(registry.get(atoms.state).phase).toBe("reconnecting");
-    });
-
-    for (const unmount of unmounts) unmount();
-  });
-
-  it("runs the echo call and exposes the result", async () => {
-    const harness = makeScriptedHarness();
-    const atoms = createConnectionAtoms(Atom.runtime(harness.layer));
-    const registry = AtomRegistry.make();
-
-    const unmounts = [registry.mount(atoms.state), registry.mount(atoms.echo)];
-
-    await vi.waitFor(() => {
-      expect(registry.get(atoms.state).phase).toBe("connected");
-    });
-
-    registry.set(atoms.echo, { message: "hi" });
-
-    await vi.waitFor(() => {
-      const result = registry.get(atoms.echo);
-      expect(AsyncResult.isSuccess(result) && result.value.message).toBe("hi");
     });
 
     for (const unmount of unmounts) unmount();
