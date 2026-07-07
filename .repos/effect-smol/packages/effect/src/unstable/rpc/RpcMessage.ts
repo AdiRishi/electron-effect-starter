@@ -8,32 +8,6 @@
  * streaming, acknowledgement, interrupt, keepalive, and defect signals as the
  * built-in HTTP, socket, worker, and test transports.
  *
- * **Mental model**
- *
- * A request is identified by a `RequestId` from the first `Request` through any
- * `Chunk` batches, the terminal `Exit`, optional `Ack`s, and optional
- * `Interrupt`s. Decoded messages carry branded ids, typed RPC tags, headers,
- * and typed payload, chunk, or exit values. Encoded messages use string ids and
- * `unknown` payloads that have already crossed the schema serialization
- * boundary.
- *
- * **Message families**
- *
- * Client-to-server messages start work (`Request`), acknowledge streamed chunks
- * (`Ack`), cancel in-flight work (`Interrupt`), close client input (`Eof`), or
- * check liveness (`Ping`). Server-to-client messages stream successful values
- * (`Chunk`), complete work (`Exit`), report connection-level defects
- * (`Defect`), end a client connection (`ClientEnd`), answer keepalives
- * (`Pong`), or report client protocol errors.
- *
- * **Gotchas**
- *
- * `Ack` is part of streaming back pressure, not call completion. `Eof` closes
- * client input but does not replace terminal `Exit` responses. `Ping` and
- * `Pong` are connection liveness messages. Transports must preserve request ids
- * exactly across encoded strings and decoded branded values, or responses,
- * interrupts, and acknowledgements can be routed to the wrong in-flight call.
- *
  * @since 4.0.0
  */
 import type { NonEmptyReadonlyArray } from "../../Array.ts"
@@ -426,3 +400,22 @@ export interface Pong {
  * @since 4.0.0
  */
 export const constPong: Pong = { _tag: "Pong" }
+
+/**
+ * Checks if the response type is terminal.
+ *
+ * @category guards
+ * @since 4.0.0
+ */
+export const isTerminalResponse = (response: FromServerEncoded): boolean => {
+  switch (response._tag) {
+    case "Exit":
+    case "Defect":
+    case "ClientProtocolError": {
+      return true
+    }
+    default: {
+      return false
+    }
+  }
+}

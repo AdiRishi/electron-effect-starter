@@ -1,52 +1,13 @@
 /**
- * The `LanguageModel` module provides AI text generation capabilities with tool
- * calling support.
+ * Defines the shared service for language model providers.
  *
- * This module offers a comprehensive interface for interacting with large
- * language models, supporting both streaming and non-streaming text generation,
- * structured output generation, and tool calling functionality. It provides a
- * unified API that can be implemented by different AI providers while
- * maintaining type safety and effect management.
- *
- * **Example** (Generating text)
- *
- * ```ts
- * import { Effect } from "effect"
- * import { LanguageModel } from "effect/unstable/ai"
- *
- * // Basic text generation
- * const program = Effect.gen(function*() {
- *   const response = yield* LanguageModel.generateText({
- *     prompt: "Explain quantum computing"
- *   })
- *
- *   console.log(response.text)
- *
- *   return response
- * })
- * ```
- *
- * **Example** (Generating structured output)
- *
- * ```ts
- * import { Effect, Schema } from "effect"
- * import { LanguageModel } from "effect/unstable/ai"
- *
- * // Structured output generation
- * const ContactSchema = Schema.Struct({
- *   name: Schema.String,
- *   email: Schema.String
- * })
- *
- * const extractContact = Effect.gen(function*() {
- *   const response = yield* LanguageModel.generateObject({
- *     prompt: "Extract contact: John Doe, john@example.com",
- *     schema: ContactSchema
- *   })
- *
- *   return response.value
- * })
- * ```
+ * The `LanguageModel` service lets application code ask for generated text,
+ * streamed text, or structured output without depending on a specific provider.
+ * Requests can include tools, and the service can resolve tool calls while the
+ * model is generating a response. This module contains the service contract,
+ * request and response types, structured-output support, and the constructor
+ * used by provider packages to adapt their own generate and stream functions to
+ * the shared interface.
  *
  * @since 4.0.0
  */
@@ -163,7 +124,7 @@ export interface Service {
    */
   readonly generateObject: <
     ObjectEncoded extends Record<string, any>,
-    StructuredOutputSchema extends Schema.Encoder<ObjectEncoded, unknown>,
+    StructuredOutputSchema extends Schema.Codec<unknown, ObjectEncoded, unknown, unknown>,
     Options extends NoExcessProperties<
       GenerateObjectOptions<any, StructuredOutputSchema>,
       Options
@@ -230,8 +191,8 @@ export interface Service {
  * @category models
  * @since 4.0.0
  */
-export type CodecTransformer = <T, E, RD, RE>(schema: Schema.Codec<T, E, RD, RE>) => {
-  readonly codec: Schema.Codec<T, unknown, RD, RE>
+export type CodecTransformer = <T, E, RD, RE>(schema: Schema.ConstraintCodec<T, E, RD, RE>) => {
+  readonly codec: Schema.ConstraintCodec<T, unknown, RD, RE>
   readonly jsonSchema: JsonSchema.JsonSchema
 }
 
@@ -874,7 +835,7 @@ export const make: (params: {
 
   const generateObject = <
     ObjectEncoded extends Record<string, any>,
-    StructuredOutputSchema extends Schema.Encoder<ObjectEncoded, unknown>,
+    StructuredOutputSchema extends Schema.Codec<unknown, ObjectEncoded, unknown, unknown>,
     Options extends NoExcessProperties<
       GenerateObjectOptions<any, StructuredOutputSchema>,
       Options
@@ -1730,7 +1691,7 @@ export const generateText: {
  */
 export const generateObject = <
   ObjectEncoded extends Record<string, any>,
-  StructuredOutputSchema extends Schema.Encoder<ObjectEncoded, unknown>,
+  StructuredOutputSchema extends Schema.Codec<unknown, ObjectEncoded, unknown, unknown>,
   Options extends NoExcessProperties<
     GenerateObjectOptions<any, StructuredOutputSchema>,
     Options
@@ -2200,7 +2161,7 @@ const resolveToolkit = <Tools extends Record<string, Tool.Any>, E, R>(
     : Effect.succeed(toolkit as unknown as Toolkit.WithHandler<Tools>)) as any
 
 /** @internal */
-export const getObjectName = <StructuredOutputSchema extends Schema.Top>(
+export const getObjectName = <StructuredOutputSchema extends Schema.Constraint>(
   objectName: string | undefined,
   schema: StructuredOutputSchema
 ): string => {
@@ -2218,7 +2179,7 @@ export const getObjectName = <StructuredOutputSchema extends Schema.Top>(
 }
 
 const resolveStructuredOutput = Effect.fnUntraced(function*<
-  StructuredOutputSchema extends Schema.Top
+  StructuredOutputSchema extends Schema.Constraint
 >(response: ReadonlyArray<Response.AllParts<any>>, schema: StructuredOutputSchema) {
   const texts: Array<string> = []
   for (const part of response) {

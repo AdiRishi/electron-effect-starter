@@ -343,6 +343,93 @@ describe("Config", () => {
   at ["b"]`
         )
       })
+
+      it("does not recover from invalid union values", async () => {
+        const config = Config.logLevel("LOG_LEVEL").pipe(Config.withDefault("Info"))
+
+        await assertSuccess(config, ConfigProvider.fromUnknown({}), "Info")
+        await assertFailure(
+          config,
+          ConfigProvider.fromUnknown({ LOG_LEVEL: "debug" }),
+          `Expected "All" | "Fatal" | "Error" | "Warn" | "Info" | "Debug" | "Trace" | "None", got "debug"
+  at ["LOG_LEVEL"]`
+        )
+      })
+
+      it("does not recover from filter failures", async () => {
+        const schema = Schema.String.check(
+          Schema.makeFilter((s) =>
+            s === "a" ? undefined : new SchemaIssue.InvalidValue(Option.none(), { message: `must be "a"` })
+          )
+        )
+        const config = Config.schema(schema, "a").pipe(Config.withDefault("fallback"))
+
+        // missing key -> default
+        await assertSuccess(config, ConfigProvider.fromUnknown({}), "fallback")
+        // valid present value -> parsed
+        await assertSuccess(config, ConfigProvider.fromUnknown({ a: "a" }), "a")
+        // present value that fails the refinement must fail, not use the default
+        await assertFailure(
+          config,
+          ConfigProvider.fromUnknown({ a: "b" }),
+          `must be "a"
+  at ["a"]`
+        )
+      })
+
+      it("array", async () => {
+        const config = Config.schema(Schema.Array(Schema.String), "a").pipe(Config.withDefault(["default"]))
+
+        await assertSuccess(config, ConfigProvider.fromEnv({ env: { a: "value" } }), ["value"])
+        await assertSuccess(config, ConfigProvider.fromEnv({ env: { a: "" } }), [])
+        await assertSuccess(config, ConfigProvider.fromEnv({ env: {} }), ["default"])
+      })
+
+      it("schema containers", async () => {
+        const provider = ConfigProvider.fromEnv({ env: {} })
+
+        await assertSuccess(
+          Config.schema(Schema.Struct({ value: Schema.String }), "a").pipe(Config.withDefault({ value: "default" })),
+          provider,
+          { value: "default" }
+        )
+        await assertSuccess(
+          Config.schema(Schema.Struct({ value: Schema.optionalKey(Schema.String) }), "a").pipe(
+            Config.withDefault({ value: "default" })
+          ),
+          provider,
+          { value: "default" }
+        )
+        await assertSuccess(
+          Config.schema(Schema.Struct({}), "a").pipe(Config.withDefault({ value: "default" })),
+          provider,
+          { value: "default" }
+        )
+        await assertSuccess(
+          Config.schema(Schema.Record(Schema.String, Schema.String), "a").pipe(
+            Config.withDefault({ value: "default" })
+          ),
+          provider,
+          { value: "default" }
+        )
+        await assertSuccess(
+          Config.schema(Schema.Tuple([Schema.String]), "a").pipe(Config.withDefault(["default"])),
+          provider,
+          ["default"]
+        )
+        await assertSuccess(
+          Config.schema(Schema.ReadonlySet(Schema.String), "a").pipe(Config.withDefault(new Set(["default"]))),
+          provider,
+          new Set(["default"])
+        )
+        await assertSuccess(
+          Config.schema(Schema.ReadonlyMap(Schema.String, Schema.String), "a").pipe(
+            Config.withDefault(new Map([["default", "value"]]))
+          ),
+          provider,
+          new Map([["default", "value"]])
+        )
+      })
     })
 
     describe("option", () => {
@@ -512,6 +599,37 @@ describe("Config", () => {
             ConfigProvider.fromEnv({ env: {} }),
             `Expected string, got undefined
   at ["database"]["host"]`
+          )
+        })
+
+        it("config nested and provider nested compose lookup but not error paths", async () => {
+          const config = Config.string("host").pipe(Config.nested("database"))
+          const provider = ConfigProvider.fromEnv({
+            env: { app_database_host: "localhost" }
+          }).pipe(ConfigProvider.nested("app"))
+
+          await assertSuccess(config, provider, "localhost")
+          await assertFailure(
+            config,
+            ConfigProvider.fromEnv({ env: {} }).pipe(ConfigProvider.nested("app")),
+            `Expected string, got undefined
+  at ["database"]["host"]`
+          )
+        })
+
+        it("provider nested over orElse keeps the logical error path", async () => {
+          const provider = ConfigProvider.fromEnv({ env: { app_port: "abc" } }).pipe(
+            ConfigProvider.orElse(ConfigProvider.fromEnv({ env: {} })),
+            ConfigProvider.nested("app")
+          )
+
+          await assertFailure(
+            Config.number("port"),
+            provider,
+            `Expected a string representing a finite number, got "abc"
+  at ["port"]
+Expected "Infinity" | "-Infinity" | "NaN", got "abc"
+  at ["port"]`
           )
         })
       })
@@ -866,6 +984,12 @@ describe("Config", () => {
         await assertSuccess(config, ConfigProvider.fromEnv({ env: { a_0: "1" } }), { a: [1] })
         await assertSuccess(config, ConfigProvider.fromEnv({ env: { a_0: "1", a_1: "2" } }), { a: [1, 2] })
         await assertSuccess(config, ConfigProvider.fromEnv({ env: { a: "1", a_0: "2" } }), { a: [1] })
+        await assertFailure(
+          config,
+          ConfigProvider.fromEnv({ env: {} }),
+          `Missing key
+  at ["a"]`
+        )
       })
     })
 
