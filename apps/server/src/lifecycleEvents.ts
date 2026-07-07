@@ -1,11 +1,3 @@
-import * as Context from "effect/Context";
-import type * as DateTime from "effect/DateTime";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as PubSub from "effect/PubSub";
-import * as Ref from "effect/Ref";
-import * as Stream from "effect/Stream";
-
 /**
  * Server lifecycle events - the ordered push bus.
  *
@@ -16,6 +8,14 @@ import * as Stream from "effect/Stream";
  *
  * @module lifecycleEvents
  */
+import * as Context from "effect/Context";
+import type * as DateTime from "effect/DateTime";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as PubSub from "effect/PubSub";
+import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
+
 import type { ServerLifecycleStreamEvent, ServerLifecyclePhase } from "@app/contracts";
 
 /** A publish request: the phase + the wall-clock instant, sequence assigned here. */
