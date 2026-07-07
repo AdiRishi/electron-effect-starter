@@ -6,6 +6,9 @@ settings:
 
 catalogs:
   default:
+    '@effect/atom-react':
+      specifier: 4.0.0-beta.78
+      version: 4.0.0-beta.78
     '@effect/platform-node':
       specifier: 4.0.0-beta.78
       version: 4.0.0-beta.78
@@ -138,6 +141,9 @@ importers:
       '@app/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@effect/atom-react':
+        specifier: 'catalog:'
+        version: 4.0.0-beta.78(effect@4.0.0-beta.78)(react@19.2.6)(scheduler@0.27.0)
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.78
@@ -275,6 +281,13 @@ packages:
   '@develar/schema-utils@2.6.5':
     resolution: {integrity: sha512-0cp4PsWQ/9avqTVMCtZ+GirikIA36ikvjtHweU4/j8yLtgObI0+JUPhYFScgwlteveGB1rt3Cm8UhN04XayDig==}
     engines: {node: '>= 8.9.0'}
+
+  '@effect/atom-react@4.0.0-beta.78':
+    resolution: {integrity: sha512-cgxDXJaD0wlbQXbp6tiEmmY+yajwurB0ynkFG20RVucvH4LsQMB3ogiHe0mt42wGggfbVYMEDxgBpQdqDRY8yA==}
+    peerDependencies:
+      effect: ^4.0.0-beta.78
+      react: ^19.2.4
+      scheduler: '*'
 
   '@effect/platform-node-shared@4.0.0-beta.78':
     resolution: {integrity: sha512-mo0ddTPATyCMyqzQasYDL7+NI29vozoMplom+qu9f/onDTd4xG5hvEEfGxfL0Ljygui6keG/YE/E9OZVf2z5WA==}
@@ -2533,6 +2546,12 @@ snapshots:
     dependencies:
       ajv: 6.15.0
       ajv-keywords: 3.5.2(ajv@6.15.0)
+
+  '@effect/atom-react@4.0.0-beta.78(effect@4.0.0-beta.78)(react@19.2.6)(scheduler@0.27.0)':
+    dependencies:
+      effect: 4.0.0-beta.78
+      react: 19.2.6
+      scheduler: 0.27.0
 
   '@effect/platform-node-shared@4.0.0-beta.78(effect@4.0.0-beta.78)':
     dependencies:
