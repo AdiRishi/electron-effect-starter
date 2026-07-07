@@ -2,11 +2,11 @@
  * WebSocket RPC route + handler registration.
  *
  * `/ws` upgrades to the Effect RPC websocket protocol after a bearer-auth gate.
- * The four `WsRpcGroup` methods are registered via `WsRpcGroup.toLayer`:
- *  - `server.getConfig` (unary)
- *  - `server.echo` (unary)
- *  - `server.subscribeTicks` (stream)
+ * The `WsRpcGroup` methods are registered via `WsRpcGroup.toLayer`:
+ *  - `server.getConfig` / `server.echo` (unary transport templates)
+ *  - `server.subscribeTicks` (stream template)
  *  - `server.subscribeLifecycle` (stream, ordered push bus)
+ *  - `notes.*` (the sample domain: unary mutations + a push-bus subscription)
  *
  * @module ws
  */
@@ -28,6 +28,7 @@ import {
 import * as Auth from "./auth.ts";
 import * as ServerConfig from "./config.ts";
 import * as LifecycleEvents from "./lifecycleEvents.ts";
+import * as NotesStore from "./notes/NotesStore.ts";
 
 /**
  * Extract a bearer token from the upgrade request: `Authorization: Bearer <t>`
@@ -52,15 +53,17 @@ function extractBearer(request: HttpServerRequest.HttpServerRequest): Option.Opt
 }
 
 /**
- * Register the four RPC handlers. `server.subscribeLifecycle` replays the retained
+ * Register the RPC handlers. `server.subscribeLifecycle` replays the retained
  * snapshot (sorted by sequence) then follows the live stream filtered to events
- * newer than the snapshot boundary.
+ * newer than the snapshot boundary; `notes.subscribe` delegates the same
+ * contract to the notes store.
  */
 const makeWsRpcLayer = () =>
   WsRpcGroup.toLayer(
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;
       const lifecycleEvents = yield* LifecycleEvents.ServerLifecycleEvents;
+      const notes = yield* NotesStore.NotesStore;
 
       return WsRpcGroup.of({
         [WS_METHODS.serverGetConfig]: () =>
@@ -102,6 +105,10 @@ const makeWsRpcLayer = () =>
               return Stream.concat(Stream.fromIterable(replay), live);
             }),
           ),
+        [WS_METHODS.notesCreate]: (input) => notes.create(input),
+        [WS_METHODS.notesUpdate]: (input) => notes.update(input),
+        [WS_METHODS.notesDelete]: (input) => notes.remove(input),
+        [WS_METHODS.notesSubscribe]: () => notes.changes,
       });
     }),
   );
