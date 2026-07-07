@@ -12,7 +12,7 @@ import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
  * `/ws` upgrades to the Effect RPC websocket protocol after a bearer-auth gate.
  * The four `WsRpcGroup` methods are registered via `WsRpcGroup.toLayer`:
  *  - `server.getConfig` (unary)
- *  - `echo` (unary)
+ *  - `server.echo` (unary)
  *  - `server.subscribeTicks` (stream)
  *  - `server.subscribeLifecycle` (stream, ordered push bus)
  *
