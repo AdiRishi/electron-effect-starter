@@ -29,19 +29,19 @@ function makeBridge(overrides?: Partial<DesktopBridge>): DesktopBridge {
   return {
     getAppInfo: () => null,
     getServerBootstrap: () => null,
-    getBearerToken: vi.fn(async () => "bearer"),
-    setTheme: vi.fn(async () => undefined),
-    openExternal: vi.fn(async () => true),
-    confirm: vi.fn(async () => true),
-    pickFolder: vi.fn(async () => "/picked"),
-    showContextMenu: vi.fn(async () => null),
-    getUpdateState: vi.fn(),
-    setUpdateChannel: vi.fn(),
-    checkForUpdate: vi.fn(),
-    downloadUpdate: vi.fn(),
-    installUpdate: vi.fn(),
-    onUpdateState: vi.fn(() => () => {}),
-    onMenuAction: vi.fn(() => () => {}),
+    getBearerToken: vi.fn<DesktopBridge["getBearerToken"]>(async () => "bearer"),
+    setTheme: vi.fn<DesktopBridge["setTheme"]>(async () => undefined),
+    openExternal: vi.fn<DesktopBridge["openExternal"]>(async () => true),
+    confirm: vi.fn<DesktopBridge["confirm"]>(async () => true),
+    pickFolder: vi.fn<DesktopBridge["pickFolder"]>(async () => "/picked"),
+    showContextMenu: vi.fn<DesktopBridge["showContextMenu"]>(async () => null),
+    getUpdateState: vi.fn<DesktopBridge["getUpdateState"]>(),
+    setUpdateChannel: vi.fn<DesktopBridge["setUpdateChannel"]>(),
+    checkForUpdate: vi.fn<DesktopBridge["checkForUpdate"]>(),
+    downloadUpdate: vi.fn<DesktopBridge["downloadUpdate"]>(),
+    installUpdate: vi.fn<DesktopBridge["installUpdate"]>(),
+    onUpdateState: vi.fn<DesktopBridge["onUpdateState"]>(() => () => {}),
+    onMenuAction: vi.fn<DesktopBridge["onMenuAction"]>(() => () => {}),
     ...overrides,
   } as DesktopBridge;
 }
@@ -80,7 +80,9 @@ describe("localApi in the shell (bridge present)", () => {
   });
 
   it("surfaces a failed openExternal as an error", async () => {
-    const bridge = makeBridge({ openExternal: vi.fn(async () => false) });
+    const bridge = makeBridge({
+      openExternal: vi.fn<DesktopBridge["openExternal"]>(async () => false),
+    });
     const { localApi } = await loadLocalApi({ desktopBridge: bridge, localStorage: makeStorage() });
 
     await expect(localApi().openExternal("https://example.com")).rejects.toThrow(
@@ -104,8 +106,8 @@ describe("localApi in the shell (bridge present)", () => {
 
 describe("localApi in a plain browser (no bridge)", () => {
   it("reports non-desktop and uses web fallbacks", async () => {
-    const open = vi.fn();
-    const confirm = vi.fn(() => false);
+    const open = vi.fn<typeof window.open>();
+    const confirm = vi.fn<() => boolean>(() => false);
     const storage = makeStorage();
     const { localApi } = await loadLocalApi({ localStorage: storage, open, confirm });
     const api = localApi();

@@ -145,10 +145,7 @@ describe("connection atoms", () => {
 
     await vi.waitFor(() => {
       const result = registry.get(atoms.echo);
-      expect(AsyncResult.isSuccess(result)).toBe(true);
-      if (AsyncResult.isSuccess(result)) {
-        expect(result.value.message).toBe("hi");
-      }
+      expect(AsyncResult.isSuccess(result) && result.value.message).toBe("hi");
     });
 
     for (const unmount of unmounts) unmount();
