@@ -44,6 +44,15 @@ export const BearerSession = Schema.Struct({
 });
 export type BearerSession = typeof BearerSession.Type;
 
+/**
+ * JSON wire codec for `BearerSession` — `expires_at` crosses HTTP as an ISO
+ * string. `Schema.DateTimeUtc` alone only validates in-memory `DateTime.Utc`
+ * instances; the RPC layer applies `Schema.toCodecJson` automatically, but the
+ * hand-rolled `POST /api/auth/bootstrap/bearer` endpoint must use this codec
+ * explicitly on both ends.
+ */
+export const BearerSessionJson = Schema.toCodecJson(BearerSession);
+
 export class BootstrapBearerError extends Schema.TaggedErrorClass<BootstrapBearerError>()(
   "BootstrapBearerError",
   {

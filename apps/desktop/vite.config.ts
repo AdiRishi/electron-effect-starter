@@ -1,4 +1,4 @@
-import { builtinModules } from "node:module";
+import * as NodeModule from "node:module";
 
 import { defineConfig, type ConfigEnv, type UserConfig } from "vite";
 
@@ -26,8 +26,8 @@ function shouldBundle(id: string): boolean {
 }
 
 const nodeBuiltinIds = new Set([
-  ...builtinModules,
-  ...builtinModules.map((moduleName) => `node:${moduleName}`),
+  ...NodeModule.builtinModules,
+  ...NodeModule.builtinModules.map((moduleName) => `node:${moduleName}`),
 ]);
 
 function electronEntryConfig(input: {

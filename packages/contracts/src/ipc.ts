@@ -64,9 +64,3 @@ export interface LocalApi {
   /** Native menu actions. In a plain browser this never fires (no menu). */
   readonly onMenuAction: (listener: (action: string) => void) => Unsubscribe;
 }
-
-declare global {
-  interface Window {
-    readonly desktopBridge?: DesktopBridge;
-  }
-}

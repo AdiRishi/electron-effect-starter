@@ -71,6 +71,7 @@ function run(
     cwd: REPO_ROOT,
     env: { ...process.env, ...env },
     stdio: "inherit",
+    // oxlint-disable-next-line app/no-global-process-runtime -- Standalone Node script has no Effect runtime (see file header).
     shell: process.platform === "win32",
   });
   child.on("exit", (code) => {
@@ -91,15 +92,21 @@ async function main(): Promise<void> {
     }
   }
 
+  // A malformed override (e.g. APP_SERVER_PORT=abc in .env.local) falls back to
+  // auto-selection with a warning, instead of silently exporting "NaN" to the
+  // children (whose stricter parsers would then diverge to their own defaults).
+  const envPort = (key: string): number | undefined => {
+    const raw = process.env[key];
+    if (raw === undefined) return undefined;
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isInteger(parsed) && parsed >= 1 && parsed <= MAX_PORT) return parsed;
+    process.stderr.write(`[dev-runner] ignoring invalid ${key}="${raw}"\n`);
+    return undefined;
+  };
+
   const offset = repoPortOffset();
-  const serverPort =
-    process.env.APP_SERVER_PORT !== undefined
-      ? Number(process.env.APP_SERVER_PORT)
-      : await pickPort(BASE_SERVER_PORT + offset);
-  const webPort =
-    process.env.APP_WEB_PORT !== undefined
-      ? Number(process.env.APP_WEB_PORT)
-      : await pickPort(BASE_WEB_PORT + offset);
+  const serverPort = envPort("APP_SERVER_PORT") ?? (await pickPort(BASE_SERVER_PORT + offset));
+  const webPort = envPort("APP_WEB_PORT") ?? (await pickPort(BASE_WEB_PORT + offset));
   const bootstrapToken = NodeCrypto.randomBytes(24).toString("hex");
   const wsUrl = `ws://127.0.0.1:${serverPort}`;
   const devWebUrl = `http://localhost:${webPort}`;

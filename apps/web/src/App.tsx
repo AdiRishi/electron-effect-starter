@@ -1,12 +1,14 @@
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import * as DateTime from "effect/DateTime";
+import { AsyncResult } from "effect/unstable/reactivity";
 import { useCallback, useEffect, useState } from "react";
 
 import type { ConnectionPhase } from "@app/client-runtime/connection";
-import type { DesktopTheme, ServerConfig } from "@app/contracts";
+import type { DesktopTheme } from "@app/contracts";
 
-import { useConnection } from "./hooks/useConnection.ts";
 import { useTheme } from "./hooks/useTheme.ts";
 import { localApi } from "./localApi.ts";
+import { connectionAtoms } from "./state/connection.ts";
 
 const STATUS_LABEL: Record<ConnectionPhase, string> = {
   idle: "Idle",
@@ -16,7 +18,7 @@ const STATUS_LABEL: Record<ConnectionPhase, string> = {
 };
 
 const STATUS_DOT: Record<ConnectionPhase, string> = {
-  idle: "bg-[--color-muted]",
+  idle: "bg-muted",
   connecting: "bg-amber-400 animate-pulse",
   connected: "bg-emerald-400",
   reconnecting: "bg-amber-400 animate-pulse",
@@ -25,76 +27,49 @@ const STATUS_DOT: Record<ConnectionPhase, string> = {
 const THEMES: readonly DesktopTheme[] = ["light", "dark", "system"];
 
 export function App() {
-  const conn = useConnection();
-  const { request, subscribe } = conn;
+  const connectionState = useAtomValue(connectionAtoms.state);
+  const config = useAtomValue(connectionAtoms.serverConfig);
+  const tick = useAtomValue(connectionAtoms.tick);
+  const lifecycle = useAtomValue(connectionAtoms.lifecycle);
+  const echoResult = useAtomValue(connectionAtoms.echo);
+  const sendEcho = useAtomSet(connectionAtoms.echo);
+
   const { theme, setTheme } = useTheme();
-  const connected = conn.state.phase === "connected";
+  const connected = connectionState.phase === "connected";
   const isDesktop = localApi().isDesktop;
 
-  const [config, setConfig] = useState<ServerConfig | null>(null);
-  const [tick, setTick] = useState<number | null>(null);
-  const [lifecycle, setLifecycle] = useState<string | null>(null);
   const [menuAction, setMenuAction] = useState<string | null>(null);
   const [echoInput, setEchoInput] = useState("hello");
-  const [echoResult, setEchoResult] = useState<string | null>(null);
-  const [echoing, setEchoing] = useState(false);
-
-  // Initial-sync: fetch the server config once connected.
-  useEffect(() => {
-    if (!connected) {
-      setConfig(null);
-      return;
-    }
-    let alive = true;
-    request("server.getConfig", {})
-      .then((serverConfig) => {
-        if (alive) setConfig(serverConfig);
-      })
-      .catch(() => {
-        if (alive) setConfig(null);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [connected, request]);
-
-  // Live streams: subscribe once per mount. The client-runtime subscription
-  // watches the session and re-attaches on every reconnect by itself, so we must
-  // NOT gate on `connected` — that would tear the stream down and rebuild it on
-  // each blip, defeating the transport's built-in re-attach.
-  useEffect(() => subscribe("subscribeTicks", {}, (event) => setTick(event.tick)), [subscribe]);
-  useEffect(
-    () => subscribe("subscribeServerLifecycle", {}, (event) => setLifecycle(event.phase)),
-    [subscribe],
-  );
 
   // Native menu actions (shell only; inert in a browser). Subscribe once.
   useEffect(() => localApi().onMenuAction(setMenuAction), []);
 
   const runEcho = useCallback(() => {
-    setEchoing(true);
-    request("echo", { message: echoInput })
-      .then((result) => setEchoResult(result.message))
-      .catch((error: unknown) => setEchoResult(`error: ${String(error)}`))
-      .finally(() => setEchoing(false));
-  }, [request, echoInput]);
+    sendEcho({ message: echoInput });
+  }, [sendEcho, echoInput]);
+
+  const echoText = AsyncResult.isSuccess(echoResult)
+    ? `↩ ${echoResult.value.message}`
+    : AsyncResult.isFailure(echoResult)
+      ? `error: ${String(echoResult.cause)}`
+      : null;
 
   return (
     <div className="flex min-h-full items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-2xl border border-[--color-border] bg-[--color-card] p-6 shadow-sm">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-sm">
         <header className="mb-5 flex items-center justify-between">
           <div>
             <h1 className="text-lg font-semibold">Electron Effect Starter</h1>
-            <p className="text-sm text-[--color-muted]">
-              {conn.state.lastError ? conn.state.lastError : "Effect RPC over WebSocket"}
+            <p className="text-sm text-muted">
+              {connectionState.lastError ? connectionState.lastError : "Effect RPC over WebSocket"}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <span
-              className={`inline-block h-2.5 w-2.5 rounded-full ${STATUS_DOT[conn.state.phase]}`}
+              className={`inline-block h-2.5 w-2.5 rounded-full ${STATUS_DOT[connectionState.phase]}`}
               aria-hidden
             />
-            <span className="text-sm text-[--color-muted]">{STATUS_LABEL[conn.state.phase]}</span>
+            <span className="text-sm text-muted">{STATUS_LABEL[connectionState.phase]}</span>
           </div>
         </header>
 
@@ -122,11 +97,8 @@ export function App() {
           )}
         </dl>
 
-        <div className="mt-5 border-t border-[--color-border] pt-5">
-          <label
-            htmlFor="echo-input"
-            className="mb-1.5 block text-xs font-medium text-[--color-muted]"
-          >
+        <div className="mt-5 border-t border-border pt-5">
+          <label htmlFor="echo-input" className="mb-1.5 block text-xs font-medium text-muted">
             Echo
           </label>
           <div className="flex gap-2">
@@ -134,33 +106,29 @@ export function App() {
               id="echo-input"
               value={echoInput}
               onChange={(e) => setEchoInput(e.target.value)}
-              className="flex-1 rounded-lg border border-[--color-border] bg-transparent px-3 py-1.5 text-sm outline-none focus:border-[--color-accent]"
+              className="flex-1 rounded-lg border border-border bg-transparent px-3 py-1.5 text-sm outline-none focus:border-accent"
               placeholder="Message to echo"
             />
             <button
               onClick={runEcho}
-              disabled={!connected || echoing}
-              className="rounded-lg bg-[--color-accent] px-3 py-1.5 text-sm font-medium text-white transition-opacity disabled:opacity-40"
+              disabled={!connected || echoResult.waiting}
+              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition-opacity disabled:opacity-40"
             >
               Send
             </button>
           </div>
-          {echoResult !== null && (
-            <p className="mt-2 font-mono text-xs text-[--color-muted]">↩ {echoResult}</p>
-          )}
+          {echoText !== null && <p className="mt-2 font-mono text-xs text-muted">{echoText}</p>}
         </div>
 
-        <div className="mt-5 flex items-center justify-between border-t border-[--color-border] pt-5">
-          <span className="text-xs font-medium text-[--color-muted]">Theme</span>
-          <div className="flex gap-1 rounded-lg border border-[--color-border] p-0.5">
+        <div className="mt-5 flex items-center justify-between border-t border-border pt-5">
+          <span className="text-xs font-medium text-muted">Theme</span>
+          <div className="flex gap-1 rounded-lg border border-border p-0.5">
             {THEMES.map((option) => (
               <button
                 key={option}
                 onClick={() => setTheme(option)}
                 className={`rounded-md px-2.5 py-1 text-xs capitalize transition-colors ${
-                  theme === option
-                    ? "bg-[--color-accent] text-white"
-                    : "text-[--color-muted] hover:text-[--color-foreground]"
+                  theme === option ? "bg-accent text-white" : "text-muted hover:text-foreground"
                 }`}
               >
                 {option}
@@ -176,7 +144,7 @@ export function App() {
 function Row({ label, children }: { readonly label: string; readonly children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between">
-      <dt className="text-[--color-muted]">{label}</dt>
+      <dt className="text-muted">{label}</dt>
       <dd>{children}</dd>
     </div>
   );

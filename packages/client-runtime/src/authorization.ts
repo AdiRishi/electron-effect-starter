@@ -2,7 +2,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { BearerSession, type BootstrapBearerInput } from "@app/contracts";
+import { BearerSessionJson, type BearerSession, type BootstrapBearerInput } from "@app/contracts";
 
 const BOOTSTRAP_TIMEOUT = Duration.seconds(10);
 
@@ -22,7 +22,7 @@ export class BearerBootstrapError extends Schema.TaggedErrorClass<BearerBootstra
   }
 }
 
-const decodeBearerSession = Schema.decodeUnknownEffect(BearerSession);
+const decodeBearerSession = Schema.decodeUnknownEffect(BearerSessionJson);
 
 const describeCause = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);

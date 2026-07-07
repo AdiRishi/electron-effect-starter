@@ -14,10 +14,13 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 
+import packageJson from "../package.json" with { type: "json" };
+
 export const DEFAULT_PORT = 13773;
 export const DEFAULT_HOST = "127.0.0.1";
 export const APP_NAME = "Electron Effect Starter";
-export const APP_VERSION = "0.0.0";
+/** Single-sourced from package.json so `--version` can't drift from the manifest. */
+export const APP_VERSION: string = packageJson.version;
 
 /**
  * ServerConfig - service tag for the resolved server runtime configuration.

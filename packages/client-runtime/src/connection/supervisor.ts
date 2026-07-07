@@ -1,3 +1,4 @@
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -19,6 +20,13 @@ import {
  */
 const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000] as const;
 const MAX_RETRY_DELAY_MS = 16_000;
+
+/**
+ * The failure counter resets only after a session survives this long. A server
+ * that accepts sockets and then crashes keeps escalating backoff instead of
+ * being reconnected at the 1s floor forever (same constant as the reference).
+ */
+const BACKOFF_RESET_AFTER_MS = 30_000;
 
 function retryDelayMs(attemptIndex: number): number {
   const index = Math.min(attemptIndex, RETRY_DELAYS_MS.length - 1);
@@ -53,6 +61,7 @@ const runLoop = (
   connection: PreparedConnection,
 ): Effect.Effect<never, never, Socket.WebSocketConstructor> =>
   Effect.gen(function* () {
+    const sessions = yield* RpcSession.RpcSessionFactory;
     let failureCount = 0;
     let everConnected = false;
 
@@ -63,15 +72,18 @@ const runLoop = (
         lastError: null,
       });
 
+      // Set once the socket is up, so the drop below can measure uptime.
+      let connectedAtMs: number | null = null;
+
       // The inner program never succeeds — it either fails to connect or holds
       // open until the socket drops (both surface a `ConnectionTransientError`).
       // Catch that failure so the loop sees it as a value to back off from.
       const outcome = yield* Effect.scoped(
         Effect.gen(function* () {
-          const active = yield* RpcSession.connect(connection);
+          const active = yield* sessions.connect(connection);
           yield* active.connected;
           everConnected = true;
-          failureCount = 0;
+          connectedAtMs = yield* Clock.currentTimeMillis;
           yield* SubscriptionRef.set(supervisor.session, Option.some(active));
           yield* SubscriptionRef.set(supervisor.state, {
             phase: "connected",
@@ -85,6 +97,16 @@ const runLoop = (
 
       // The session scope has closed, so clear it before backing off.
       yield* SubscriptionRef.set(supervisor.session, Option.none());
+
+      // Backoff only resets after a *stable* session — a crash-flapping server
+      // (accepts the socket, dies moments later) keeps escalating toward the
+      // 16s cap instead of being hammered at the 1s floor.
+      if (connectedAtMs !== null) {
+        const uptimeMs = (yield* Clock.currentTimeMillis) - connectedAtMs;
+        if (uptimeMs >= BACKOFF_RESET_AFTER_MS) {
+          failureCount = 0;
+        }
+      }
 
       failureCount += 1;
       const delayMs = retryDelayMs(failureCount - 1);

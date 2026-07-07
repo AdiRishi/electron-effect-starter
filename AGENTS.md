@@ -29,6 +29,7 @@ Long term maintainability is a core priority. If you add new functionality, firs
 - `packages/shared`: Runtime utilities consumed by multiple apps. Explicit subpath exports (e.g. `@app/shared/Net`) — no barrel index.
 - `packages/client-runtime`: Client transport: the connection supervisor and typed RPC client. Subpath exports only (`/connection`, `/rpc`, `/authorization`).
 - `scripts`: Repo tooling — dev runner, desktop packaging, reference-repo sync.
+- `oxlint-plugin-app`: Custom oxlint rules (Node namespace imports, HostProcess injection, hoisted Schema compilers, @effect/vitest in tests). Wired via `jsPlugins` in `.oxlintrc.json`.
 
 ## Vendored Repositories
 

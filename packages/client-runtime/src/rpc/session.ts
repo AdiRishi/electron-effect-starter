@@ -1,3 +1,4 @@
+import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -91,3 +92,24 @@ export const connect = (
       closed: Deferred.await(disconnected),
     } satisfies RpcSession;
   });
+
+export interface RpcSessionFactoryShape {
+  readonly connect: (
+    connection: PreparedConnection,
+  ) => Effect.Effect<
+    RpcSession,
+    ConnectionTransientError,
+    Scope.Scope | Socket.WebSocketConstructor
+  >;
+}
+
+/**
+ * How the supervisor obtains sessions. Defaults to the real WebSocket
+ * `connect`, so app wiring stays zero-config; tests override it with scripted
+ * sessions to drive connect/drop/backoff deterministically (the same seam the
+ * reference repo models as its `RpcSessionFactory` service).
+ */
+export const RpcSessionFactory = Context.Reference<RpcSessionFactoryShape>(
+  "@app/client-runtime/rpc/RpcSessionFactory",
+  { defaultValue: () => ({ connect }) },
+);

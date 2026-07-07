@@ -40,7 +40,7 @@ export type ConnectionPhase = "idle" | "connecting" | "connected" | "reconnectin
 
 export interface ConnectionState {
   readonly phase: ConnectionPhase;
-  /** How many failed attempts since the last successful connection. */
+  /** Failed attempts since the last *stable* connection (30s+ uptime). */
   readonly attempt: number;
   /** Detail of the most recent failure, or null while healthy. */
   readonly lastError: string | null;

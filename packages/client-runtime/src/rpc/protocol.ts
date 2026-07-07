@@ -13,7 +13,7 @@ type RpcClientFactory = typeof makeWsRpcProtocolClient;
 
 /**
  * The typed RPC client surface. Unary methods return `Effect`s; `stream: true`
- * methods (`subscribeTicks`, `subscribeServerLifecycle`) return `Stream`s. The
+ * methods (`server.subscribeTicks`, `server.subscribeLifecycle`) return `Stream`s. The
  * method tags come straight from `WS_METHODS`.
  */
 export type WsRpcProtocolClient =

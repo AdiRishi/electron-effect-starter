@@ -209,12 +209,14 @@ export const make = Effect.gen(function* () {
       yield* createMainIfBackendReady;
     }).pipe(Effect.withSpan("desktop.window.activate")),
     handleBackendReady: Effect.fn("desktop.window.handleBackendReady")(function* (config) {
-      yield* Ref.set(backendReadyRef, true);
       // In production the window loads the backend's own origin; in dev it stays
-      // on the web dev server. Only advance the URL when we're not in dev.
+      // on the web dev server. Update the URL BEFORE opening the ready latch so
+      // a concurrent `activate` (dock click) can't create a window against the
+      // stale default-port URL.
       if (!environment.isDevelopment) {
         yield* Ref.set(applicationUrlRef, config.httpBaseUrl.href);
       }
+      yield* Ref.set(backendReadyRef, true);
       yield* logInfo("backend ready", { url: config.httpBaseUrl.href });
       yield* createMainIfBackendReady;
     }),

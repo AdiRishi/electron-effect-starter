@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "node", "promise"],
+  "jsPlugins": ["./oxlint-plugin-app/index.ts"],
   "categories": {
     "suspicious": "warn",
     "perf": "warn"
@@ -11,7 +12,22 @@
     "eslint/no-shadow": "off",
     "unicorn/consistent-function-scoping": "off",
     "import/no-unassigned-import": ["warn", { "allow": ["**/*.css"] }],
-    "promise/always-return": ["warn", { "ignoreLastCallback": true }]
+    "promise/always-return": ["warn", { "ignoreLastCallback": true }],
+    "app/namespace-node-imports": "error",
+    "app/no-global-process-runtime": "error",
+    "app/no-inline-schema-compile": "warn",
+    "app/no-manual-effect-runtime-in-tests": "error",
+    "eslint/no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "@app/client-runtime",
+            "message": "Import from an explicit @app/client-runtime/* subpath. The package has no root export."
+          }
+        ]
+      }
+    ]
   },
   // Bare ".repos" prunes the directory walk (else nested-config discovery reads the
   // vendored repo's config and fails); ".repos/**" ignores the files themselves.
