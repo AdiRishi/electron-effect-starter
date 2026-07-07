@@ -16,7 +16,7 @@ const STATUS_LABEL: Record<ConnectionPhase, string> = {
 };
 
 const STATUS_DOT: Record<ConnectionPhase, string> = {
-  idle: "bg-[--color-muted]",
+  idle: "bg-muted",
   connecting: "bg-amber-400 animate-pulse",
   connected: "bg-emerald-400",
   reconnecting: "bg-amber-400 animate-pulse",
@@ -84,11 +84,11 @@ export function App() {
 
   return (
     <div className="flex min-h-full items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-2xl border border-[--color-border] bg-[--color-card] p-6 shadow-sm">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-sm">
         <header className="mb-5 flex items-center justify-between">
           <div>
             <h1 className="text-lg font-semibold">Electron Effect Starter</h1>
-            <p className="text-sm text-[--color-muted]">
+            <p className="text-sm text-muted">
               {conn.state.lastError ? conn.state.lastError : "Effect RPC over WebSocket"}
             </p>
           </div>
@@ -97,7 +97,7 @@ export function App() {
               className={`inline-block h-2.5 w-2.5 rounded-full ${STATUS_DOT[conn.state.phase]}`}
               aria-hidden
             />
-            <span className="text-sm text-[--color-muted]">{STATUS_LABEL[conn.state.phase]}</span>
+            <span className="text-sm text-muted">{STATUS_LABEL[conn.state.phase]}</span>
           </div>
         </header>
 
@@ -125,11 +125,8 @@ export function App() {
           )}
         </dl>
 
-        <div className="mt-5 border-t border-[--color-border] pt-5">
-          <label
-            htmlFor="echo-input"
-            className="mb-1.5 block text-xs font-medium text-[--color-muted]"
-          >
+        <div className="mt-5 border-t border-border pt-5">
+          <label htmlFor="echo-input" className="mb-1.5 block text-xs font-medium text-muted">
             Echo
           </label>
           <div className="flex gap-2">
@@ -137,33 +134,31 @@ export function App() {
               id="echo-input"
               value={echoInput}
               onChange={(e) => setEchoInput(e.target.value)}
-              className="flex-1 rounded-lg border border-[--color-border] bg-transparent px-3 py-1.5 text-sm outline-none focus:border-[--color-accent]"
+              className="flex-1 rounded-lg border border-border bg-transparent px-3 py-1.5 text-sm outline-none focus:border-accent"
               placeholder="Message to echo"
             />
             <button
               onClick={runEcho}
               disabled={!connected || echoing}
-              className="rounded-lg bg-[--color-accent] px-3 py-1.5 text-sm font-medium text-white transition-opacity disabled:opacity-40"
+              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition-opacity disabled:opacity-40"
             >
               Send
             </button>
           </div>
           {echoResult !== null && (
-            <p className="mt-2 font-mono text-xs text-[--color-muted]">↩ {echoResult}</p>
+            <p className="mt-2 font-mono text-xs text-muted">↩ {echoResult}</p>
           )}
         </div>
 
-        <div className="mt-5 flex items-center justify-between border-t border-[--color-border] pt-5">
-          <span className="text-xs font-medium text-[--color-muted]">Theme</span>
-          <div className="flex gap-1 rounded-lg border border-[--color-border] p-0.5">
+        <div className="mt-5 flex items-center justify-between border-t border-border pt-5">
+          <span className="text-xs font-medium text-muted">Theme</span>
+          <div className="flex gap-1 rounded-lg border border-border p-0.5">
             {THEMES.map((option) => (
               <button
                 key={option}
                 onClick={() => setTheme(option)}
                 className={`rounded-md px-2.5 py-1 text-xs capitalize transition-colors ${
-                  theme === option
-                    ? "bg-[--color-accent] text-white"
-                    : "text-[--color-muted] hover:text-[--color-foreground]"
+                  theme === option ? "bg-accent text-white" : "text-muted hover:text-foreground"
                 }`}
               >
                 {option}
@@ -179,7 +174,7 @@ export function App() {
 function Row({ label, children }: { readonly label: string; readonly children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between">
-      <dt className="text-[--color-muted]">{label}</dt>
+      <dt className="text-muted">{label}</dt>
       <dd>{children}</dd>
     </div>
   );
