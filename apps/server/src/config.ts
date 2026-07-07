@@ -40,6 +40,8 @@ export class ServerConfig extends Context.Service<
     readonly devWebUrl: URL | undefined;
     /** The shared secret a client exchanges for a bearer token. */
     readonly bootstrapToken: string;
+    /** Where the server persists domain state (created on first write). */
+    readonly dataDir: string;
   }
 >()("@app/server/config/ServerConfig") {}
 

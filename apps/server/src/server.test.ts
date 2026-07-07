@@ -18,6 +18,7 @@ import * as Auth from "./auth.ts";
 import * as ServerConfig from "./config.ts";
 import { AUTH_BOOTSTRAP_PATH, HEALTH_PATH } from "./http.ts";
 import * as LifecycleEvents from "./lifecycleEvents.ts";
+import * as NotesStore from "./notes/NotesStore.ts";
 import * as Readiness from "./readiness.ts";
 import { routesLayer } from "./server.ts";
 
@@ -41,7 +42,9 @@ interface HarnessOptions {
 /** The real route stack + services over the platform test server. */
 const appLayer = (options: HarnessOptions = {}) =>
   HttpRouter.serve(routesLayer).pipe(
-    Layer.provideMerge(Layer.mergeAll(Auth.layer, LifecycleEvents.layer, Readiness.layer)),
+    Layer.provideMerge(
+      Layer.mergeAll(Auth.layer, LifecycleEvents.layer, NotesStore.layer, Readiness.layer),
+    ),
     Layer.provideMerge(
       Layer.unwrap(
         Effect.gen(function* () {
@@ -56,6 +59,7 @@ const appLayer = (options: HarnessOptions = {}) =>
               staticDir: options.staticDir,
               devWebUrl: options.devWebUrl,
               bootstrapToken: BOOTSTRAP_TOKEN,
+              dataDir: NodePath.join(SCRATCH, "data"),
             }),
           );
         }),

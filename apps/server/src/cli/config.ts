@@ -1,3 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -98,6 +102,11 @@ export const resolveServerConfig = Effect.fn("cli.resolveServerConfig")(function
   // No dev URL → resolve built static assets (undefined until the web is built).
   const staticDir = devWebUrl ? undefined : yield* ServerConfig.resolveStaticDir();
 
+  // Same directory the desktop shell uses as its app-data base, so the server
+  // persists to one place whether it was spawned by the shell or standalone.
+  const dataDir =
+    env["APP_DATA_DIR"] ?? NodePath.join(NodeOS.homedir(), ".electron-effect-starter");
+
   // Bootstrap token precedence: envelope → env → generated (dev convenience).
   let bootstrapToken = bootstrap?.desktopBootstrapToken ?? env["APP_BOOTSTRAP_TOKEN"];
   if (bootstrapToken === undefined || bootstrapToken.trim().length === 0) {
@@ -117,5 +126,6 @@ export const resolveServerConfig = Effect.fn("cli.resolveServerConfig")(function
     staticDir,
     devWebUrl,
     bootstrapToken,
+    dataDir,
   });
 });

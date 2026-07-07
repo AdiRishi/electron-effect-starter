@@ -59,13 +59,19 @@ No `.env` needed — ports are derived per checkout, so multiple clones never co
 
 The `docs/` folder has the full story behind every decision.
 
+## 📝 The sample app: synced notes
+
+The UI is a deliberately small notes app that exercises every seam the starter builds: schema-validated mutations (`notes.create` / `update` / `delete`), a snapshot-then-live push-bus subscription (`notes.subscribe`), atomic persistence in the server's data dir, and typed domain errors. Open `pnpm dev` in a browser tab **and** `pnpm dev:desktop` side by side — a note flashes in every window as each change round-trips through the local server. That's the whole architecture, visible.
+
+It's built to be deleted: the domain lives in exactly four bounded places — `packages/contracts/src/notes.ts` (+ its `rpc.ts` entries), `apps/server/src/notes/`, and `apps/web/src/features/notes/`. Replace them with your own domain and everything else keeps working.
+
 ## 📁 Repo tour
 
 | Path                      | What it is                                                                               |
 | ------------------------- | ---------------------------------------------------------------------------------------- |
 | `apps/desktop`            | Electron shell: backend supervision, window, menus, updater, IPC bridge                  |
 | `apps/server`             | Effect HTTP + WS RPC server; serves the built web app, owns the auth exchange            |
-| `apps/web`                | React 19 + Vite + Tailwind UI; a demo card that exercises every RPC                      |
+| `apps/web`                | React 19 + Vite + Tailwind UI; the synced-notes sample app                               |
 | `packages/contracts`      | Schema-only wire contracts: RPC surface, IPC bridge, auth. No runtime logic              |
 | `packages/client-runtime` | Connection supervisor + typed RPC client (`/connection`, `/rpc`, `/authorization`)       |
 | `packages/shared`         | Cross-app utilities: port finding, readiness probes, atomic writes. Subpath imports only |
