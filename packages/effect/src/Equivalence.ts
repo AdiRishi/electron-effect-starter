@@ -1,53 +1,11 @@
 /**
- * Utilities for defining equivalence relations - binary relations that determine when two values
- * should be considered equivalent. Equivalence relations are used for comparing, deduplicating,
- * and organizing data in collections and data structures.
+ * Defines reusable equality functions for values of the same type.
  *
- * ## Mental model
- *
- * - **Equivalence relation**: A function `(a: A, b: A) => boolean` that returns `true` when values are equivalent
- * - **Reflexive property**: Every value is equivalent to itself (`eq(a, a) === true`)
- * - **Symmetric property**: If `a` is equivalent to `b`, then `b` is equivalent to `a` (`eq(a, b) === eq(b, a)`)
- * - **Transitive property**: If `a` is equivalent to `b` and `b` is equivalent to `c`, then `a` is equivalent to `c`
- * - **Reference equality optimization**: {@link make} checks `===` first for performance before calling the custom function
- * - **Composition**: Equivalences can be combined using {@link combine} and {@link combineAll} to create more complex relations
- *
- * ## Common tasks
- *
- * - Creating custom equivalences → {@link make}
- * - Using strict equality (`===`) → {@link strictEqual}
- * - Combining multiple equivalences (AND logic) → {@link combine}, {@link combineAll}
- * - Transforming input before comparison → {@link mapInput}
- * - Creating equivalences for structured types → {@link Struct}, {@link Tuple}, {@link Array_}, {@link Record}
- *
- * ## Gotchas
- *
- * - `strictEqual` uses `===`, so `NaN !== NaN` and objects are compared by reference, not structure
- * - `make` optimizes with a reference equality check, so identical references return `true` without calling the function
- * - `combineAll` with an empty collection returns an equivalence that always returns `true`
- * - `Tuple` and `Array` require matching lengths; different lengths are never equivalent
- *
- * ## Quickstart
- *
- * **Example** (Case-insensitive string equivalence)
- *
- * ```ts
- * import { Array, Equivalence } from "effect"
- *
- * const caseInsensitive = Equivalence.make<string>((a, b) =>
- *   a.toLowerCase() === b.toLowerCase()
- * )
- *
- * const strings = ["Hello", "world", "HELLO", "World"]
- * const deduplicated = Array.dedupeWith(strings, caseInsensitive)
- * console.log(deduplicated) // ["Hello", "world"]
- * ```
- *
- * ## See also
- *
- * - `Equal` - For structural equality (can convert to Equivalence)
- * - `Array.dedupeWith` - Remove duplicates using an equivalence
- * - `Chunk` - Collections that use equivalences for operations
+ * An `Equivalence<A>` returns `true` when two `A` values should be treated as
+ * the same for a particular purpose. This module includes strict equality
+ * instances for primitive types, constructors for custom comparisons, and
+ * helpers for tuples, arrays, structs, records, dates, and values compared
+ * through a derived field.
  *
  * @since 2.0.0
  */
@@ -67,7 +25,7 @@ import * as Reducer from "./Reducer.ts"
  * - Returns `boolean`: `true` if values are equivalent, `false` otherwise
  * - Must satisfy reflexive, symmetric, and transitive properties
  *
- * **Example** (Simple number equivalence)
+ * **Example** (Defining simple number equivalence)
  *
  * ```ts
  * import type { Equivalence } from "effect"
@@ -78,7 +36,7 @@ import * as Reducer from "./Reducer.ts"
  * console.log(numberEq(1, 2)) // false
  * ```
  *
- * **Example** (Custom object equivalence)
+ * **Example** (Defining custom object equivalence)
  *
  * ```ts
  * import type { Equivalence } from "effect"
@@ -170,7 +128,7 @@ export interface EquivalenceTypeLambda extends TypeLambda {
  * console.log(caseInsensitive(str, str)) // true (fast path)
  * ```
  *
- * **Example** (Numeric tolerance equivalence)
+ * **Example** (Comparing numbers with tolerance)
  *
  * ```ts
  * import { Equivalence } from "effect"
@@ -209,7 +167,7 @@ const isStrictEquivalent = (x: unknown, y: unknown) => x === y
  *
  * `NaN !== NaN`, so `NaN` values are never considered equivalent.
  *
- * **Example** (Primitive types)
+ * **Example** (Comparing primitive types)
  *
  * ```ts
  * import { Equivalence } from "effect"
@@ -221,7 +179,7 @@ const isStrictEquivalent = (x: unknown, y: unknown) => x === y
  * console.log(strictEq(NaN, NaN)) // false (NaN !== NaN)
  * ```
  *
- * **Example** (Reference equality for objects)
+ * **Example** (Comparing objects by reference)
  *
  * ```ts
  * import { Equivalence } from "effect"
@@ -430,7 +388,7 @@ export const combine: {
  * console.log(point3DEq(point1, point3)) // false (different z)
  * ```
  *
- * **Example** (Empty collection edge case)
+ * **Example** (Handling empty collections)
  *
  * ```ts
  * import { Equivalence } from "effect"
@@ -471,7 +429,7 @@ export const combineAll = <A>(collection: Iterable<Equivalence<A>>): Equivalence
  * - Useful for comparing by one property or normalizing values before
  *   comparison, such as case-insensitive strings
  *
- * **Example** (Equivalence based on object property)
+ * **Example** (Deriving equivalence from an object property)
  *
  * ```ts
  * import { Equivalence } from "effect"
@@ -539,7 +497,7 @@ export const mapInput: {
  * respective equivalences, and it also satisfies reflexive, symmetric, and
  * transitive properties.
  *
- * **Example** (Homogeneous tuple equivalence)
+ * **Example** (Comparing homogeneous tuples)
  *
  * ```ts
  * import { Equivalence } from "effect"
@@ -558,7 +516,7 @@ export const mapInput: {
  * console.log(stringTupleEq(tuple1, tuple3)) // false (different third element)
  * ```
  *
- * **Example** (Tuple with custom equivalences)
+ * **Example** (Comparing tuples with custom equivalences)
  *
  * ```ts
  * import { Equivalence } from "effect"
@@ -628,7 +586,7 @@ export {
    * - Empty arrays are considered equivalent
    * - The result is also an equivalence that satisfies reflexive, symmetric, and transitive properties
    *
-   * **Example** (Number array equivalence)
+   * **Example** (Comparing number arrays)
    *
    * ```ts
    * import { Equivalence } from "effect"
@@ -680,7 +638,7 @@ export {
  * are equivalent according to their equivalences, and it also satisfies
  * reflexive, symmetric, and transitive properties.
  *
- * **Example** (Struct with different equivalences per field)
+ * **Example** (Comparing structs with different equivalences per field)
  *
  * ```ts
  * import { Equivalence } from "effect"
@@ -710,7 +668,7 @@ export {
  * console.log(personEq(person1, person3)) // false (different age)
  * ```
  *
- * **Example** (Partial equivalence for specific fields)
+ * **Example** (Comparing specific fields)
  *
  * ```ts
  * import { Equivalence } from "effect"
@@ -761,7 +719,7 @@ export function Struct<R extends Record<string, Equivalence<any>>>(
  * - Empty objects are considered equivalent
  * - The result is also an equivalence that satisfies reflexive, symmetric, and transitive properties
  *
- * **Example** (Record with string values)
+ * **Example** (Defining records with string values)
  *
  * ```ts
  * import { Equivalence } from "effect"
@@ -778,7 +736,7 @@ export function Struct<R extends Record<string, Equivalence<any>>>(
  * console.log(stringRecordEq(record1, record4)) // false (different keys)
  * ```
  *
- * **Example** (Record with number values)
+ * **Example** (Defining records with number values)
  *
  * ```ts
  * import { Equivalence } from "effect"
@@ -888,7 +846,7 @@ export function makeReducer<A>() {
  * console.log(Equivalence.Date(invalidDate1, d1)) // false
  * ```
  *
- * **Example** (Reference vs value equality)
+ * **Example** (Comparing reference and value equality)
  *
  * ```ts
  * import { Equivalence } from "effect"

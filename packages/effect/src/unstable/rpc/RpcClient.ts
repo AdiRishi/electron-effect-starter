@@ -1,38 +1,12 @@
 /**
- * Client-side runtime for typed RPC calls.
+ * Runs typed RPC calls from the client side.
  *
  * This module turns RPC definitions from an `RpcGroup` into callable client
- * methods. Each method encodes its payload, sends a request through the active
- * transport, and routes the matching server response back to the waiting
- * `Effect` or `Stream`.
- *
- * **Mental model**
- *
- * `make` builds a schema-aware client on top of a client `Protocol`. The
- * protocol owns the encoded transport boundary: HTTP sends one request per
- * call, while socket and worker protocols keep receive loops alive for
- * streaming, acknowledgements, interruption, and protocol-level failures.
- * `makeNoSerialization` keeps the same request lifecycle when another layer has
- * already decoded messages.
- *
- * **Common tasks**
- *
- * - Build a typed client with {@link make} and a provided protocol layer
- * - Use {@link makeNoSerialization} for in-process or already-decoded channels
- * - Provide HTTP, socket, or worker transports with {@link layerProtocolHttp},
- *   {@link layerProtocolSocket}, or {@link layerProtocolWorker}
- * - Add request headers with {@link withHeaders} or per-call options
- *
- * **Gotchas**
- *
- * HTTP does not support client acknowledgements, so streaming back pressure is
- * only available on protocols that keep a live channel. Streaming RPCs return
- * `Stream`s by default; enabling `asQueue` returns a scoped queue whose buffer
- * size is controlled by `streamBufferSize`. Payloads, exits, stream chunks, and
- * middleware errors are encoded and decoded through RPC schemas, so any schema
- * services required by those codecs remain in the generated method
- * environment. Client middleware can rewrite or short-circuit requests and adds
- * its client error type to the call signature.
+ * methods. Each call encodes its payload, sends a message through the active
+ * `Protocol`, decodes exits or stream chunks from the server, and routes the
+ * response back to the waiting `Effect`, `Stream`, or queue. It also defines
+ * the protocol service and includes protocol layers for HTTP, sockets, and
+ * workers.
  *
  * @since 4.0.0
  */
@@ -69,7 +43,7 @@ import * as Rpc from "./Rpc.ts"
 import { RpcClientDefect, RpcClientError } from "./RpcClientError.ts"
 import type * as RpcGroup from "./RpcGroup.ts"
 import type { FromClient, FromClientEncoded, FromServer, FromServerEncoded, Request } from "./RpcMessage.ts"
-import { constPing, RequestId } from "./RpcMessage.ts"
+import { constPing, isTerminalResponse, RequestId } from "./RpcMessage.ts"
 import type * as RpcMiddleware from "./RpcMiddleware.ts"
 import * as RpcSchema from "./RpcSchema.ts"
 import * as RpcSerialization from "./RpcSerialization.ts"
@@ -913,6 +887,8 @@ export const makeProtocolHttp = (client: HttpClient.HttpClient): Effect.Effect<
       })
     const emptyResponseError = (request: FromClientEncoded) =>
       protocolDefect("Received empty HTTP response from RPC server", request)
+    const incompleteResponseError = (request: FromClientEncoded) =>
+      protocolDefect("HTTP response ended before RPC request completed", request)
 
     const send = Effect.fnUntraced(function*(clientId: number, request: FromClientEncoded) {
       if (request._tag !== "Request") {
@@ -940,15 +916,27 @@ export const makeProtocolHttp = (client: HttpClient.HttpClient): Effect.Effect<
         if (responses.length === 0) {
           return yield* emptyResponseError(request)
         }
+        let completed = false
         let i = 0
-        return yield* Effect.whileLoop({
+        yield* Effect.whileLoop({
           while: () => i < responses.length,
-          body: () => writeResponse(clientId, responses[i++]),
+          body: () => {
+            const response = responses[i++]
+            if (isTerminalResponse(response)) {
+              completed = true
+            }
+            return writeResponse(clientId, response)
+          },
           step: constVoid
         })
+        if (!completed) {
+          return yield* incompleteResponseError(request)
+        }
+        return
       }
 
       let hasResponse = false
+      let completed = false
       yield* Stream.runForEachArray(response.stream, (chunk) =>
         Effect.try({
           try: () => chunk.flatMap(parser.decode) as Array<FromServerEncoded>,
@@ -960,7 +948,13 @@ export const makeProtocolHttp = (client: HttpClient.HttpClient): Effect.Effect<
             let i = 0
             return Effect.whileLoop({
               while: () => i < responses.length,
-              body: () => writeResponse(clientId, responses[i++]),
+              body: () => {
+                const response = responses[i++]
+                if (isTerminalResponse(response)) {
+                  completed = true
+                }
+                return writeResponse(clientId, response)
+              },
               step: constVoid
             })
           })
@@ -969,6 +963,8 @@ export const makeProtocolHttp = (client: HttpClient.HttpClient): Effect.Effect<
         )
       if (!hasResponse) {
         return yield* emptyResponseError(request)
+      } else if (!completed) {
+        return yield* incompleteResponseError(request)
       }
     })
 

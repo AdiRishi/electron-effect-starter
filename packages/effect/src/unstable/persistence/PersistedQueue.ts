@@ -1,28 +1,12 @@
 /**
- * Schema-aware persisted queues for background work.
+ * Stores schema-encoded queue work in persistent storage.
  *
- * A `PersistedQueue` stores JSON-encoded values in a named queue and lets
- * workers `take` one value at a time inside a scoped processing window. It is
+ * A `PersistedQueue<A>` keeps JSON-encoded values in a named queue and lets
+ * workers take one value at a time inside a scoped processing window. It is
  * useful for durable handoffs, background jobs, outbox-style integrations, and
- * workloads where failed work should be retried across fibers, process
- * restarts, or multiple workers sharing Redis or SQL.
- *
- * Delivery is at-least-once: a handler that fails, is interrupted, or loses its
- * backing-store lock may see the same element again until `maxAttempts` is
- * reached. Use stable custom ids when offering idempotent work, and choose ids
- * that are collision-free for the backing store because stores can enforce
- * uniqueness at the queue, prefix, or table level. Ordering is intentionally a
- * store-level concern; retries, lock expiration, polling, and multiple workers
- * can move entries behind newer work, so handlers should not rely on strict
- * FIFO processing.
- *
- * Values are encoded and decoded with the supplied schema using the JSON codec,
- * so schema services must be available when offering and taking values. Changing
- * a queue name, schema, Redis prefix, SQL table, or id format is a persistence
- * migration: old entries may decode differently, stop being visible, or collide
- * with new entries. The memory store is process-local and volatile, while Redis
- * and SQL stores use leases that should be tuned for the expected processing
- * time.
+ * work that should retry across fibers, process restarts, or multiple workers.
+ * This module includes a queue factory, store service, id-based de-duplication,
+ * retry handling, and in-memory, Redis, and SQL-backed store layers.
  *
  * @since 4.0.0
  */
@@ -120,7 +104,7 @@ export interface PersistedQueue<in out A, out R = never> {
 export class PersistedQueueFactory extends Context.Service<
   PersistedQueueFactory,
   {
-    readonly make: <S extends Schema.Top>(options: {
+    readonly make: <S extends Schema.Constraint>(options: {
       readonly name: string
       readonly schema: S
     }) => Effect.Effect<PersistedQueue<S["Type"], S["EncodingServices"] | S["DecodingServices"]>>
@@ -134,7 +118,7 @@ export class PersistedQueueFactory extends Context.Service<
  * @category accessors
  * @since 4.0.0
  */
-export const make = <S extends Schema.Top>(options: {
+export const make = <S extends Schema.Constraint>(options: {
   readonly name: string
   readonly schema: S
 }): Effect.Effect<
@@ -159,7 +143,7 @@ export const makeFactory = Effect.gen(function*() {
   const store = yield* PersistedQueueStore
 
   return PersistedQueueFactory.of({
-    make<S extends Schema.Top>(options: {
+    make<S extends Schema.Constraint>(options: {
       readonly name: string
       readonly schema: S
     }) {
@@ -524,7 +508,7 @@ export const makeStoreRedis = Effect.fnUntraced(function*(
             id,
             JSON.stringify({ id, element, attempts: 0 })
           )
-          : redis.send("LPUSH", `${prefix}${name}`, JSON.stringify({ id, element, attempts: 0 })),
+          : redis.send("RPUSH", `${prefix}${name}`, JSON.stringify({ id, element, attempts: 0 })),
         ({ cause }) =>
           new PersistedQueueError({
             message: "Failed to offer element to persisted queue",
