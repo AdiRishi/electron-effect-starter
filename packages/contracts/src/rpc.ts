@@ -4,6 +4,14 @@ import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 
 import { EnvironmentAuthorizationError } from "./auth.ts";
 import {
+  Note,
+  NoteCreateInput,
+  NoteDeleteInput,
+  NoteNotFoundError,
+  NotesStreamEvent,
+  NoteUpdateInput,
+} from "./notes.ts";
+import {
   EchoInput,
   EchoResult,
   ServerConfig,
@@ -20,6 +28,10 @@ export const WS_METHODS = {
   serverEcho: "server.echo",
   serverSubscribeTicks: "server.subscribeTicks",
   serverSubscribeLifecycle: "server.subscribeLifecycle",
+  notesCreate: "notes.create",
+  notesUpdate: "notes.update",
+  notesDelete: "notes.delete",
+  notesSubscribe: "notes.subscribe",
 } as const;
 
 // ── Unary RPCs ──────────────────────────────────────────────────────────────
@@ -56,10 +68,41 @@ export const WsServerSubscribeLifecycleRpc = Rpc.make(WS_METHODS.serverSubscribe
   stream: true,
 });
 
+// ── Notes RPCs (the sample domain — remove alongside notes.ts when forking) ──
+
+export const WsNotesCreateRpc = Rpc.make(WS_METHODS.notesCreate, {
+  payload: NoteCreateInput,
+  success: Note,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsNotesUpdateRpc = Rpc.make(WS_METHODS.notesUpdate, {
+  payload: NoteUpdateInput,
+  success: Note,
+  error: Schema.Union([NoteNotFoundError, EnvironmentAuthorizationError]),
+});
+
+export const WsNotesDeleteRpc = Rpc.make(WS_METHODS.notesDelete, {
+  payload: NoteDeleteInput,
+  error: Schema.Union([NoteNotFoundError, EnvironmentAuthorizationError]),
+});
+
+/** Snapshot-then-live push bus for the notes list (same contract as lifecycle). */
+export const WsNotesSubscribeRpc = Rpc.make(WS_METHODS.notesSubscribe, {
+  payload: Schema.Struct({}),
+  success: NotesStreamEvent,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
 /** The wire contract the server decodes against and the client is typed by. */
 export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerEchoRpc,
   WsServerSubscribeTicksRpc,
   WsServerSubscribeLifecycleRpc,
+  WsNotesCreateRpc,
+  WsNotesUpdateRpc,
+  WsNotesDeleteRpc,
+  WsNotesSubscribeRpc,
 );
