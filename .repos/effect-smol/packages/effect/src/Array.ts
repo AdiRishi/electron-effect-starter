@@ -1,86 +1,11 @@
 /**
- * The `Array` module provides functional operations for JavaScript arrays,
- * readonly arrays, and arrays that are known to contain at least one element.
- * Operations that transform, reorder, or update collections allocate new arrays
- * instead of mutating their inputs, while preserving useful type information
- * such as non-emptiness when the operation can prove it.
+ * Works with JavaScript arrays, readonly arrays, and non-empty arrays.
  *
- * **Mental model**
- *
- * - A regular `Array<A>` is still the built-in JavaScript array type; this
- *   module supplies functional constructors, combinators, searches, folds,
- *   grouping, sorting, and set-like operations around it.
- * - {@link NonEmptyReadonlyArray} and {@link NonEmptyArray} encode
- *   non-emptiness at the type level. APIs with `NonEmpty` in the name can avoid
- *   `Option` because an element is guaranteed to exist.
- * - Most functions are dual. You can call them data-first, such as
- *   `Array.map(values, f)`, or data-last in a pipeline, such as
- *   `pipe(values, Array.map(f))`.
- * - Safe element access returns {@link Option}; unsafe or `NonEmpty` variants
- *   are for code that already has a proof an index or element exists.
- * - Set-like operations such as {@link union}, {@link intersection}, and
- *   {@link difference} use the {@link Equal} protocol by default. Use the
- *   `*With` variants when equality is domain-specific.
- *
- * **Common tasks**
- *
- * - Create arrays with {@link make}, {@link of}, {@link empty},
- *   {@link fromIterable}, {@link range}, {@link makeBy}, {@link replicate}, and
- *   {@link unfold}.
- * - Access edges or indexes with {@link head}, {@link last}, {@link get},
- *   {@link tail}, and {@link init}.
- * - Transform and flatten with {@link map}, {@link flatMap}, and
- *   {@link flatten}.
- * - Keep, split, or deduplicate values with {@link filter}, {@link partition},
- *   {@link dedupe}, and {@link dedupeAdjacent}.
- * - Combine collections with {@link append}, {@link prepend}, {@link appendAll},
- *   {@link prependAll}, {@link zip}, and {@link cartesian}.
- * - Chunk, window, and slice with {@link splitAt}, {@link chunksOf},
- *   {@link span}, and {@link window}.
- * - Sort with {@link sort}, {@link sortWith}, and {@link sortBy}.
- * - Fold or aggregate with {@link reduce}, {@link scan}, {@link join}, and
- *   {@link countBy}.
- * - Match empty and non-empty cases with {@link match}, {@link matchLeft}, and
- *   {@link matchRight}.
- *
- * **Gotchas**
- *
- * - {@link fromIterable} returns the original array reference when the input is
- *   already an array. Use {@link copy} when you need a fresh shallow copy.
- * - {@link makeBy}, {@link range}, and {@link replicate} always return
- *   non-empty arrays. `range(start, end)` is inclusive and returns `[start]`
- *   when `start > end`.
- * - Functions returning {@link Option}, such as {@link head} and
- *   {@link findFirst}, return `Option.none()` for empty inputs instead of
- *   throwing.
- * - `NonEmpty` return types describe what the function can prove, not what may
- *   happen for a particular runtime value after filtering.
- *
- * **Example** (Filtering and transforming)
- *
- * ```ts
- * import { Array, Option, pipe } from "effect"
- *
- * const numbers = [1, 2, 3, 4, 5]
- *
- * const doubledEvens = pipe(
- *   numbers,
- *   Array.filter((n) => n % 2 === 0),
- *   Array.map((n) => n * 2)
- * )
- *
- * console.log(doubledEvens)
- * // [4, 8]
- *
- * const first = Array.head(doubledEvens)
- * console.log(Option.getOrElse(first, () => 0))
- * // 4
- * ```
- *
- * @see {@link make} — create a non-empty array from elements
- * @see {@link map} — transform each element
- * @see {@link filter} — keep elements matching a predicate
- * @see {@link reduce} — fold an array to a single value
+ * The helpers cover common collection work such as creating arrays, reading
+ * elements, transforming values, sorting, grouping, splitting, combining, and
+ * reducing many values to one result. Helpers that change contents return new
+ * arrays and preserve non-empty array types when the result is guaranteed to
+ * contain values.
  *
  * @since 2.0.0
  */
@@ -109,7 +34,7 @@ import type { NoInfer, TupleOf } from "./Types.ts"
  * Use to access native JavaScript array constructor methods such as `isArray`
  * or `from` from the Effect module namespace.
  *
- * **Example** (Using the Array constructor)
+ * **Example** (Accessing the Array constructor)
  *
  * ```ts
  * import { Array } from "effect"
@@ -423,7 +348,7 @@ export const ensure = <A>(self: ReadonlyArray<A> | A): Array<A> => Array.isArray
  * Key order follows `Object.entries` semantics. Empty records produce an empty
  * array.
  *
- * **Example** (Record to entries)
+ * **Example** (Converting a record to entries)
  *
  * ```ts
  * import { Array } from "effect"
@@ -447,7 +372,7 @@ export const fromRecord: <K extends string, A>(self: Readonly<Record<K, A>>) => 
  *
  * Use to convert a single `Option` into an array for downstream array operations.
  *
- * **Example** (Option to array)
+ * **Example** (Converting an Option to an array)
  *
  * ```ts
  * import { Array, Option } from "effect"
@@ -529,7 +454,7 @@ export const match: {
  *
  * `onNonEmpty` receives `(head, tail)` where `tail` is the rest of the array.
  *
- * **Example** (Head and tail destructuring)
+ * **Example** (Destructuring head and tail)
  *
  * ```ts
  * import { Array } from "effect"
@@ -583,7 +508,7 @@ export const matchLeft: {
  *
  * `onNonEmpty` receives `(init, last)` where `init` is everything but the last element.
  *
- * **Example** (Init and last destructuring)
+ * **Example** (Destructuring init and last)
  *
  * ```ts
  * import { Array } from "effect"
@@ -814,7 +739,7 @@ export const scan: {
  * The output length is `input.length + 1` because it ends with the initial
  * value. The result is always a `NonEmptyArray`.
  *
- * **Example** (Reverse running totals)
+ * **Example** (Scanning running totals in reverse)
  *
  * ```ts
  * import { Array } from "effect"
@@ -1007,7 +932,7 @@ const clamp = <A>(i: number, as: ReadonlyArray<A>): number => Math.floor(Math.mi
  *
  * The index is floored to an integer. This never throws.
  *
- * **Example** (Safe index access)
+ * **Example** (Accessing indexes safely)
  *
  * ```ts
  * import { Array } from "effect"
@@ -1044,7 +969,7 @@ export const get: {
  * Throws an `Error` with the message `"Index out of bounds: <i>"`. Prefer
  * `get` for safe access.
  *
- * **Example** (Unsafe index access)
+ * **Example** (Accessing indexes unsafely)
  *
  * ```ts
  * import { Array } from "effect"
@@ -2211,7 +2136,7 @@ export const sortWith: {
  * This is data-last only and returns a function. The return type preserves
  * `NonEmptyArray`.
  *
- * **Example** (Multi-key sorting)
+ * **Example** (Sorting by multiple keys)
  *
  * ```ts
  * import { Array, Order, pipe } from "effect"
@@ -2596,7 +2521,7 @@ export const rotate: {
  * Use when checking membership with caller-provided equality instead of
  * `Equal.equivalence()`.
  *
- * **Example** (Custom equality check)
+ * **Example** (Checking with custom equality)
  *
  * ```ts
  * import { Array, pipe } from "effect"
@@ -2987,7 +2912,7 @@ export const chunksOf: {
  * Returns an empty array if `n <= 0` or the array has fewer than `n` elements.
  * Each window is a tuple of exactly `n` elements.
  *
- * **Example** (Sliding windows)
+ * **Example** (Creating sliding windows)
  *
  * ```ts
  * import { Array } from "effect"
@@ -3163,7 +3088,7 @@ export const groupBy: {
  * Use when you need the union of two arrays but duplicate detection must use a
  * custom equivalence instead of the default `Equal.equivalence()`.
  *
- * **Example** (Union with custom equality)
+ * **Example** (Computing unions with custom equality)
  *
  * ```ts
  * import { Array } from "effect"
@@ -3211,7 +3136,7 @@ export const unionWith: {
  * Computes the union of two arrays, removing duplicates using
  * `Equal.equivalence()`.
  *
- * **Example** (Array union)
+ * **Example** (Computing array unions)
  *
  * ```ts
  * import { Array } from "effect"
@@ -3249,7 +3174,7 @@ export const union: {
  * Use when you need to keep only values present in both arrays and equality
  * must be defined by a custom comparator, such as matching objects by id.
  *
- * **Example** (Intersection with custom equality)
+ * **Example** (Computing intersections with custom equality)
  *
  * ```ts
  * import { Array } from "effect"
@@ -3290,7 +3215,7 @@ export const intersectionWith = <A>(isEquivalent: (self: A, that: A) => boolean)
  * Use when Effect equality is the right membership test and you want to keep
  * values present in both inputs while preserving the first input's order.
  *
- * **Example** (Array intersection)
+ * **Example** (Computing array intersections)
  *
  * ```ts
  * import { Array } from "effect"
@@ -3319,7 +3244,7 @@ export const intersection: {
  * Use when you need to keep only values from the first array and equality must
  * be defined by a custom comparator, such as matching objects by id.
  *
- * **Example** (Difference with custom equality)
+ * **Example** (Computing differences with custom equality)
  *
  * ```ts
  * import { Array } from "effect"
@@ -3358,7 +3283,7 @@ export const differenceWith = <A>(isEquivalent: (self: A, that: A) => boolean): 
  * Use when you need to keep values from the first array that are absent from
  * the second and the default `Equal.equivalence()` comparison is appropriate.
  *
- * **Example** (Array difference)
+ * **Example** (Computing array differences)
  *
  * ```ts
  * import { Array } from "effect"
@@ -3585,7 +3510,7 @@ export const map: {
  * The function receives `(element, index)`. This returns `NonEmptyArray` when
  * both the input and mapped arrays are non-empty.
  *
- * **Example** (FlatMapping an array)
+ * **Example** (Flat mapping an array)
  *
  * ```ts
  * import { Array } from "effect"
@@ -3767,7 +3692,7 @@ export const getSuccesses = <T extends Iterable<Result.Result<any, any>>>(
  *
  * The filter receives `(element, index)`. Failures are discarded.
  *
- * **Example** (Filter and transform)
+ * **Example** (Filtering and transforming)
  *
  * ```ts
  * import { Array, Result } from "effect"
@@ -3985,7 +3910,7 @@ export const reduce: {
  *
  * The function receives `(accumulator, element, index)`.
  *
- * **Example** (Right-to-left fold)
+ * **Example** (Folding from right to left)
  *
  * ```ts
  * import { Array } from "effect"
@@ -4012,7 +3937,7 @@ export const reduceRight: {
  * Lifts a predicate into an array: returns `[value]` if the predicate holds,
  * `[]` otherwise.
  *
- * **Example** (Conditional wrapping)
+ * **Example** (Wrapping values conditionally)
  *
  * ```ts
  * import { Array } from "effect"
@@ -4074,7 +3999,7 @@ export const liftOption = <A extends Array<unknown>, B>(
  *
  * Use to treat a nullable single value as zero or one array element.
  *
- * **Example** (Nullable to array)
+ * **Example** (Converting nullable values to an array)
  *
  * ```ts
  * import { Array } from "effect"
@@ -4129,7 +4054,7 @@ export const liftNullishOr = <A extends Array<unknown>, B>(
  * Use when you need to map and filter in one step, where the mapper can return
  * `null` or `undefined` to skip elements.
  *
- * **Example** (FlatMapping with nullable)
+ * **Example** (Flat mapping with nullable values)
  *
  * ```ts
  * import { Array } from "effect"
@@ -4269,7 +4194,7 @@ export const some: {
  *
  * For index `i`, the function receives `self.slice(i)`.
  *
- * **Example** (Suffix lengths)
+ * **Example** (Computing suffix lengths)
  *
  * ```ts
  * import { Array } from "effect"
@@ -4709,7 +4634,7 @@ export const cartesianWith: {
  * Produces every `[a, b]` combination of an element from `self` with an element
  * from `that`, so the result length is `self.length * that.length`.
  *
- * **Example** (All pairs of two arrays)
+ * **Example** (Generating all pairs from two arrays)
  *
  * ```ts
  * import { Array } from "effect"
@@ -4749,7 +4674,7 @@ export const cartesian: {
  * like nested loops. Use `filter` and `map` in the pipeline to add conditions
  * and transformations.
  *
- * **Example** (Array comprehension with do notation)
+ * **Example** (Building array comprehensions with do notation)
  *
  * ```ts
  * import { Array, pipe } from "effect"

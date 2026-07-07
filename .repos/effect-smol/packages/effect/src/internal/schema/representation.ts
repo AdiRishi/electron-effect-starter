@@ -127,6 +127,7 @@ export function fromASTs(asts: readonly [SchemaAST.AST, ...Array<SchemaAST.AST>]
       case "Any":
       case "Boolean":
       case "Symbol":
+      case "ObjectKeyword":
         return { _tag: last._tag, ...annotations }
       case "String": {
         const contentMediaType = last.annotations?.contentMediaType
@@ -157,11 +158,6 @@ export function fromASTs(asts: readonly [SchemaAST.AST, ...Array<SchemaAST.AST>]
         return {
           _tag: last._tag,
           symbol: last.symbol,
-          ...annotations
-        }
-      case "ObjectKeyword":
-        return {
-          _tag: last._tag,
           ...annotations
         }
       case "Enum":
@@ -276,8 +272,8 @@ export const fromASTBlacklist: Set<string> = new Set([
   "~structural",
   "~sentinels",
   "meta",
+  "arbitrary",
   "toArbitrary",
-  "toArbitraryConstraint",
   "toEquivalence",
   "toFormatter",
   "toCodec",
@@ -362,8 +358,9 @@ export function toJsonSchemaMultiDocument(
     switch (schema._tag) {
       case "Any":
       case "Unknown":
-      case "ObjectKeyword":
         return {}
+      case "ObjectKeyword":
+        return { anyOf: [{ type: "object" }, { type: "array" }] }
       case "Void":
       case "Undefined":
         return { type: "null" }

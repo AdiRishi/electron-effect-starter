@@ -6,17 +6,17 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
-import { BearerSessionJson, type BootstrapBearerInput } from "@app/contracts";
+import { bootstrapRemoteBearerSession } from "@app/client-runtime/authorization";
 
 import * as DesktopBackendManager from "./DesktopBackendManager.ts";
 
 // Exchanges the shell's bootstrap token for a short-lived bearer session the
 // renderer uses on the `/ws` upgrade. The token is minted by the shell and
 // handed to BOTH the spawned server (via fd3) and here — the "shared secret
-// handed to a trusted child" pattern. The result is cached for the process
-// lifetime; a `Semaphore(1)` collapses concurrent first calls into one request.
-
-const BOOTSTRAP_BEARER_PATH = "/api/auth/bootstrap/bearer";
+// handed to a trusted child" pattern. The exchange itself is the one shared
+// `bootstrapRemoteBearerSession` (same call the browser path makes). The result
+// is cached for the process lifetime; a `Semaphore(1)` collapses concurrent
+// first calls into one request.
 
 export class DesktopLocalEnvironmentAuthBackendNotReadyError extends Schema.TaggedErrorClass<DesktopLocalEnvironmentAuthBackendNotReadyError>()(
   "DesktopLocalEnvironmentAuthBackendNotReadyError",
@@ -49,10 +49,6 @@ export class DesktopLocalEnvironmentAuth extends Context.Service<
   }
 >()("@app/desktop/backend/DesktopLocalEnvironmentAuth") {}
 
-// The JSON wire codec, not the raw schema: expires_at crosses as an ISO
-// string, which raw BearerSession (DateTime instances only) rejects.
-const decodeBearerSession = Schema.decodeUnknownEffect(BearerSessionJson);
-
 export const make = Effect.gen(function* () {
   const manager = yield* DesktopBackendManager.DesktopBackendManager;
   const tokenRef = yield* Ref.make(Option.none<string>());
@@ -72,30 +68,11 @@ export const make = Effect.gen(function* () {
         }
         const config = configOption.value;
 
-        const body: BootstrapBearerInput = {
+        const session = yield* bootstrapRemoteBearerSession({
+          httpBaseUrl: config.httpBaseUrl.href,
           credential: config.bootstrapToken,
           clientMetadata: { label: "App Desktop", deviceType: "desktop" },
-        };
-        const url = new URL(BOOTSTRAP_BEARER_PATH, config.httpBaseUrl).href;
-
-        const session = yield* Effect.tryPromise({
-          try: async () => {
-            const response = await globalThis.fetch(url, {
-              method: "POST",
-              headers: {
-                accept: "application/json",
-                "content-type": "application/json",
-              },
-              body: JSON.stringify(body),
-            });
-            if (!response.ok) {
-              throw new Error(`HTTP ${response.status} ${response.statusText}`);
-            }
-            return response.json() as Promise<unknown>;
-          },
-          catch: (cause) => cause,
         }).pipe(
-          Effect.flatMap((json) => decodeBearerSession(json)),
           Effect.mapError(
             (cause) => new DesktopLocalEnvironmentAuthSessionBootstrapError({ cause }),
           ),

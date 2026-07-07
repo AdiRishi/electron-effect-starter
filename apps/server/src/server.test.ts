@@ -145,7 +145,7 @@ describe("bearer bootstrap exchange", () => {
       const session = decodeBearerSession(body);
       assert.match(session.access_token, /^[0-9a-f]{64}$/);
       assert.isNull(session.expires_at);
-      assert.deepEqual(Object.keys(body as object).sort(), ["access_token", "expires_at"]);
+      assert.deepEqual(Object.keys(body as object).toSorted(), ["access_token", "expires_at"]);
 
       // The minted bearer is immediately valid for the WS gate.
       const auth = yield* Auth.BearerSessionStore;

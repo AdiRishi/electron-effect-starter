@@ -1,43 +1,11 @@
 /**
- * The `Layer` module provides the dependency-injection building blocks for
- * Effect applications. A {@link Layer} describes how to acquire one or more
- * services, which dependencies are needed to acquire them, and which errors can
- * occur during acquisition.
+ * Builds and wires services for Effect applications.
  *
- * **Mental model**
- *
- * - Application effects ask for services through context tags.
- * - Layer code builds those services, often from configuration, clients,
- *   connection pools, or other services.
- * - The application boundary provides a final layer to the program.
- * - Layers are lazy: acquisition starts only when a layer is provided, built, or
- *   launched.
- * - Layer acquisition is scoped, so finalizers run when the owning scope closes.
- * - A layer value is memoized by default; reusing the same layer value shares
- *   the acquired service instance.
- *
- * **Common tasks**
- *
- * - Provide an existing service value with {@link succeed}.
- * - Build a service lazily with {@link sync}, {@link effect}, or
- *   {@link effectContext}.
- * - Run setup work that provides no services with {@link effectDiscard}.
- * - Combine independent layers with {@link merge} or {@link mergeAll}.
- * - Feed one layer's output into another layer's requirements with
- *   {@link provide}.
- * - Keep dependency services in the final output with {@link provideMerge}.
- * - Materialize a layer manually with {@link build} or {@link buildWithScope}.
- *
- * **Gotchas**
- *
- * - Sharing is tied to layer identity. Constructing the same layer twice creates
- *   two distinct values and can acquire two service instances.
- * - Use {@link fresh} when a layer must be rebuilt even if the same value is
- *   provided more than once.
- * - Scoped resources belong in layers when construction and release are part of
- *   the service lifecycle.
- * - Normal application code should request services; layer code should create
- *   services.
+ * A `Layer<ROut, E, RIn>` describes how to acquire one or more services, which
+ * services are required to build them, and which errors can occur during
+ * acquisition. Layers can manage scoped resources, memoize shared services,
+ * combine with other layers, provide services to effects or streams, and attach
+ * error handling, tracing, or lifecycle hooks.
  *
  * @since 2.0.0
  */
@@ -52,7 +20,7 @@ import type { LazyArg } from "./Function.ts"
 import { constant, constTrue, constUndefined, dual, identity } from "./Function.ts"
 import * as core from "./internal/core.ts"
 import * as internalEffect from "./internal/effect.ts"
-import type { ErrorWithStackTraceLimit } from "./internal/tracer.ts"
+import { getStackTraceLimit, setStackTraceLimit } from "./internal/stackTraceLimit.ts"
 import * as internalTracer from "./internal/tracer.ts"
 import { type Pipeable, pipeArguments } from "./Pipeable.ts"
 import { hasProperty } from "./Predicate.ts"
@@ -2308,10 +2276,10 @@ const mockImpl = <I, S extends object>(service: Context.Key<I, S>, implementatio
         if (prop in target) {
           return target[prop as keyof S]
         }
-        const prevLimit = (Error as ErrorWithStackTraceLimit).stackTraceLimit
-        ;(Error as ErrorWithStackTraceLimit).stackTraceLimit = 2
+        const prevLimit = getStackTraceLimit()
+        setStackTraceLimit(2)
         const error = new Error(`${service.key}: Unimplemented method "${prop.toString()}"`)
-        ;(Error as ErrorWithStackTraceLimit).stackTraceLimit = prevLimit
+        setStackTraceLimit(prevLimit)
         error.name = "UnimplementedError"
         return makeUnimplemented(error)
       },
@@ -2562,7 +2530,7 @@ export const span = (
  * that are built with this layer. This API does not create, end, or close the
  * span; the caller remains responsible for the span's lifetime.
  *
- * **Example** (Using an existing parent span)
+ * **Example** (Referencing an existing parent span)
  *
  * ```ts
  * import { Console, Context, Effect, Layer, Tracer } from "effect"

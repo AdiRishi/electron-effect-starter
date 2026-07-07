@@ -33,10 +33,11 @@ export interface DesktopBridge {
   readonly openExternal: (url: string) => Promise<boolean>;
   readonly confirm: (message: string) => Promise<boolean>;
   readonly pickFolder: (options?: PickFolderOptions) => Promise<string | null>;
-  readonly showContextMenu: (
-    items: readonly ContextMenuItem[],
+  /** Resolves with the id of the picked item — narrowed to the ids passed in. */
+  readonly showContextMenu: <T extends string>(
+    items: readonly ContextMenuItem<T>[],
     position?: ContextMenuPosition,
-  ) => Promise<string | null>;
+  ) => Promise<T | null>;
 
   readonly getUpdateState: () => Promise<DesktopUpdateState>;
   readonly setUpdateChannel: (channel: DesktopUpdateChannel) => Promise<void>;

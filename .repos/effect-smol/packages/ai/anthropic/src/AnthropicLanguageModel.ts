@@ -1,28 +1,9 @@
 /**
  * The `AnthropicLanguageModel` module provides the Anthropic implementation of
- * Effect AI's `LanguageModel` service. It turns Effect AI prompts, tools, files,
- * reasoning parts, and provider options into Anthropic Messages API requests,
- * and converts Anthropic responses and streams back into Effect AI response
- * parts with Anthropic-specific metadata.
- *
- * **When to use**
- *
- * Use when you need an Anthropic-backed model. Create a model with {@link model},
- * build or provide a `LanguageModel.LanguageModel` layer with {@link layer} or
- * {@link make}, supply default request options through {@link Config}, override
- * configuration for a scoped operation with {@link withConfigOverride}, or attach
- * Anthropic provider options for prompt caching, document citations, reasoning
- * signatures, MCP metadata, and server-side tools.
- *
- * **Gotchas**
- *
- * - Prompt files are translated to Anthropic image or document blocks; only the
- *   supported media types can be sent to the provider.
- * - Structured output support depends on the selected Claude model, so this
- *   module may use Anthropic's native structured output or fall back to a JSON
- *   response tool.
- * - Some features require Anthropic beta headers, which are added
- *   automatically from the selected tools, files, and model capabilities.
+ * Effect AI's `LanguageModel` service. It translates Effect AI prompts, tools,
+ * files, reasoning content, and Anthropic-specific options into Messages API
+ * requests, then converts normal and streaming Anthropic responses back into
+ * Effect AI response content with provider metadata.
  *
  * @since 4.0.0
  */
@@ -1639,7 +1620,7 @@ const makeResponse = Effect.fnUntraced(
             const callerInfo = Predicate.isNotNullish(caller)
               ? {
                 type: caller.type,
-                toolId: "tool_id" in caller ? caller.tool_id : undefined
+                toolId: "tool_id" in caller ? caller.tool_id : null
               }
               : undefined
 
@@ -2985,7 +2966,11 @@ const getModelCapabilities = (modelId: string): ModelCapabilities => {
   if (
     modelId.includes("claude-sonnet-4-5") ||
     modelId.includes("claude-opus-4-5") ||
-    modelId.includes("claude-haiku-4-5")
+    modelId.includes("claude-haiku-4-5") ||
+    modelId.includes("claude-opus-4-6") ||
+    modelId.includes("claude-sonnet-4-6") ||
+    modelId.includes("claude-opus-4-7") ||
+    modelId.includes("claude-opus-4-8")
   ) {
     return {
       maxOutputTokens: 64000,
@@ -3043,13 +3028,13 @@ const unsupportedSchemaError = (error: unknown, method: string): AiError.AiError
     })
   })
 
-const tryCodecTransform = <S extends Schema.Top>(schema: S, method: string) =>
+const tryCodecTransform = <S extends Schema.Constraint>(schema: S, method: string) =>
   Effect.try({
     try: () => toCodecAnthropic(schema),
     catch: (error) => unsupportedSchemaError(error, method)
   })
 
-const tryJsonSchema = <S extends Schema.Top>(schema: S, method: string) =>
+const tryJsonSchema = <S extends Schema.Constraint>(schema: S, method: string) =>
   Effect.try({
     try: () => Tool.getJsonSchemaFromSchema(schema, { transformer: toCodecAnthropic }),
     catch: (error) => unsupportedSchemaError(error, method)

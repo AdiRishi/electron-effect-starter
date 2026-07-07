@@ -1,73 +1,12 @@
 /**
- * The `Option` module provides a type-safe way to represent values that may or
- * may not exist. An `Option<A>` is either `Some<A>` (containing a value) or
- * `None` (representing absence).
+ * Models a value that may be present or absent.
  *
- * **Mental model**
- *
- * - `Option<A>` is a discriminated union: `None | Some<A>`
- * - `None` represents the absence of a value (like `null`/`undefined`, but type-safe)
- * - `Some<A>` wraps a present value of type `A`, accessed via `.value`
- * - `Option` is a monad: chain operations with {@link flatMap}, compose pipelines with `pipe`
- * - All operations are pure and return new `Option` values; the input is never mutated
- * - `Option` is yieldable in `Effect.gen`, producing the inner value or short-circuiting with `NoSuchElementError`
- *
- * **Common tasks**
- *
- * - Create from a value: {@link some}, {@link none}
- * - Create from nullable: {@link fromNullishOr}, {@link fromNullOr}, {@link fromUndefinedOr}
- * - Create from iterable: {@link fromIterable}
- * - Create from Result: {@link getSuccess}, {@link getFailure}
- * - Transform: {@link map}, {@link flatMap}, {@link andThen}
- * - Unwrap: {@link getOrElse}, {@link getOrNull}, {@link getOrUndefined}, {@link getOrThrow}
- * - Pattern match: {@link match}
- * - Fallbacks: {@link orElse}, {@link orElseSome}, {@link firstSomeOf}
- * - Filter: {@link filter}, {@link filterMap}
- * - Combine multiple: {@link all}, {@link zipWith}, {@link product}
- * - Generator syntax: {@link gen}
- * - Do notation: {@link Do}, {@link bind}, {@link let_ let}
- * - Check contents: {@link isSome}, {@link isNone}, {@link contains}, {@link exists}
- *
- * **Gotchas**
- *
- * - `Option.some(null)` is a valid `Some`; use {@link fromNullishOr} to treat `null`/`undefined` as `None`
- * - {@link filterMap} uses a `Filter` callback that returns `Result`
- * - {@link getOrThrow} throws a generic `Error`; prefer {@link getOrThrowWith} for custom errors
- * - `None` is a singleton; compare with {@link isNone}, not `===`
- * - When yielded in `Effect.gen`, a `None` becomes a `NoSuchElementError` defect
- *
- * **Quickstart**
- *
- * **Example** (Working with optional values)
- *
- * ```ts
- * import { Option } from "effect"
- *
- * const name = Option.some("Alice")
- * const age = Option.none<number>()
- *
- * // Transform
- * const upper = Option.map(name, (s) => s.toUpperCase())
- *
- * // Unwrap with fallback
- * console.log(Option.getOrElse(upper, () => "unknown"))
- * // Output: "ALICE"
- *
- * console.log(Option.getOrElse(age, () => 0))
- * // Output: 0
- *
- * // Combine multiple options
- * const both = Option.all({ name, age })
- * console.log(Option.isNone(both))
- * // Output: true
- * ```
- *
- * **See also**
- *
- * - {@link some} / {@link none} for creating values
- * - {@link map} / {@link flatMap} for transforming values
- * - {@link match} for pattern matching
- * - {@link gen} for generator-based syntax
+ * An `Option<A>` is `Some<A>` when a value is available and `None` when it is
+ * not. This lets code handle missing values explicitly instead of relying on
+ * `null` or `undefined`. The module includes helpers for creating, checking,
+ * transforming, combining, and extracting optional values, plus conversions to
+ * and from common nullable or result-like shapes. It also includes `Option.gen`
+ * for writing small generator-based computations that stop at the first `None`.
  *
  * @since 2.0.0
  */
@@ -857,7 +796,7 @@ export const firstSomeOf = <T, C extends Iterable<Option<T>> = Iterable<Option<T
  * - `null` or `undefined` → `None`
  * - Any other value → `Some` (typed as `NonNullable<A>`)
  *
- * **Example** (From nullable values)
+ * **Example** (Converting nullable values to an Option)
  *
  * ```ts
  * import { Option } from "effect"
@@ -897,7 +836,7 @@ export const fromNullishOr = <A>(
  * - `undefined` → `None`
  * - Any other value (including `null`) → `Some`
  *
- * **Example** (From possibly-undefined values)
+ * **Example** (Converting possibly undefined values to an Option)
  *
  * ```ts
  * import { Option } from "effect"
@@ -936,7 +875,7 @@ export const fromUndefinedOr = <A>(
  * - `null` → `None`
  * - Any other value (including `undefined`) → `Some`
  *
- * **Example** (From possibly-null values)
+ * **Example** (Converting possibly null values to an Option)
  *
  * ```ts
  * import { Option } from "effect"
@@ -1293,7 +1232,7 @@ export {
    *
    * Use to return a "success with no meaningful value" from an `Option`-returning function
    *
-   * **Example** (Using Option.void)
+   * **Example** (Referencing Option.void)
    *
    * ```ts
    * import { Option } from "effect"
@@ -2266,7 +2205,7 @@ export const liftPredicate: { // Note: I intentionally avoid using the NoInfer p
  * - `Some` where `isEquivalent(value, a)` is `true` → `true`
  * - `Some` where not equivalent, or `None` → `false`
  *
- * **Example** (Custom equivalence check)
+ * **Example** (Checking with custom equivalence)
  *
  * ```ts
  * import { Equivalence, Option } from "effect"
@@ -2519,7 +2458,7 @@ export const bind: {
  * Use when you need to start an `Option` do notation pipeline before adding
  * bindings.
  *
- * **Example** (Do notation pipeline)
+ * **Example** (Building Option pipelines with do notation)
  *
  * ```ts
  * import { Option, pipe } from "effect"
@@ -2559,7 +2498,7 @@ export const Do: Option<{}> = some({})
  * - The return value is wrapped in `Some`
  * - No `Effect` runtime is needed
  *
- * **Example** (Generator syntax)
+ * **Example** (Sequencing Option computations with generator syntax)
  *
  * ```ts
  * import { Option } from "effect"

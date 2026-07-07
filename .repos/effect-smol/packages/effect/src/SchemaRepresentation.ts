@@ -1,88 +1,14 @@
 /**
- * Serializable intermediate representation (IR) of Effect Schema types.
+ * Plain data structures for describing schemas in a serializable form. A
+ * `Representation` is not the original `Schema` object; it is a JSON-friendly
+ * description of the schema's types, fields, unions, checks, annotations, and
+ * references.
  *
- * `SchemaRepresentation` sits between the internal `SchemaAST` and external
- * formats (JSON Schema, generated TypeScript code, serialized JSON). A
- * {@link Representation} is a discriminated union describing the *shape* of a
- * schema — its types, checks, annotations, and references — in a form that
- * can be round-tripped through JSON and used for code generation.
- *
- * ## Mental model
- *
- * - **Representation**: A tagged union (`_tag`) of all supported schema shapes:
- *   primitives, literals, objects, arrays, unions, declarations, references,
- *   and suspensions.
- * - **Document**: A single {@link Representation} paired with a map of named
- *   {@link References} (analogous to JSON Schema `$defs`).
- * - **MultiDocument**: Like `Document` but holds one or more representations
- *   sharing the same references.
- * - **Check / Filter / FilterGroup**: Validation constraints (min length,
- *   pattern, integer, etc.) attached to types that support them.
- * - **Meta types**: Typed metadata for checks on each category — e.g.
- *   {@link StringMeta}, {@link NumberMeta}, {@link ArraysMeta}.
- * - **Reviver**: A callback used by {@link toSchema} and {@link toCodeDocument}
- *   to handle `Declaration` nodes (custom types like `Option`, `Date`, etc.).
- * - **Code / CodeDocument**: Output of {@link toCodeDocument} — TypeScript
- *   source strings for runtime schemas and their type-level counterparts.
- *
- * ## Common tasks
- *
- * - Convert a Schema AST to a Document → {@link fromAST}
- * - Convert multiple ASTs to a MultiDocument → {@link fromASTs}
- * - Reconstruct a runtime Schema from a Document → {@link toSchema}
- * - Convert a Document to JSON Schema → {@link toJsonSchemaDocument}
- * - Convert a MultiDocument to JSON Schema → {@link toJsonSchemaMultiDocument}
- * - Parse a JSON Schema document into a Document → {@link fromJsonSchemaDocument}
- * - Parse a JSON Schema multi-document → {@link fromJsonSchemaMultiDocument}
- * - Generate TypeScript code from a MultiDocument → {@link toCodeDocument}
- * - Serialize/deserialize a Document as JSON → {@link DocumentFromJson}
- * - Serialize/deserialize a MultiDocument as JSON → {@link MultiDocumentFromJson}
- * - Wrap a Document as a MultiDocument → {@link toMultiDocument}
- *
- * ## Gotchas
- *
- * - `Declaration` nodes require a {@link Reviver} to reconstruct complex types
- *   (e.g. `Option`, `Date`). Without one, `toSchema` falls back to the
- *   declaration's `encodedSchema`. Use {@link toSchemaDefaultReviver} for
- *   built-in Effect types.
- * - `Reference` nodes are resolved against the `references` map in the
- *   `Document`. An unresolvable `$ref` throws at runtime.
- * - `Suspend` wraps a single `thunk` representation; it is used for recursive
- *   schemas. Circular references are handled by lazy resolution in
- *   {@link toSchema}.
- * - The `$`-prefixed exports (e.g. {@link $Representation}, {@link $Document})
- *   are Schema codecs for the representation types themselves — use them to
- *   validate or encode/decode representation data, not application data.
- *
- * ## Quickstart
- *
- * **Example** (Round-trip through JSON)
- *
- * ```ts
- * import { Schema, SchemaRepresentation } from "effect"
- *
- * const Person = Schema.Struct({
- *   name: Schema.String,
- *   age: Schema.Int
- * })
- *
- * // Schema AST → Document
- * const doc = SchemaRepresentation.fromAST(Person.ast)
- *
- * // Document → JSON Schema
- * const jsonSchema = SchemaRepresentation.toJsonSchemaDocument(doc)
- *
- * // Document → runtime Schema
- * const reconstructed = SchemaRepresentation.toSchema(doc)
- * ```
- *
- * ## See also
- *
- * - {@link Representation} — the core tagged union
- * - {@link Document} — single-schema container
- * - {@link fromAST} — entry point from Schema AST
- * - {@link toSchema} — reconstruct a runtime Schema
- * - {@link toCodeDocument} — generate TypeScript code
+ * This module defines the representation node types, document types, and
+ * codecs used to validate those documents. It can build representation
+ * documents from schema ASTs, turn representation documents back into schemas,
+ * convert them to and from JSON Schema documents, and generate TypeScript code
+ * artifacts for schema definitions.
  *
  * @since 4.0.0
  */
@@ -96,7 +22,7 @@ import * as Option from "./Option.ts"
 import * as Predicate from "./Predicate.ts"
 import * as Rec from "./Record.ts"
 import * as Schema from "./Schema.ts"
-import type * as SchemaAST from "./SchemaAST.ts"
+import * as SchemaAST from "./SchemaAST.ts"
 import * as SchemaGetter from "./SchemaGetter.ts"
 
 // -----------------------------------------------------------------------------
@@ -2253,6 +2179,13 @@ export function toSchema<S extends Schema.Top = Schema.Top>(document: Document, 
  * Use when you need to produce a standard JSON Schema document from a schema
  * representation `Document`.
  *
+ * **Gotchas**
+ *
+ * JSON Schema generation is best-effort. Some Effect schema representation
+ * semantics cannot be represented exactly in JSON Schema, and importing an
+ * emitted JSON Schema may produce an equivalent approximation rather than the
+ * original representation shape.
+ *
  * **Example** (Generating JSON Schema)
  *
  * ```ts
@@ -2284,6 +2217,13 @@ export const toJsonSchemaDocument: (
  *
  * Use when you need to export related schema representation documents together
  * so shared definitions stay in multi-document JSON Schema form.
+ *
+ * **Gotchas**
+ *
+ * JSON Schema generation is best-effort. Some Effect schema representation
+ * semantics cannot be represented exactly in JSON Schema, and importing an
+ * emitted JSON Schema may produce equivalent approximations rather than the
+ * original representation shapes.
  *
  * @see {@link MultiDocument}
  * @see {@link toJsonSchemaDocument}
@@ -3036,6 +2976,11 @@ function toRuntimeRegExp(regExp: RegExp): string {
  *
  * **Gotchas**
  *
+ * JSON Schema import is best-effort. Some JSON Schema constructs do not map
+ * exactly to Effect schema representations, and importing a schema previously
+ * emitted by `toJsonSchemaDocument` may produce an equivalent approximation
+ * rather than the original representation shape.
+ *
  * This throws if a `$ref` cannot be resolved within the document's definitions.
  * Circular `$ref`s are detected and cause an error.
  *
@@ -3075,6 +3020,11 @@ export function fromJsonSchemaDocument(document: JsonSchema.Document<"draft-2020
  * processing.
  *
  * **Gotchas**
+ *
+ * JSON Schema import is best-effort. Some JSON Schema constructs do not map
+ * exactly to Effect schema representations, and importing schemas previously
+ * emitted by `toJsonSchemaMultiDocument` may produce equivalent approximations
+ * rather than the original representation shapes.
  *
  * This throws if a `$ref` cannot be resolved.
  *
@@ -3141,11 +3091,11 @@ export function fromJsonSchemaMultiDocument(document: JsonSchema.MultiDocument<"
 
   Object.entries(document.definitions).forEach(([identifier, definition]) => {
     visited = new Set<string>([identifier])
-    references[identifier] = recur(definition)
+    references[identifier] = unknownToJson(recur(definition))
   })
 
   visited = new Set<string>()
-  const representations = Arr.map(document.schemas, recur)
+  const representations = Arr.map(document.schemas, (schema) => unknownToJson(recur(schema)))
   return {
     representations,
     references
@@ -3579,6 +3529,60 @@ export function fromJsonSchemaMultiDocument(document: JsonSchema.MultiDocument<"
     }
     return out
   }
+
+  function unknownToJson(representation: Representation): Representation {
+    switch (representation._tag) {
+      case "Unknown":
+        return representation.annotations === undefined ?
+          json :
+          {
+            ...json,
+            annotations: {
+              ...json.annotations,
+              ...representation.annotations
+            }
+          }
+      case "Suspend": {
+        const thunk = unknownToJson(representation.thunk)
+        return thunk === representation.thunk ? representation : { ...representation, thunk }
+      }
+      case "String": {
+        if (representation.contentSchema === undefined) return representation
+        const contentSchema = unknownToJson(representation.contentSchema)
+        return contentSchema === representation.contentSchema ? representation : { ...representation, contentSchema }
+      }
+      case "Arrays": {
+        const elements = SchemaAST.mapOrSame(representation.elements, (element) => {
+          const type = unknownToJson(element.type)
+          return type === element.type ? element : { ...element, type }
+        })
+        const rest = SchemaAST.mapOrSame(representation.rest, unknownToJson)
+        return elements === representation.elements && rest === representation.rest ?
+          representation :
+          { ...representation, elements, rest }
+      }
+      case "Objects": {
+        const propertySignatures = SchemaAST.mapOrSame(representation.propertySignatures, (propertySignature) => {
+          const type = unknownToJson(propertySignature.type)
+          return type === propertySignature.type ? propertySignature : { ...propertySignature, type }
+        })
+        const indexSignatures = SchemaAST.mapOrSame(representation.indexSignatures, (indexSignature) => {
+          const type = unknownToJson(indexSignature.type)
+          return type === indexSignature.type ? indexSignature : { ...indexSignature, type }
+        })
+        return propertySignatures === representation.propertySignatures &&
+            indexSignatures === representation.indexSignatures ?
+          representation :
+          { ...representation, propertySignatures, indexSignatures }
+      }
+      case "Union": {
+        const types = SchemaAST.mapOrSame(representation.types, unknownToJson)
+        return types === representation.types ? representation : { ...representation, types }
+      }
+      default:
+        return representation
+    }
+  }
 }
 
 function asChecks<M>(
@@ -3704,6 +3708,22 @@ function collectArraysChecks(js: JsonSchema.JsonSchema): Array<Check<ArraysMeta>
 }
 
 const unknown: Unknown = { _tag: "Unknown" }
+const json: Declaration = {
+  _tag: "Declaration",
+  annotations: {
+    expected: "JSON value",
+    generation: {
+      Type: "Schema.Json",
+      runtime: "Schema.Json"
+    },
+    typeConstructor: {
+      _tag: "effect/Json"
+    }
+  },
+  checks: [],
+  encodedSchema: unknown,
+  typeParameters: []
+}
 const never: Never = { _tag: "Never" }
 const null_: Null = { _tag: "Null" }
 const string: String = { _tag: "String", checks: [] }

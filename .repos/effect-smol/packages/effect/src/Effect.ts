@@ -1,79 +1,12 @@
 /**
- * `Effect` is the core data type for describing programs that may perform
- * synchronous or asynchronous work, fail with typed errors, require services,
- * acquire resources, or run concurrently. An `Effect<A, E, R>` is lazy: creating
- * one describes a workflow, and running it executes that workflow.
+ * Describes workflows that run only when executed by the Effect runtime.
  *
- * **Mental model**
- *
- * - `A` is the success value, `E` is the expected failure type, and `R` is the
- *   context of services required to run
- * - Effects are immutable descriptions, not promises; composition with
- *   {@link map}, {@link flatMap}, {@link zip}, or {@link gen} builds a larger
- *   description
- * - Failures in `E` are part of the type signature and can be handled with
- *   {@link match}, {@link matchEffect}, {@link catchTag}, or {@link catchTags}
- * - Requirements in `R` are satisfied before running, usually with
- *   {@link provide}, {@link provideService}, or layers
- * - Fibers are lightweight executions of effects and are used by concurrency
- *   operators such as {@link all}, {@link race}, {@link forkScoped}, and
- *   {@link forkDetach}
- *
- * **Common tasks**
- *
- * - Create values and failures: {@link succeed}, {@link fail}, {@link failSync}
- * - Wrap promise-producing code: {@link tryPromise}
- * - Sequence workflows: {@link gen}, {@link flatMap}, {@link map}, {@link tap}
- * - Handle errors: {@link match}, {@link matchEffect}, {@link catchTag},
- *   {@link catchTags}
- * - Run effects at the edge of an application: {@link runPromise},
- *   {@link runSync}, {@link runFork}
- * - Work with time and interruption: {@link sleep}, {@link timeout},
- *   {@link retry}
- * - Manage resources: {@link acquireRelease}, {@link scoped},
- *   {@link scopedWith}
- * - Provide services: {@link provide}, {@link provideContext},
- *   {@link provideService}, {@link provideServiceEffect}
- *
- * **Gotchas**
- *
- * - Effects do nothing until run by a runtime function such as
- *   {@link runPromise}, {@link runSync}, or {@link runFork}
- * - {@link runSync} is only for effects that can complete synchronously; use
- *   {@link runPromise} for effects that may suspend asynchronously
- * - In {@link gen}, use `yield*` to compose effects; do not use `await` inside
- *   the generator
- * - The `E` type tracks expected failures, not every possible JavaScript
- *   defect such as an unchecked throw
- * - Any remaining `R` requirement must be provided before an effect can be run
- *
- * **Quickstart**
- *
- * **Example** (Composing and running a typed workflow)
- *
- * ```ts
- * import { Console, Effect } from "effect"
- *
- * const divide = (a: number, b: number) =>
- *   b === 0
- *     ? Effect.fail("divide by zero")
- *     : Effect.succeed(a / b)
- *
- * const program = Effect.gen(function*() {
- *   const result = yield* divide(10, 2)
- *   yield* Console.log(`result: ${result}`)
- *   return result
- * })
- *
- * Effect.runPromise(program).then(console.log)
- * ```
- *
- * **See also**
- *
- * - {@link gen} for generator-based sequencing
- * - {@link tryPromise} for asynchronous boundaries
- * - {@link acquireRelease} and {@link scoped} for resource safety
- * - {@link runPromise}, {@link runSync}, and {@link runFork} for execution
+ * An `Effect<A, E, R>` can succeed with an `A`, fail with an `E`, and require
+ * services `R`. Creating an effect does not perform the work; it builds a value
+ * that can be composed, provided with services, retried, interrupted, run
+ * concurrently, or inspected by the runtime. This module is the main API for
+ * creating effects, combining them, handling failures, managing resources, and
+ * running effect programs.
  *
  * @since 2.0.0
  */
@@ -328,7 +261,7 @@ export declare namespace All {
   /**
    * Alias for any `Effect` value accepted by `Effect.all`.
    *
-   * @category models
+   * @category utility types
    * @since 2.0.0
    */
   export type EffectAny = Effect<any, any, any>
@@ -336,7 +269,7 @@ export declare namespace All {
   /**
    * Computes the return type for `Effect.all` when collecting an iterable.
    *
-   * @category models
+   * @category utility types
    * @since 2.0.0
    */
   export type ReturnIterable<
@@ -353,7 +286,7 @@ export declare namespace All {
   /**
    * Computes the return type for `Effect.all` when collecting a tuple.
    *
-   * @category models
+   * @category utility types
    * @since 2.0.0
    */
   export type ReturnTuple<
@@ -384,7 +317,7 @@ export declare namespace All {
   /**
    * Computes the return type for `Effect.all` when collecting a record.
    *
-   * @category models
+   * @category utility types
    * @since 2.0.0
    */
   export type ReturnObject<T, Discard extends boolean, Mode extends boolean = false> = [T] extends [
@@ -410,7 +343,7 @@ export declare namespace All {
   /**
    * Detects whether `Effect.all` should discard collected values.
    *
-   * @category models
+   * @category utility types
    * @since 2.0.0
    */
   export type IsDiscard<A> = [Extract<A, { readonly discard: true }>] extends [
@@ -421,7 +354,7 @@ export declare namespace All {
   /**
    * Detects whether `Effect.all` should collect results in `Result` mode.
    *
-   * @category models
+   * @category utility types
    * @since 4.0.0
    */
   export type IsResult<A> = [Extract<A, { readonly mode: "result" }>] extends [never] ? false : true
@@ -429,7 +362,7 @@ export declare namespace All {
   /**
    * Computes the return type for `Effect.all` from its input and options.
    *
-   * @category models
+   * @category utility types
    * @since 2.0.0
    */
   export type Return<
@@ -938,8 +871,8 @@ export const promise: <A>(
 ) => Effect<A> = internal.promise
 
 /**
- * Creates an `Effect` that represents an asynchronous computation that might
- * fail.
+ * Creates an `Effect` from an asynchronous computation that may throw or
+ * reject, mapping failures into the error channel.
  *
  * **When to use**
  *
@@ -949,19 +882,24 @@ export const promise: <A>(
  *
  * **Details**
  *
- * Error Handling:
+ * The promise thunk is evaluated when the effect runs. If it returns a promise
+ * that resolves, the resolved value becomes the success value. If the thunk
+ * throws before returning a promise, or if the returned promise rejects, the
+ * thrown or rejected value is mapped into the error channel.
  *
- * There are two ways to handle errors with `tryPromise`:
+ * Passing the thunk directly maps failures to {@link Cause.UnknownError}.
+ * Passing `{ try, catch }` uses `catch` to map failures to an error of type
+ * `E`.
  *
- * 1. If you don't provide a `catch` function, the error is caught and the
- *    effect fails with an `UnknownError`.
- * 2. If you provide a `catch` function, the error is caught and the `catch`
- *    function maps it to an error of type `E`.
+ * The thunk receives an `AbortSignal` that is aborted if the effect is
+ * interrupted. The underlying asynchronous operation only stops if it observes
+ * that signal.
  *
- * Interruptions:
+ * **Gotchas**
  *
- * An optional `AbortSignal` can be provided to allow for interruption of the
- * wrapped `Promise` API.
+ * If `catch` throws while mapping the error, that thrown value is treated as a
+ * defect. Return the error value you want in the error channel instead of
+ * throwing it.
  *
  * **Example** (Wrapping a fetch request that may fail)
  *
@@ -1648,7 +1586,7 @@ export const failCauseSync: <E>(
  * The error channel of the resulting effect is of type `never`, indicating that
  * it cannot recover from this failure.
  *
- * **Example** (Failing when division by zero)
+ * **Example** (Failing on division by zero)
  *
  * ```ts
  * import { Effect } from "effect"
@@ -1673,53 +1611,56 @@ export const failCauseSync: <E>(
  */
 export const die: (defect: unknown) => Effect<never> = internal.die
 
-const try_: <A, E>(options: {
-  try: LazyArg<A>
-  catch: (error: unknown) => E
-}) => Effect<A, E> = internal.try
+const try_: <A, E = Cause.UnknownError>(
+  options: {
+    readonly try: LazyArg<A>
+    readonly catch: (error: unknown) => E
+  } | LazyArg<A>
+) => Effect<A, E> = internal.try
 
 export {
   /**
-   * Creates an `Effect` that represents a synchronous computation that might
-   * fail.
+   * Creates an `Effect` from a synchronous computation that may throw, mapping
+   * thrown values into the error channel.
    *
    * **When to use**
    *
    * Use when you need to perform synchronous operations that might throw, such
-   * as parsing JSON, and convert thrown exceptions into typed Effect failures.
+   * as parsing JSON, and want thrown exceptions captured as Effect errors.
    *
    * **Details**
    *
-   * Error Handling:
+   * The thunk is evaluated when the effect runs. If it returns normally, the
+   * returned value becomes the success value. If it throws, the thrown value is
+   * mapped into the error channel.
    *
-   * There are two ways to handle errors with `try`:
+   * Passing the thunk directly maps failures to {@link Cause.UnknownError}.
+   * Passing `{ try, catch }` uses `catch` to map failures to an error of type
+   * `E`.
    *
-   * 1. If you don't provide a `catch` function, the error is caught and the
-   *    effect fails with an `UnknownError`.
-   * 2. If you provide a `catch` function, the error is caught and the `catch`
-   *    function maps it to an error of type `E`.
+   * **Gotchas**
    *
-   * **Example** (Parsing JSON with typed error mapping)
+   * If `catch` throws while mapping the error, that thrown value is treated as
+   * a defect. Return the error value you want in the error channel instead of
+   * throwing it.
+   *
+   * **Example** (Parsing JSON)
    *
    * ```ts
    * import { Effect } from "effect"
    *
    * const parseJSON = (input: string) =>
-   *   Effect.try({
-   *     try: () => JSON.parse(input),
-   *     catch: (error) => error as Error
-   *   })
+   *   Effect.try(() => JSON.parse(input))
    *
    * // Success case
    * Effect.runPromise(parseJSON("{\"name\": \"Alice\"}")).then(console.log)
    * // Output: { name: "Alice" }
    *
-   * // Failure case
+   * // Failure case maps the thrown value to UnknownError
    * Effect.runPromiseExit(parseJSON("invalid json")).then(console.log)
-   * // Output: Exit.failure with Error
    * ```
    *
-   * **Example** (Mapping synchronous exceptions to a tagged error)
+   * **Example** (Mapping exceptions to a tagged error)
    *
    * ```ts
    * import { Data, Effect } from "effect"
@@ -1850,7 +1791,9 @@ export const fromResult: <A, E>(result: Result.Result<A, E>) => Effect<A, E> = i
  * **Details**
  *
  * `Option.some` becomes a successful effect with the contained value, while
- * `Option.none` becomes a failed effect with `NoSuchElementError`.
+ * `Option.none` becomes a failed effect. By default the failure is a
+ * `NoSuchElementError`, but you can provide an `onNone` callback to customize
+ * the error value.
  *
  * **Example** (Converting an Option into an Effect)
  *
@@ -1862,6 +1805,7 @@ export const fromResult: <A, E>(result: Result.Result<A, E>) => Effect<A, E> = i
  *
  * const effect1 = Effect.fromOption(some)
  * const effect2 = Effect.fromOption(none)
+ * const effect3 = Effect.fromOption(none, () => new Error("missing"))
  *
  * Effect.runPromise(effect1).then(console.log) // 42
  * Effect.runPromiseExit(effect2).then(console.log)
@@ -1871,9 +1815,48 @@ export const fromResult: <A, E>(result: Result.Result<A, E>) => Effect<A, E> = i
  * @category converting
  * @since 4.0.0
  */
-export const fromOption: <A>(
-  option: Option<A>
-) => Effect<A, Cause.NoSuchElementError> = internal.fromOption
+export const fromOption: <Arg extends Option<unknown> | LazyArg<unknown>, E = Cause.NoSuchElementError>(
+  arg: Arg,
+  ...rest: [Arg] extends [Option<unknown>] ? [onNone?: LazyArg<E>] : []
+) => [Arg] extends [Option<infer A>] ? Effect<A, E>
+  : [Arg] extends [LazyArg<infer E>] ? <A>(option: Option<A>) => Effect<A, E>
+  : never = internal.fromOption
+
+/**
+ * Converts an `Option` of an `Effect` into an `Effect` of an `Option`.
+ *
+ * **When to use**
+ *
+ * Use when an effect should run only when an optional value is present, while
+ * preserving absence as a successful `None`.
+ *
+ * **Details**
+ *
+ * - `None` becomes an effect that succeeds with `None`
+ * - `Some(effect)` runs the inner effect and wraps its success value in `Some`
+ * - Inner failures are preserved in the resulting effect
+ *
+ * **Example** (Transposing an Option of an Effect)
+ *
+ * ```ts
+ * import { Effect, Option } from "effect"
+ *
+ * const some = Option.some(Effect.succeed(42))
+ *
+ * //      ┌─── Effect<Option<number>, never, never>
+ * //      ▼
+ * const program = Effect.transposeOption(some)
+ *
+ * Effect.runPromise(program).then(console.log)
+ * // Output: { _id: 'Option', _tag: 'Some', value: 42 }
+ * ```
+ *
+ * @category converting
+ * @since 3.13.0
+ */
+export const transposeOption: <A = never, E = never, R = never>(
+  self: Option<Effect<A, E, R>>
+) => Effect<Option<A>, E, R> = internal.transposeOption
 
 /**
  * Converts a nullable value to an `Effect`, failing with a `NoSuchElementError`
@@ -1926,7 +1909,7 @@ export const fromNullishOr: <A>(value: A) => Effect<NonNullable<A>, Cause.NoSuch
  * Since effects are immutable, `flatMap` always returns a new effect instead of
  * changing the original one.
  *
- * **Example** (Syntax)
+ * **Example** (Choosing flatMap syntax variants)
  *
  * ```ts
  * import { Effect, pipe } from "effect"
@@ -2024,7 +2007,7 @@ export const flatten: <A, E, R, E2, R2>(self: Effect<Effect<A, E, R>, E2, R2>) =
  * Failures or requirements from either effect are preserved in the returned
  * effect.
  *
- * **Example** (Syntax)
+ * **Example** (Choosing andThen syntax variants)
  *
  * ```ts
  * import { Effect, pipe } from "effect"
@@ -2333,7 +2316,7 @@ export const exit: <A, E, R>(
  * effect is not modified. Instead, a new effect is returned with the updated
  * value.
  *
- * **Example** (Syntax)
+ * **Example** (Choosing map syntax variants)
  *
  * ```ts
  * import { Effect, pipe } from "effect"
@@ -6593,7 +6576,7 @@ export const acquireDisposable: <A extends AsyncDisposable | Disposable, E, R>(
  * is not desired, errors produced by the `release` `Effect` value can be caught
  * and ignored.
  *
- * **Example** (Using a resource with cleanup)
+ * **Example** (Acquiring resources with cleanup)
  *
  * ```ts
  * import { Console, Effect, Exit } from "effect"
@@ -9364,9 +9347,46 @@ export const runSyncExitWith: <R>(
  */
 export declare namespace fn {
   /**
-   * Generator return type accepted by `Effect.fn` and `Effect.fnUntraced`.
+   * Generator return type accepted by {@link fn} and {@link fnUntraced}.
    *
-   * @category models
+   * **When to use**
+   *
+   * Use when you need to annotate the return type of a generator body while
+   * keeping the produced function's `Effect` return type inferred.
+   *
+   * **Example** (Annotating an Effect function)
+   *
+   * ```ts
+   * import { Effect } from "effect"
+   *
+   * const f = Effect.fnUntraced(function*(
+   *   value: string
+   * ): Effect.fn.Return<number> {
+   *   return yield* Effect.succeed(value.length)
+   * })
+   *
+   * //      ┌─── Effect.Effect<number>
+   * //      ▼
+   * const program = f("hello")
+   * ```
+   *
+   * **Example** (Annotating a parametric Effect function)
+   *
+   * ```ts
+   * import { Effect } from "effect"
+   *
+   * const f = Effect.fnUntraced(function*<A>(
+   *   value: A
+   * ): Effect.fn.Return<A> {
+   *   return yield* Effect.succeed(value)
+   * })
+   *
+   * //      ┌─── Effect.Effect<string>
+   * //      ▼
+   * const program = f("hello")
+   * ```
+   *
+   * @category utility types
    * @since 3.19.0
    */
   export type Return<A, E = never, R = never> = Generator<Effect<any, E, R>, A, any>
@@ -9374,7 +9394,7 @@ export declare namespace fn {
   /**
    * Type of the untraced function builder used by `Effect.fnUntraced`.
    *
-   * @category models
+   * @category utility types
    * @since 3.11.0
    */
   export type Untraced = {
@@ -10962,7 +10982,7 @@ export declare namespace fn {
   /**
    * Type of the traced function builder used by `Effect.fn`.
    *
-   * @category models
+   * @category utility types
    * @since 4.0.0
    */
   export type Traced = {
@@ -13406,21 +13426,88 @@ export declare namespace fn {
 /**
  * Creates an Effect-returning function without tracing.
  *
+ * **When to use**
+ *
+ * Use when you are defining a reusable Effect function whose implementation
+ * would otherwise be a normal function returning {@link gen}, especially when
+ * tracing spans or stack-frame capture are not needed.
+ *
  * **Details**
  *
- * `Effect.fnUntraced` also acts as a `pipe` function, so you can append transforms after the body.
+ * Compared to a plain function that returns {@link gen}, `Effect.fnUntraced`
+ * reuses the generator body instead of allocating a fresh generator closure
+ * around the arguments on every call. It does not record an Effect stack-frame
+ * boundary and does not create tracing spans. Use {@link fn} when you need
+ * those stack frames or spans. Additional arguments after the generator body
+ * act like `pipe` transforms: each transform receives the previous result and
+ * the original function arguments. Annotate the generator return type with
+ * `Effect.fn.Return<A, E, R>` when the produced `Effect` type needs to be
+ * stated explicitly.
  *
  * **Example** (Defining untraced effect functions)
  *
  * ```ts
- * import { Console, Effect } from "effect"
+ * import { Effect } from "effect"
  *
- * const greet = Effect.fnUntraced(function* (name: string) {
- *   yield* Console.log(`Hello, ${name}`)
- *   return name.length
+ * const f = Effect.fnUntraced(function*(
+ *   value: string
+ * ) {
+ *   return yield* Effect.succeed(value.length)
  * })
  *
- * Effect.runFork(greet("Ada"))
+ * //      ┌─── Effect.Effect<number>
+ * //      ▼
+ * const program = f("hello")
+ * ```
+ *
+ * **Example** (Transforming the returned Effect)
+ *
+ * ```ts
+ * import { Effect } from "effect"
+ *
+ * const f = Effect.fnUntraced(
+ *   function*(value: string) {
+ *     return yield* Effect.succeed(value.length)
+ *   },
+ *   (effect, value) =>
+ *     effect.pipe(Effect.map((length) => `${value}: ${length}`))
+ * )
+ *
+ * //      ┌─── Effect.Effect<string>
+ * //      ▼
+ * const program = f("hello")
+ * ```
+ *
+ * **Example** (Annotating an untraced non-parametric function)
+ *
+ * ```ts
+ * import { Effect } from "effect"
+ *
+ * const f = Effect.fnUntraced(function*(
+ *   value: string
+ * ): Effect.fn.Return<number> {
+ *   return yield* Effect.succeed(value.length)
+ * })
+ *
+ * //      ┌─── Effect.Effect<number>
+ * //      ▼
+ * const program = f("hello")
+ * ```
+ *
+ * **Example** (Annotating an untraced parametric function)
+ *
+ * ```ts
+ * import { Effect } from "effect"
+ *
+ * const f = Effect.fnUntraced(function*<A>(
+ *   value: A
+ * ): Effect.fn.Return<A> {
+ *   return yield* Effect.succeed(value)
+ * })
+ *
+ * //      ┌─── Effect.Effect<string>
+ * //      ▼
+ * const program = f("hello")
  * ```
  *
  * @category functions
@@ -13429,30 +13516,117 @@ export declare namespace fn {
 export const fnUntraced: fn.Untraced = internal.fnUntraced
 
 /**
- * Creates a traced function with an optional span name and `SpanOptionsNoTrace` that adds spans and stack frames, plus pipeable post-processing that receives the Effect and the original arguments.
+ * Creates a reusable traced function from an Effect body.
+ *
+ * **When to use**
+ *
+ * Use when you are defining a reusable Effect function whose implementation
+ * would otherwise be a normal function returning {@link gen}, and you want
+ * tracing spans or stack-frame capture.
  *
  * **Details**
  *
- * Pipeable functions run after the body and can transform the resulting Effect.
+ * Compared to a plain function that returns {@link gen}, `Effect.fn` reuses the
+ * generator body instead of allocating a fresh generator closure around the
+ * arguments on every call. Call `Effect.fn(body, ...)` for a generic
+ * stack-frame boundary without creating a span. Call
+ * `Effect.fn("operationName", options?)(body, ...)` when that boundary should
+ * have a readable operation name and the returned `Effect` should create a
+ * tracing span when run. {@link SpanOptionsNoTrace} configures span metadata
+ * such as attributes, links, parent or root selection, kind, sampling, and log
+ * level. Additional arguments after the generator body act like `pipe`
+ * transforms: each transform receives the previous result and the original
+ * function arguments. When those transforms return an `Effect`, the returned
+ * effect includes stack-frame metadata and, for the named form, a tracing span.
+ * Generator bodies may declare a `this` parameter; pass `{ self }` before the
+ * body to bind `this` when the function is created.
  *
  * **Example** (Defining traced effect functions)
  *
  * ```ts
- * import { Console, Effect } from "effect"
+ * import { Effect } from "effect"
  *
- * // Create a named span and post-process the returned Effect.
- * const greet = Effect.fn("greet")(
- *   function*(name: string) {
- *     yield* Console.log(`Hello, ${name}`)
- *     return name.length
+ * const f = Effect.fn("calculateLength")(function*(value: string) {
+ *   return yield* Effect.succeed(value.length)
+ * })
+ *
+ * //      ┌─── Effect.Effect<number>
+ * //      ▼
+ * const program = f("hello")
+ * ```
+ *
+ * **Example** (Transforming the returned Effect)
+ *
+ * ```ts
+ * import { Effect } from "effect"
+ *
+ * const f = Effect.fn("formatLength")(
+ *   function*(value: string) {
+ *     return yield* Effect.succeed(value.length)
  *   },
- *   Effect.map((length) => length + 1)
+ *   (effect, value) =>
+ *     effect.pipe(Effect.map((length) => `${value}: ${length}`))
  * )
  *
- * const program = Effect.gen(function*() {
- *   const result = yield* greet("Ada")
- *   yield* Console.log(`Length: ${result}`)
+ * //      ┌─── Effect.Effect<string>
+ * //      ▼
+ * const program = f("hello")
+ * ```
+ *
+ * **Example** (Binding this)
+ *
+ * ```ts
+ * import { Effect } from "effect"
+ *
+ * class Counter {
+ *   count = 0
+ *
+ *   increment = Effect.fn("Counter.increment")(
+ *     { self: this },
+ *     function*(this: Counter, by: number) {
+ *       this.count += by
+ *       return yield* Effect.succeed(this.count)
+ *     }
+ *   )
+ * }
+ *
+ * const counter = new Counter()
+ *
+ * //      ┌─── Effect.Effect<number>
+ * //      ▼
+ * const program = counter.increment(1)
+ * ```
+ *
+ * **Example** (Annotating a traced non-parametric function)
+ *
+ * ```ts
+ * import { Effect } from "effect"
+ *
+ * const f = Effect.fn("calculateLength")(function*(
+ *   value: string
+ * ): Effect.fn.Return<number> {
+ *   return yield* Effect.succeed(value.length)
  * })
+ *
+ * //      ┌─── Effect.Effect<number>
+ * //      ▼
+ * const program = f("hello")
+ * ```
+ *
+ * **Example** (Annotating a traced parametric function)
+ *
+ * ```ts
+ * import { Effect } from "effect"
+ *
+ * const f = Effect.fn("succeed")(function*<A>(
+ *   value: A
+ * ): Effect.fn.Return<A> {
+ *   return yield* Effect.succeed(value)
+ * })
+ *
+ * //      ┌─── Effect.Effect<string>
+ * //      ▼
+ * const program = f("hello")
  * ```
  *
  * @category functions

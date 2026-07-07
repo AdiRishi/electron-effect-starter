@@ -1,69 +1,11 @@
 /**
- * A synchronous, pure type for representing computations that can succeed
- * (`Success<A>`) or fail (`Failure<E>`). Unlike `Effect`, `Result` is
- * evaluated eagerly and carries no side effects.
+ * Models a value that has already succeeded or failed.
  *
- * **Mental model**
- *
- * - `Result<A, E>` is a discriminated union: `Success<A, E> | Failure<A, E>`
- * - `Success` wraps a value of type `A`, accessed via `.success`
- * - `Failure` wraps an error of type `E`, accessed via `.failure`
- * - `Result` is a monad: chain operations with {@link flatMap}, compose pipelines with `pipe`
- * - All operations are pure and return new `Result` values; the input is never mutated
- * - `Result` is yieldable in `Effect.gen`, producing the inner value or short-circuiting on failure
- *
- * **Common tasks**
- *
- * - Create from a value: {@link succeed}, {@link fail}
- * - Create from nullable: {@link fromNullishOr}
- * - Create from Option: {@link fromOption}
- * - Create from throwing code: {@link try_ try}
- * - Create from predicate: {@link liftPredicate}
- * - Transform: {@link map}, {@link mapError}, {@link mapBoth}
- * - Unwrap: {@link getOrElse}, {@link getOrNull}, {@link getOrUndefined}, {@link getOrThrow}
- * - Pattern match: {@link match}
- * - Sequence: {@link flatMap}, {@link andThen}, {@link all}
- * - Recover: {@link orElse}
- * - Filter: {@link filterOrFail}
- * - Convert to Option: {@link getSuccess}, {@link getFailure}
- * - Generator syntax: {@link gen}
- * - Do notation: {@link Do}, {@link bind}, {@link let_ let}
- * - Check variant: {@link isResult}, {@link isSuccess}, {@link isFailure}
- *
- * **Gotchas**
- *
- * - `E` defaults to `never`, so `Result<number>` means a result that cannot fail
- * - {@link andThen} accepts a `Result`, a function returning a `Result`, a plain value, or a function returning a plain value; {@link flatMap} only accepts a function returning a `Result`
- * - {@link all} short-circuits on the first `Failure` and returns it; later elements are not inspected
- * - {@link getOrThrow} throws the raw failure value `E`; use {@link getOrThrowWith} for custom error objects
- * - {@link tap} runs a side-effect but does not change the result; its return value is ignored
- *
- * **Quickstart**
- *
- * **Example** (Parsing and validating with Result)
- *
- * ```ts
- * import { Result } from "effect"
- *
- * const parse = (input: string): Result.Result<number, string> =>
- *   isNaN(Number(input))
- *     ? Result.fail("not a number")
- *     : Result.succeed(Number(input))
- *
- * const ensurePositive = (n: number): Result.Result<number, string> =>
- *   n > 0 ? Result.succeed(n) : Result.fail("not positive")
- *
- * const result = Result.flatMap(parse("42"), ensurePositive)
- *
- * console.log(Result.getOrElse(result, (err) => `Error: ${err}`))
- * // Output: 42
- * ```
- *
- * **See also**
- *
- * - {@link succeed} / {@link fail} to create values
- * - {@link match} to fold both branches
- * - {@link gen} for generator-based composition
+ * A `Result<A, E>` is `Success<A, E>` when a value is available and
+ * `Failure<A, E>` when an error is available. It is plain data, so inspecting
+ * or transforming it does not run side effects. This module includes helpers
+ * for creating, checking, mapping, combining, and extracting results, plus
+ * conversions to and from `Option` and nullable values.
  *
  * @since 4.0.0
  */
@@ -386,7 +328,7 @@ export {
    * This is equivalent to `Result.succeed(undefined)`, but reuses a shared
    * `Success` wrapper instead of allocating one each time.
    *
-   * **Example** (Using void result)
+   * **Example** (Referencing void results)
    *
    * ```ts
    * import { Result } from "effect"
@@ -419,7 +361,7 @@ export {
  * `Result<never, void>`, but reuses a shared `Failure` wrapper instead of
  * allocating one each time.
  *
- * **Example** (Using a failure without a payload)
+ * **Example** (Failing without a payload)
  *
  * ```ts
  * import { Result } from "effect"
@@ -628,7 +570,7 @@ export const isResult: (input: unknown) => input is Result<unknown, unknown> = r
  * - Acts as a TypeScript type guard, narrowing to `Failure<A, E>`
  * - After narrowing, you can access `.failure` to read the error value
  *
- * **Example** (Narrowing to Failure)
+ * **Example** (Narrowing to failure)
  *
  * ```ts
  * import { Result } from "effect"
@@ -661,7 +603,7 @@ export const isFailure: <A, E>(self: Result<A, E>) => self is Failure<A, E> = re
  * - Acts as a TypeScript type guard, narrowing to `Success<A, E>`
  * - After narrowing, you can access `.success` to read the value
  *
- * **Example** (Narrowing to Success)
+ * **Example** (Narrowing to success)
  *
  * ```ts
  * import { Result } from "effect"
@@ -1371,7 +1313,7 @@ export const orElse: {
  * - The error types are merged into a union (`E | E2`)
  * - This is the monadic `bind` / `>>=` for `Result`
  *
- * **Example** (Sequential validation)
+ * **Example** (Validating sequentially)
  *
  * ```ts
  * import { pipe, Result } from "effect"
@@ -1419,7 +1361,7 @@ export const flatMap: {
  *
  * If `self` is a `Failure`, the second argument is never evaluated.
  *
- * **Example** (Using andThen with different argument types)
+ * **Example** (Chaining Result values with different argument types)
  *
  * ```ts
  * import { pipe, Result } from "effect"
@@ -1865,7 +1807,7 @@ export const transposeOption = <A = never, E = never>(
  * - `Some(a)` where `f(a)` is `Success(b)` becomes `Success(Some(b))`
  * - `Some(a)` where `f(a)` is `Failure(e)` becomes `Failure(e)`
  *
- * **Example** (Map and transpose in one step)
+ * **Example** (Mapping and transposing in one step)
  *
  * ```ts
  * import { Option, Result } from "effect"
@@ -1910,7 +1852,7 @@ export const transposeMapOption = dual<
  * This is equivalent to `Result.succeed(Option.none())`, but reuses a shared
  * `Success` wrapper instead of allocating one each time.
  *
- * **Example** (Using succeedNone)
+ * **Example** (Succeeding with None)
  *
  * ```ts
  * import { Result } from "effect"

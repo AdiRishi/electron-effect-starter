@@ -1,43 +1,14 @@
 /**
- * Immutable URL query parameters represented as ordered string pairs.
+ * Models URL query parameters as ordered string pairs.
  *
- * This module is the shared query-parameter model for HTTP client request
- * queries, URL-encoded form bodies, and server-side decoding. A `UrlParams`
- * value can be built from records, iterables, or native `URLSearchParams`, then
- * inspected, appended, replaced, removed, serialized, converted to a `URL`, or
+ * `UrlParams` is used for HTTP client query strings, URL-encoded form bodies,
+ * and server-side decoding. Values can be built from records, iterables, or
+ * native `URLSearchParams`, then updated, serialized, converted to a `URL`, or
  * decoded with schemas.
- *
- * **Mental model**
- *
- * The core representation is a list of `[key, value]` string pairs. Duplicate
- * keys and pair order are preserved by `make`, `fromInput`, iteration, and
- * append-style operations. Record input is a convenience layer: primitive values
- * become strings, arrays become repeated parameters, nested records use bracket
- * notation, and `undefined` fields are skipped.
- *
- * **Common tasks**
- *
- * - Build query parameters from plain records, tuples, or `URLSearchParams`.
- * - Read the first, last, or all values for a key.
- * - Replace, append, transform, or remove keys without mutating the original.
- * - Serialize a query string, merge parameters into a URL, or decode records and
- *   JSON fields with schemas.
- *
- * **Gotchas**
- *
- * Use `getAll` when every duplicate value matters. `set` and `setAll` replace
- * existing values for matching keys, while `append` and `appendAll` preserve
- * them. Serialization through `toString` and `makeUrl` delegates to the platform
- * `URLSearchParams` / `URL` implementations, so pass decoded strings rather
- * than pre-encoded query fragments. Record-based and schema-based conversions
- * collapse repeated keys into string arrays and do not preserve the full global
- * pair ordering; `schemaJsonField` reads the first matching value for the
- * selected field.
  *
  * @since 4.0.0
  */
 import * as Arr from "../../Array.ts"
-import * as Data from "../../Data.ts"
 import * as Effect from "../../Effect.ts"
 import * as Equal from "../../Equal.ts"
 import * as Equ from "../../Equivalence.ts"
@@ -49,7 +20,6 @@ import * as Option from "../../Option.ts"
 import type { Pipeable } from "../../Pipeable.ts"
 import { hasProperty } from "../../Predicate.ts"
 import type { ReadonlyRecord } from "../../Record.ts"
-import * as Result from "../../Result.ts"
 import * as Schema from "../../Schema.ts"
 import * as SchemaIssue from "../../SchemaIssue.ts"
 import * as SchemaTransformation from "../../SchemaTransformation.ts"
@@ -93,6 +63,7 @@ export const isUrlParams = (u: unknown): u is UrlParams => hasProperty(u, TypeId
  * @since 4.0.0
  */
 export type Input =
+  | UrlParams
   | CoercibleRecordInput
   | Iterable<readonly [string, Coercible]>
   | URLSearchParams
@@ -185,6 +156,9 @@ export const make = (params: ReadonlyArray<readonly [string, string]>): UrlParam
  * @since 4.0.0
  */
 export const fromInput = (input: Input): UrlParams => {
+  if (isUrlParams(input)) {
+    return input
+  }
   const parsed = fromInputNested(input)
   const out: Array<[string, string]> = []
   for (let i = 0; i < parsed.length; i++) {
@@ -475,67 +449,12 @@ export const remove: {
 } = dual(2, (self: UrlParams, key: string): UrlParams => transform(self, Arr.filter(([k]) => k !== key)))
 
 /**
- * Error returned when constructing a `URL` from `UrlParams` fails.
- *
- * @category errors
- * @since 4.0.0
- */
-export class UrlParamsError extends Data.TaggedError("UrlParamsError")<{
-  cause: unknown
-}> {}
-
-/**
- * Creates a `URL` safely by appending `UrlParams` and an optional hash to a URL string.
- *
- * **Details**
- *
- * Returns a `Result` that fails with `UrlParamsError` if the URL cannot be
- * constructed.
- *
- * @category converting
- * @since 4.0.0
- */
-export const makeUrl = (
-  url: string,
-  params: UrlParams,
-  hash: string | undefined
-): Result.Result<URL, UrlParamsError> => {
-  try {
-    const urlInstance = new URL(url, baseUrl())
-    for (let i = 0; i < params.params.length; i++) {
-      const [key, value] = params.params[i]
-      if (value !== undefined) {
-        urlInstance.searchParams.append(key, value)
-      }
-    }
-    if (hash !== undefined) {
-      urlInstance.hash = hash
-    }
-    return Result.succeed(urlInstance)
-  } catch (e) {
-    return Result.fail(new UrlParamsError({ cause: e }))
-  }
-}
-
-/**
  * Serializes `UrlParams` to a URL query string without a leading question mark.
  *
  * @category converting
  * @since 4.0.0
  */
-export const toString = (self: UrlParams): string => new URLSearchParams(self.params as any).toString()
-
-const baseUrl = (): string | undefined => {
-  if (
-    "location" in globalThis &&
-    globalThis.location !== undefined &&
-    globalThis.location.origin !== undefined &&
-    globalThis.location.pathname !== undefined
-  ) {
-    return location.origin + location.pathname
-  }
-  return undefined
-}
+export const toString = (input: Input): string => new URLSearchParams(fromInput(input).params as any).toString()
 
 /**
  * Builds a `Record` containing all the key-value pairs in the given `UrlParams`

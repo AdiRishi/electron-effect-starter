@@ -1,50 +1,10 @@
 /**
- * The `HttpApi` module defines the top-level declaration for an Effect HTTP
- * API. An {@link HttpApi} has an identifier, annotations, and a collection of
- * groups whose endpoints describe request inputs, response schemas, middleware,
- * and route metadata.
+ * Describes an Effect HTTP API as groups of endpoints.
  *
- * An `HttpApi` value is the shared contract consumed by server builders,
- * generated clients, URL builders, OpenAPI generation, and reflection tools.
- * Handler implementations are supplied later with `HttpApiBuilder.group`, and
- * the completed API is registered with `HttpApiBuilder.layer`.
- *
- * **Mental model**
- *
- * - {@link make} creates an empty API declaration with a stable identifier.
- * - Groups are added to the API declaration, and each group owns its endpoint
- *   declarations.
- * - API-level prefixes, middleware, and annotations are composition operations
- *   over the groups already present in the declaration.
- * - {@link reflect} walks the final group and endpoint metadata with merged
- *   annotations, status-indexed response schemas, and middleware errors.
- *
- * **Common tasks**
- *
- * - Create an API with {@link make}.
- * - Add groups with the `add` method, or merge another API with `addHttpApi`.
- * - Apply a shared path prefix, middleware, or annotation through the methods on
- *   {@link HttpApi}.
- * - Inspect the resulting route shape with {@link reflect}.
- * - Register extra OpenAPI component schemas through {@link AdditionalSchemas}.
- *
- * **Gotchas**
- *
- * - Group identifiers are used as keys. Adding a group with the same identifier
- *   replaces the previous group.
- * - `prefix` and `middleware` affect the groups and endpoints already present
- *   when those methods are called.
- * - `addHttpApi` merges the added API's annotations into its groups.
- * - Reflection includes middleware error schemas with endpoint errors and treats
- *   endpoints without an explicit success schema as `NoContent`.
- * - Schemas supplied through {@link AdditionalSchemas} must have an `identifier`
- *   annotation so OpenAPI generation can emit them as components.
- *
- * **See also**
- *
- * - {@link make} for constructing API declarations.
- * - {@link reflect} for inspecting groups and endpoints.
- * - {@link AdditionalSchemas} for OpenAPI component schemas.
+ * An `HttpApi` value is data: it has an identifier, annotations, and groups of
+ * endpoints that describe request inputs, responses, middleware, and route
+ * metadata. The same description can be used by server builders, generated
+ * clients, URL builders, OpenAPI generation, and reflection tools.
  *
  * @since 4.0.0
  */
@@ -97,7 +57,7 @@ export interface HttpApi<
   /**
    * Add a `HttpApiGroup` to the `HttpApi`.
    */
-  add<A extends NonEmptyReadonlyArray<HttpApiGroup.Any>>(...groups: A): HttpApi<Id, Groups | A[number]>
+  add<const A extends NonEmptyReadonlyArray<HttpApiGroup.Any>>(...groups: A): HttpApi<Id, Groups | A[number]>
 
   /**
    * Add another `HttpApi` to the `HttpApi`.
@@ -331,6 +291,7 @@ const extractResponseContent = (
   return map
 
   function add(schema: Schema.Top) {
+    if (HttpApiSchema.isStreamSchema(schema)) return
     const ast = schema.ast
     const status = getStatus(ast)
     const schemas = map.get(status)
@@ -351,5 +312,5 @@ const extractResponseContent = (
  */
 export class AdditionalSchemas extends Context.Service<
   AdditionalSchemas,
-  ReadonlyArray<Schema.Top>
+  ReadonlyArray<Schema.Constraint>
 >()("effect/httpapi/HttpApi/AdditionalSchemas") {}

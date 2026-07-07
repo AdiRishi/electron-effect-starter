@@ -1,74 +1,12 @@
 /**
- * Abstract Syntax Tree (AST) representation for Effect schemas.
+ * Represents Effect schemas as runtime trees.
  *
- * This module defines the runtime data structures that represent schemas.
- * Most users work with the `Schema` module directly; use `SchemaAST` when you
- * need to inspect, traverse, or programmatically transform schema definitions.
- *
- * ## Mental model
- *
- * - **{@link AST}** — discriminated union (`_tag`) of all schema node types
- *   (e.g. `String`, `Objects`, `Union`, `Suspend`)
- * - **{@link Base}** — abstract base class shared by every node; carries
- *   annotations, checks, encoding chain, and context
- * - **{@link Encoding}** — a non-empty chain of {@link Link} values describing
- *   how to transform between the decoded (type) and encoded (wire) form
- * - **{@link Check}** — a validation filter ({@link Filter} or
- *   {@link FilterGroup}) attached to an AST node
- * - **{@link Context}** — per-property metadata: optionality, mutability,
- *   default values, key annotations
- * - **Guards** — type-narrowing predicates for each AST variant (e.g.
- *   {@link isString}, {@link isObjects})
- *
- * ## Common tasks
- *
- * - Inspect what kind of schema you have → guard functions ({@link isString},
- *   {@link isObjects}, {@link isUnion}, etc.)
- * - Get the decoded (type-level) AST → {@link toType}
- * - Get the encoded (wire-format) AST → {@link toEncoded}
- * - Swap decode/encode directions → {@link flip}
- * - Read annotations → {@link resolve}, {@link resolveAt},
- *   {@link resolveIdentifier}
- * - Build a transformation between schemas → {@link decodeTo}
- * - Add regex validation → {@link isPattern}
- *
- * ## Gotchas
- *
- * - AST nodes are structurally immutable; modification helpers return new
- *   objects via `Object.create`.
- * - {@link Arrays} represents both tuples and arrays; {@link Objects}
- *   represents both structs and records.
- * - {@link toType} and {@link toEncoded} are memoized — same input yields
- *   same output reference.
- * - {@link Suspend} lazily resolves its inner AST via a thunk; the thunk is
- *   memoized on first call.
- *
- * ## Quickstart
- *
- * **Example** (Inspecting a schema's AST)
- *
- * ```ts
- * import { Schema, SchemaAST } from "effect"
- *
- * const schema = Schema.Struct({ name: Schema.String, age: Schema.Number })
- * const ast = schema.ast
- *
- * if (SchemaAST.isObjects(ast)) {
- *   console.log(ast.propertySignatures.map(ps => ps.name))
- *   // ["name", "age"]
- * }
- *
- * const encoded = SchemaAST.toEncoded(ast)
- * console.log(SchemaAST.isObjects(encoded)) // true
- * ```
- *
- * ## See also
- *
- * - {@link AST}
- * - {@link toType}
- * - {@link toEncoded}
- * - {@link flip}
- * - {@link resolve}
+ * Every `Schema` has an AST made from nodes for declarations, primitives,
+ * literals, arrays, objects, unions, suspended schemas, checks, annotations,
+ * encoding links, and parsing context. Most users work with the higher-level
+ * `Schema` module. Use `SchemaAST` when you need to inspect schema nodes, build
+ * ASTs programmatically, change encoded or decoded views, collect issues, or
+ * run low-level schema checks.
  *
  * @since 4.0.0
  */
@@ -83,10 +21,10 @@ import { memoize } from "./Function.ts"
 import { effectIsExit, iterateEager } from "./internal/effect.ts"
 import * as internalRecord from "./internal/record.ts"
 import * as InternalAnnotations from "./internal/schema/annotations.ts"
+import * as InternalSchemaCause from "./internal/schema/cause.ts"
 import * as Option from "./Option.ts"
 import * as Pipeable from "./Pipeable.ts"
 import * as Predicate from "./Predicate.ts"
-import * as RegEx from "./RegExp.ts"
 import * as Result from "./Result.ts"
 import type * as Schema from "./Schema.ts"
 import * as SchemaGetter from "./SchemaGetter.ts"
@@ -714,6 +652,7 @@ export class Declaration extends Base {
   readonly run: (
     typeParameters: ReadonlyArray<AST>
   ) => (input: unknown, self: Declaration, options: ParseOptions) => Effect.Effect<any, SchemaIssue.Issue, any>
+  readonly encodingChecks: Checks | undefined
 
   constructor(
     typeParameters: ReadonlyArray<AST>,
@@ -723,11 +662,13 @@ export class Declaration extends Base {
     annotations?: Schema.Annotations.Annotations,
     checks?: Checks,
     encoding?: Encoding,
-    context?: Context
+    context?: Context,
+    encodingChecks?: Checks
   ) {
     super(annotations, checks, encoding, context)
     this.typeParameters = typeParameters
     this.run = run
+    this.encodingChecks = encodingChecks
   }
   /** @internal */
   getParser(): SchemaParser.Parser {
@@ -737,12 +678,19 @@ export class Declaration extends Base {
       return Effect.mapEager(run(oinput.value, this, options), Option.some)
     }
   }
+  private _rebuild(recur: (ast: AST) => AST, checks: Checks | undefined, encodingChecks: Checks | undefined) {
+    const tps = mapOrSame(this.typeParameters, recur)
+    return tps === this.typeParameters && checks === this.checks && encodingChecks === this.encodingChecks ?
+      this :
+      new Declaration(tps, this.run, this.annotations, checks, undefined, this.context, encodingChecks)
+  }
   /** @internal */
   recur(recur: (ast: AST) => AST) {
-    const tps = mapOrSame(this.typeParameters, recur)
-    return tps === this.typeParameters ?
-      this :
-      new Declaration(tps, this.run, this.annotations, this.checks, undefined, this.context)
+    return this._rebuild(recur, this.checks, this.encodingChecks)
+  }
+  /** @internal */
+  flip(recur: (ast: AST) => AST) {
+    return this._rebuild(recur, this.encodingChecks, this.checks)
   }
   /** @internal */
   getExpected(): string {
@@ -845,13 +793,20 @@ export {
 }
 
 /**
- * AST node matching the `void` type (accepts `undefined` at runtime).
+ * AST node matching TypeScript `void` return-value semantics.
+ *
+ * **When to use**
+ *
+ * Use when you need an AST node for a value whose result is intentionally
+ * ignored.
  *
  * **Details**
  *
- * Behaves like {@link Undefined} for parsing but represents the TypeScript
- * `void` type semantically.
+ * Parsers built from this node accept any present runtime input and map it to
+ * `undefined`. Public schemas built from it may still expose `void` as their
+ * typed decoded and encoded representation.
  *
+ * @see {@link undefined} for the AST singleton that matches only exact `undefined`
  * @see {@link void_ void}
  * @see {@link isVoid}
  * @category models
@@ -861,7 +816,7 @@ export class Void extends Base {
   readonly _tag = "Void"
   /** @internal */
   getParser() {
-    return fromConst(this, undefined)
+    return fromAnyToConst(undefined)
   }
   /** @internal */
   toCodecJson(): AST {
@@ -880,8 +835,13 @@ export {
    *
    * **When to use**
    *
-   * Use when constructing or comparing AST nodes that represent the TypeScript
-   * `void` type and accept `undefined` at runtime.
+   * Use when constructing or comparing AST nodes for TypeScript `void` return
+   * values whose result is intentionally ignored.
+   *
+   * **Details**
+   *
+   * The node parses any present runtime value as `undefined`; schemas may still
+   * expose `void` on their typed decoded and encoded sides.
    *
    * @see {@link Void} for the AST node class
    * @see {@link undefined} for the sibling AST singleton that matches exactly `undefined`
@@ -1117,11 +1077,12 @@ function isTemplateLiteralPart(ast: AST): ast is TemplateLiteralPart {
     case "String":
     case "Number":
     case "BigInt":
+      return true
     case "Literal":
     case "TemplateLiteral":
-      return true
+      return ast.checks === undefined
     case "Union":
-      return ast.types.every(isTemplateLiteralPart)
+      return ast.checks === undefined && ast.types.every(isTemplateLiteralPart)
     default:
       return false
   }
@@ -1133,8 +1094,7 @@ function isTemplateLiteralPart(ast: AST): ast is TemplateLiteralPart {
  *
  * **Details**
  *
- * `parts` is an array of AST nodes; each part contributes to the
- * template literal pattern. A regex is derived from the parts to validate
+ * `parts` is an array of AST nodes; each part contributes to matching
  * strings at runtime.
  *
  * @see {@link isTemplateLiteral}
@@ -1181,19 +1141,22 @@ export class TemplateLiteral extends Base {
     return "string"
   }
   /** @internal */
+  matchPart(s: string, options: ParseOptions): string | undefined {
+    return segmentTemplateLiteralParts(this.encodedParts, s, options) === undefined ? undefined : s
+  }
+  /** @internal */
   asTemplateLiteralParser(): Arrays {
-    const tuple = new Arrays(false, this.parts.map(templateLiteralPartFromString), [])
-    const regExp = getTemplateLiteralRegExp(this)
+    const tuple = new Arrays(false, this.parts.map(partFromString), [])
     return decodeTo(
       string,
       tuple,
       new SchemaTransformation.Transformation(
-        SchemaGetter.transformOrFail((s: string) => {
-          const match = regExp.exec(s)
-          if (match) return Effect.succeed(match.slice(1, this.parts.length + 1))
+        SchemaGetter.transformOrFail((s: string, options) => {
+          const segments = segmentTemplateLiteralParts(this.encodedParts, s, options)
+          if (segments !== undefined) return Effect.succeed(segments)
           return Effect.fail(
             new SchemaIssue.InvalidValue(Option.some(s), {
-              message: `Expected a value matching ${regExp.source}, got ${format(s)}`
+              message: `Expected a string matching template literal parts, got ${format(s)}`
             })
           )
         }),
@@ -1299,6 +1262,10 @@ export class Literal extends Base {
     return fromConst(this, this.literal)
   }
   /** @internal */
+  matchPart(s: string, _options: ParseOptions): LiteralValue | undefined {
+    return s === globalThis.String(this.literal) ? this.literal : undefined
+  }
+  /** @internal */
   toCodecJson(): AST {
     return typeof this.literal === "bigint" ? literalToString(this) : this
   }
@@ -1339,6 +1306,10 @@ export class String extends Base {
   /** @internal */
   getParser() {
     return fromRefinement(this, Predicate.isString)
+  }
+  /** @internal */
+  matchPart(s: string, options: ParseOptions): string | undefined {
+    return applyTemplateLiteralPartChecks(this, s, options)
   }
   /** @internal */
   getExpected(): string {
@@ -1385,6 +1356,19 @@ export class Number extends Base {
   /** @internal */
   getParser() {
     return fromRefinement(this, Predicate.isNumber)
+  }
+  /** @internal */
+  matchKey(s: string, options: ParseOptions): number | undefined {
+    return this._match(isStringNumberRegExp, s, options)
+  }
+  /** @internal */
+  matchPart(s: string, options: ParseOptions): number | undefined {
+    return this._match(isStringFiniteRegExp, s, options)
+  }
+  private _match(regexp: RegExp, s: string, options: ParseOptions): number | undefined {
+    return regexp.test(s)
+      ? applyTemplateLiteralPartChecks(this, globalThis.Number(s), options)
+      : undefined
   }
   /** @internal */
   toCodecJson(): AST {
@@ -1496,6 +1480,10 @@ export class Symbol extends Base {
     return fromRefinement(this, Predicate.isSymbol)
   }
   /** @internal */
+  matchKey(s: symbol, options: ParseOptions): symbol | undefined {
+    return applyTemplateLiteralPartChecks(this, s, options)
+  }
+  /** @internal */
   toCodecStringTree(): AST {
     return replaceEncoding(this, [symbolToString])
   }
@@ -1543,6 +1531,12 @@ export class BigInt extends Base {
   /** @internal */
   getParser() {
     return fromRefinement(this, Predicate.isBigInt)
+  }
+  /** @internal */
+  matchPart(s: string, options: ParseOptions): bigint | undefined {
+    return isStringBigIntRegExp.test(s)
+      ? applyTemplateLiteralPartChecks(this, globalThis.BigInt(s), options)
+      : undefined
   }
   /** @internal */
   toCodecStringTree(): AST {
@@ -1618,6 +1612,7 @@ export class Arrays extends Base {
   readonly isMutable: boolean
   readonly elements: ReadonlyArray<AST>
   readonly rest: ReadonlyArray<AST>
+  readonly encodingChecks: Checks | undefined
 
   constructor(
     isMutable: boolean,
@@ -1626,12 +1621,14 @@ export class Arrays extends Base {
     annotations?: Schema.Annotations.Annotations,
     checks?: Checks,
     encoding?: Encoding,
-    context?: Context
+    context?: Context,
+    encodingChecks?: Checks
   ) {
     super(annotations, checks, encoding, context)
     this.isMutable = isMutable
     this.elements = elements
     this.rest = rest
+    this.encodingChecks = encodingChecks
 
     // A required element cannot follow an optional element. ts(1257)
     const i = elements.findIndex(isOptional)
@@ -1716,13 +1713,30 @@ export class Arrays extends Base {
       return Option.some(state.output)
     })
   }
-  /** @internal */
-  recur(recur: (ast: AST) => AST) {
+  private _rebuild(recur: (ast: AST) => AST, checks: Checks | undefined, encodingChecks: Checks | undefined) {
     const elements = mapOrSame(this.elements, recur)
     const rest = mapOrSame(this.rest, recur)
-    return elements === this.elements && rest === this.rest ?
+    return elements === this.elements && rest === this.rest && checks === this.checks &&
+        encodingChecks === this.encodingChecks ?
       this :
-      new Arrays(this.isMutable, elements, rest, this.annotations, this.checks, undefined, this.context)
+      new Arrays(
+        this.isMutable,
+        elements,
+        rest,
+        this.annotations,
+        checks,
+        undefined,
+        this.context,
+        encodingChecks
+      )
+  }
+  /** @internal */
+  recur(recur: (ast: AST) => AST) {
+    return this._rebuild(recur, this.checks, this.encodingChecks)
+  }
+  /** @internal */
+  flip(recur: (ast: AST) => AST) {
+    return this._rebuild(recur, this.encodingChecks, this.checks)
   }
   /** @internal */
   getExpected(): string {
@@ -1788,16 +1802,24 @@ const wrapPropertyKeyIssue = (
   key: PropertyKey,
   exit: Exit.Failure<any, SchemaIssue.Issue>
 ) => {
-  const issueResult = Cause.findError(exit.cause)
-  if (Result.isFailure(issueResult)) {
+  if (exit.cause.reasons.length === 0) {
     return exit
   }
-  const issue = new SchemaIssue.Pointer([key], issueResult.success)
+  const issue = InternalSchemaCause.getSchemaIssue(exit.cause)
+  if (issue === undefined) {
+    return Exit.failCause(
+      Cause.map(
+        exit.cause,
+        (issue) => new SchemaIssue.Composite(ast, s.oinput, [new SchemaIssue.Pointer([key], issue)])
+      )
+    )
+  }
+  const pointer = new SchemaIssue.Pointer([key], issue)
   if (s.options.errors === "all") {
-    if (s.issues) s.issues.push(issue)
-    else s.issues = [issue]
+    if (s.issues) s.issues.push(pointer)
+    else s.issues = [pointer]
   } else {
-    return Exit.fail(new SchemaIssue.Composite(ast, s.oinput, [issue]))
+    return Exit.fail(new SchemaIssue.Composite(ast, s.oinput, [pointer]))
   }
 }
 
@@ -1807,33 +1829,36 @@ const wrapPropertyKeyIssue = (
  */
 export const FINITE_PATTERN = "[+-]?\\d*\\.?\\d+(?:[Ee][+-]?\\d+)?"
 
-const isNumberStringRegExp = new globalThis.RegExp(`(?:${FINITE_PATTERN}|Infinity|-Infinity|NaN)`)
-
 /**
  * Returns the object keys that match the index signature parameter schema.
  * @internal
  */
 export function getIndexSignatureKeys(
   input: { readonly [x: PropertyKey]: unknown },
-  parameter: AST
+  parameter: IndexSignatureParameter,
+  options: ParseOptions = defaultParseOptions
 ): ReadonlyArray<PropertyKey> {
-  const encoded = toEncoded(parameter)
-  switch (encoded._tag) {
-    case "String":
-      return Object.keys(input)
-    case "TemplateLiteral": {
-      const regExp = getTemplateLiteralRegExp(encoded)
-      return Object.keys(input).filter((k) => regExp.test(k))
+  let stringKeys: ReadonlyArray<string> | undefined
+  let symbolKeys: ReadonlyArray<symbol> | undefined
+
+  function go(parameter: AST): ReadonlyArray<PropertyKey> {
+    switch (parameter._tag) {
+      case "String":
+      case "TemplateLiteral":
+        return (stringKeys ??= Object.keys(input)).filter((k) => parameter.matchPart(k, options) !== undefined)
+      case "Number":
+        return (stringKeys ??= Object.keys(input)).filter((k) => parameter.matchKey(k, options) !== undefined)
+      case "Symbol":
+        return (symbolKeys ??= Object.getOwnPropertySymbols(input)).filter((k) =>
+          parameter.matchKey(k, options) !== undefined
+        )
+      case "Union":
+        return [...new Set(parameter.types.flatMap(go))]
+      default:
+        return []
     }
-    case "Symbol":
-      return Object.getOwnPropertySymbols(input)
-    case "Number":
-      return Object.keys(input).filter((k) => isNumberStringRegExp.test(k))
-    case "Union":
-      return [...new Set(encoded.types.flatMap((t) => getIndexSignatureKeys(input, t)))]
-    default:
-      return []
   }
+  return go(parameterFromPropertyKey(toEncoded(parameter)))
 }
 
 /**
@@ -1893,6 +1918,31 @@ export class KeyValueCombiner {
   }
 }
 
+type IndexSignatureParameter =
+  | String
+  | Number
+  | Symbol
+  | TemplateLiteral
+  | Union<IndexSignatureParameter>
+
+function isIndexSignatureParameterSide(ast: AST): ast is IndexSignatureParameter {
+  switch (ast._tag) {
+    case "String":
+    case "Number":
+    case "Symbol":
+    case "TemplateLiteral":
+      return true
+    case "Union":
+      return ast.types.every(isIndexSignatureParameterSide)
+    default:
+      return false
+  }
+}
+
+function isIndexSignatureParameter(ast: AST): ast is IndexSignatureParameter {
+  return isIndexSignatureParameterSide(ast) && isIndexSignatureParameterSide(toEncoded(ast))
+}
+
 /**
  * Represents an index signature entry within an {@link Objects} node.
  *
@@ -1919,7 +1969,7 @@ export class KeyValueCombiner {
  * @since 3.10.0
  */
 export class IndexSignature {
-  readonly parameter: AST
+  readonly parameter: IndexSignatureParameter
   readonly type: AST
   readonly merge: KeyValueCombiner | undefined
 
@@ -1928,6 +1978,9 @@ export class IndexSignature {
     type: AST,
     merge: KeyValueCombiner | undefined
   ) {
+    if (!isIndexSignatureParameter(parameter)) {
+      throw new Error(`Invalid index signature parameter ${parameter._tag}`)
+    }
     this.parameter = parameter
     this.type = type
     this.merge = merge
@@ -1986,6 +2039,7 @@ export class Objects extends Base {
   readonly _tag = "Objects"
   readonly propertySignatures: ReadonlyArray<PropertySignature>
   readonly indexSignatures: ReadonlyArray<IndexSignature>
+  readonly encodingChecks: Checks | undefined
 
   constructor(
     propertySignatures: ReadonlyArray<PropertySignature>,
@@ -1993,11 +2047,13 @@ export class Objects extends Base {
     annotations?: Schema.Annotations.Annotations,
     checks?: Checks,
     encoding?: Encoding,
-    context?: Context
+    context?: Context,
+    encodingChecks?: Checks
   ) {
     super(annotations, checks, encoding, context)
     this.propertySignatures = propertySignatures
     this.indexSignatures = indexSignatures
+    this.encodingChecks = encodingChecks
 
     // Duplicate property signatures
     const duplicates = propertySignatures.map((ps) => ps.name).filter((name, i, arr) => arr.indexOf(name) !== i)
@@ -2047,7 +2103,7 @@ export class Objects extends Base {
           s,
           [key, is]
         ) {
-          const parserKey = recur(indexSignatureParameterFromString(is.parameter))
+          const parserKey = recur(parameterFromPropertyKey(is.parameter))
           const effKey = parserKey(Option.some(key), s.options)
           const exitKey = (effectIsExit(effKey) ? effKey : yield* Effect.exit(effKey)) as Exit.Exit<
             Option.Option<PropertyKey>,
@@ -2069,6 +2125,9 @@ export class Objects extends Base {
             return
           } else if (exitKey.value._tag === "Some" && exitValue.value._tag === "Some") {
             const k2 = exitKey.value.value
+            if (expectedKeysSet.has(key) || expectedKeysSet.has(k2)) {
+              return
+            }
             const v2 = exitValue.value.value
             if (is.merge && is.merge.decode && Object.hasOwn(s.out, k2)) {
               const [k, v] = is.merge.decode.combine([k2, s.out[k2]], [k2, v2])
@@ -2151,7 +2210,7 @@ export class Objects extends Base {
         const keyPairs = Arr.empty<[PropertyKey, IndexSignature]>()
         for (let i = 0; i < indexCount; i++) {
           const is = ast.indexSignatures[i]
-          const keys = getIndexSignatureKeys(input, is.parameter)
+          const keys = getIndexSignatureKeys(input, is.parameter, options)
           for (let j = 0; j < keys.length; j++) {
             const key = keys[j]
             keyPairs.push([key, is])
@@ -2178,9 +2237,12 @@ export class Objects extends Base {
       return Option.some(out)
     })
   }
-  private rebuild(
+  private _rebuild(
     recur: (ast: AST) => AST,
-    flipMerge: boolean
+    recurParameter: (ast: AST) => AST,
+    flipMerge: boolean,
+    checks: Checks | undefined,
+    encodingChecks: Checks | undefined
   ): Objects {
     const props = mapOrSame(this.propertySignatures, (ps) => {
       const t = recur(ps.type)
@@ -2188,7 +2250,7 @@ export class Objects extends Base {
     })
 
     const indexes = mapOrSame(this.indexSignatures, (is) => {
-      const p = recur(is.parameter)
+      const p = recurParameter(is.parameter)
       const t = recur(is.type)
       const merge = flipMerge ? is.merge?.flip() : is.merge
       return p === is.parameter && t === is.type && merge === is.merge
@@ -2196,17 +2258,26 @@ export class Objects extends Base {
         : new IndexSignature(p, t, merge)
     })
 
-    return props === this.propertySignatures && indexes === this.indexSignatures
+    return props === this.propertySignatures && indexes === this.indexSignatures && checks === this.checks &&
+        encodingChecks === this.encodingChecks
       ? this
-      : new Objects(props, indexes, this.annotations, this.checks, undefined, this.context)
+      : new Objects(
+        props,
+        indexes,
+        this.annotations,
+        checks,
+        undefined,
+        this.context,
+        encodingChecks
+      )
   }
   /** @internal */
   flip(recur: (ast: AST) => AST): AST {
-    return this.rebuild(recur, true)
+    return this._rebuild(recur, recur, true, this.encodingChecks, this.checks)
   }
   /** @internal */
-  recur(recur: (ast: AST) => AST): AST {
-    return this.rebuild(recur, false)
+  recur(recur: (ast: AST) => AST, recurParameter: (ast: AST) => AST = recur): AST {
+    return this._rebuild(recur, recurParameter, false, this.checks, this.encodingChecks)
   }
   /** @internal */
   getExpected(): string {
@@ -2265,14 +2336,10 @@ const parseProperties = iterateEager<{
   }
 })
 
-function mergeChecks(checks: Checks | undefined, b: AST): Checks | undefined {
-  if (!checks) {
-    return b.checks
-  }
-  if (!b.checks) {
-    return checks
-  }
-  return [...checks, ...b.checks]
+function combineChecks(a: Checks | undefined, b: Checks | undefined): Checks | undefined {
+  if (!a) return b
+  if (!b) return a
+  return [...a, ...b]
 }
 
 /** @internal */
@@ -2292,7 +2359,7 @@ export function struct<Fields extends Schema.Struct.Fields>(
 }
 
 /** @internal */
-export function getAST<S extends Schema.Top>(self: S): S["ast"] {
+export function getAST<S extends { readonly ast: AST }>(self: S): S["ast"] {
   return self.ast
 }
 
@@ -2305,7 +2372,7 @@ export function tuple<Elements extends Schema.Tuple.Elements>(
 }
 
 /** @internal */
-export function union<Members extends ReadonlyArray<Schema.Top>>(
+export function union<Members extends ReadonlyArray<{ readonly ast: AST }>>(
   members: Members,
   mode: "anyOf" | "oneOf",
   checks: Checks | undefined
@@ -2321,10 +2388,10 @@ export function structWithRest(ast: Objects, records: ReadonlyArray<Objects>): O
   let propertySignatures = ast.propertySignatures
   let indexSignatures = ast.indexSignatures
   let checks = ast.checks
-  for (const r of records) {
-    propertySignatures = propertySignatures.concat(r.propertySignatures)
-    indexSignatures = indexSignatures.concat(r.indexSignatures)
-    checks = mergeChecks(checks, r)
+  for (const record of records) {
+    propertySignatures = propertySignatures.concat(record.propertySignatures)
+    indexSignatures = indexSignatures.concat(record.indexSignatures)
+    checks = combineChecks(checks, record.checks)
   }
   return new Objects(propertySignatures, indexSignatures, undefined, checks)
 }
@@ -2360,7 +2427,6 @@ function getCandidateTypes(ast: AST): ReadonlyArray<Type> {
     case "Null":
       return ["null"]
     case "Undefined":
-    case "Void":
       return ["undefined"]
     case "String":
     case "TemplateLiteral":
@@ -2554,6 +2620,7 @@ export class Union<A extends AST = AST> extends Base {
   readonly _tag = "Union"
   readonly types: ReadonlyArray<A>
   readonly mode: "anyOf" | "oneOf"
+  readonly encodingChecks: Checks | undefined
 
   constructor(
     types: ReadonlyArray<A>,
@@ -2561,11 +2628,13 @@ export class Union<A extends AST = AST> extends Base {
     annotations?: Schema.Annotations.Annotations,
     checks?: Checks,
     encoding?: Encoding,
-    context?: Context
+    context?: Context,
+    encodingChecks?: Checks
   ) {
     super(annotations, checks, encoding, context)
     this.types = types
     this.mode = mode
+    this.encodingChecks = encodingChecks
   }
   /** @internal */
   getParser(recur: (ast: AST) => SchemaParser.Parser): SchemaParser.Parser {
@@ -2603,12 +2672,27 @@ export class Union<A extends AST = AST> extends Base {
       })
     }
   }
+  private _rebuild(recur: (ast: AST) => AST, checks: Checks | undefined, encodingChecks: Checks | undefined) {
+    const types = mapOrSame(this.types, recur)
+    return types === this.types && checks === this.checks && encodingChecks === this.encodingChecks ?
+      this :
+      new Union(types, this.mode, this.annotations, checks, undefined, this.context, encodingChecks)
+  }
   /** @internal */
   recur(recur: (ast: AST) => AST) {
-    const types = mapOrSame(this.types, recur)
-    return types === this.types ?
-      this :
-      new Union(types, this.mode, this.annotations, this.checks, undefined, this.context)
+    return this._rebuild(recur, this.checks, this.encodingChecks)
+  }
+  /** @internal */
+  flip(recur: (ast: AST) => AST) {
+    return this._rebuild(recur, this.encodingChecks, this.checks)
+  }
+  /** @internal */
+  matchPart(s: string, options: ParseOptions): LiteralValue | undefined {
+    for (const type of this.types) {
+      const out = (type as TemplateLiteralPart).matchPart(s, options)
+      if (out !== undefined) return out
+    }
+    return undefined
   }
   /** @internal */
   getExpected(getExpected: (ast: AST) => string): string {
@@ -2665,12 +2749,12 @@ const parseUnion = iterateEager<{
   },
   step(s, candidate, exit) {
     if (exit._tag === "Failure") {
-      const issueResult = Cause.findError(exit.cause)
-      if (Result.isFailure(issueResult)) {
+      const issue = InternalSchemaCause.getSchemaIssue(exit.cause)
+      if (issue === undefined) {
         return exit
       }
-      if (s.issues) s.issues.push(issueResult.success)
-      else s.issues = [issueResult.success]
+      if (s.issues) s.issues.push(issue)
+      else s.issues = [issue]
     } else {
       if (s.out && s.ast.mode === "oneOf") {
         s.successes.push(candidate)
@@ -2730,7 +2814,7 @@ export function memoizeThunk<A>(f: () => A): () => A {
  * define recursive or mutually recursive schemas without infinite loops at
  * construction time.
  *
- * **Example** (Recursive schema AST)
+ * **Example** (Defining recursive schema ASTs)
  *
  * ```ts
  * import { Schema, SchemaAST } from "effect"
@@ -2763,7 +2847,10 @@ export class Suspend extends Base {
     encoding?: Encoding,
     context?: Context
   ) {
-    super(annotations, checks, encoding, context)
+    if (checks !== undefined) {
+      throw new Error("Cannot add checks to Suspend")
+    }
+    super(annotations, undefined, encoding, context)
     this.thunk = memoizeThunk(thunk)
   }
   /** @internal */
@@ -2772,7 +2859,13 @@ export class Suspend extends Base {
   }
   /** @internal */
   recur(recur: (ast: AST) => AST) {
-    return new Suspend(() => recur(this.thunk()), this.annotations, this.checks, undefined, this.context)
+    return new Suspend(
+      () => recur(this.thunk()),
+      this.annotations,
+      undefined,
+      undefined,
+      this.context
+    )
   }
   /** @internal */
   getExpected(getExpected: (ast: AST) => string): string {
@@ -2957,8 +3050,8 @@ export function isPattern(regExp: globalThis.RegExp, annotations?: Schema.Annota
         _tag: "isPattern",
         regExp
       },
-      toArbitraryConstraint: {
-        string: {
+      arbitrary: {
+        constraint: {
           patterns: [regExp.source]
         }
       },
@@ -3016,6 +3109,9 @@ export function annotate<A extends AST>(ast: A, annotations: Schema.Annotations.
 
 /** @internal */
 export function replaceChecks<A extends AST>(ast: A, checks: Checks | undefined): A {
+  if (ast._tag === "Suspend" && checks !== undefined) {
+    throw new Error("Cannot add checks to Suspend")
+  }
   if (ast.checks === checks) {
     return ast
   }
@@ -3025,8 +3121,8 @@ export function replaceChecks<A extends AST>(ast: A, checks: Checks | undefined)
 }
 
 /** @internal */
-export function appendChecks<A extends AST>(ast: A, checks: Checks): A {
-  return replaceChecks(ast, ast.checks ? [...ast.checks, ...checks] : checks)
+export function appendChecks<A extends AST>(ast: A, checks: Checks | undefined): A {
+  return replaceChecks(ast, combineChecks(ast.checks, checks))
 }
 
 function updateLastLink(encoding: Encoding, f: (ast: AST) => AST): Encoding {
@@ -3042,6 +3138,14 @@ function updateLastLink(encoding: Encoding, f: (ast: AST) => AST): Encoding {
 /** @internal */
 export function applyToLastLink(f: (ast: AST) => AST) {
   return <A extends AST>(ast: A): A => ast.encoding ? replaceEncoding(ast, updateLastLink(ast.encoding, f)) : ast
+}
+
+/** @internal */
+export function applyToSelfOrLastLinkEncoding(f: (ast: AST) => AST) {
+  function out(ast: AST): AST {
+    return ast.encoding ? replaceEncoding(ast, updateLastLink(ast.encoding, out)) : f(ast)
+  }
+  return memoize(out)
 }
 
 /** @internal */
@@ -3195,39 +3299,31 @@ function parseParameter(ast: AST): {
   literals: ReadonlyArray<PropertyKey>
   parameters: ReadonlyArray<AST>
 } {
-  switch (ast._tag) {
-    case "Literal":
-      return {
-        literals: Predicate.isPropertyKey(ast.literal) ? [ast.literal] : [],
-        parameters: []
-      }
-    case "UniqueSymbol":
-      return {
-        literals: [ast.symbol],
-        parameters: []
-      }
-    case "String":
-    case "Number":
-    case "Symbol":
-    case "TemplateLiteral":
-      return {
-        literals: [],
-        parameters: [ast]
-      }
-    case "Union": {
-      const out: {
-        literals: ReadonlyArray<PropertyKey>
-        parameters: ReadonlyArray<AST>
-      } = { literals: [], parameters: [] }
-      for (let i = 0; i < ast.types.length; i++) {
-        const parsed = parseParameter(ast.types[i])
-        out.literals = out.literals.concat(parsed.literals)
-        out.parameters = out.parameters.concat(parsed.parameters)
-      }
-      return out
+  const literals: Array<PropertyKey> = []
+  const parameters: Array<AST> = []
+  function go(ast: AST) {
+    switch (ast._tag) {
+      case "Literal":
+        if (Predicate.isPropertyKey(ast.literal)) {
+          literals.push(ast.literal)
+        }
+        return
+      case "UniqueSymbol":
+        literals.push(ast.symbol)
+        return
+      case "Never":
+        return
+      case "Union":
+        for (let i = 0; i < ast.types.length; i++) {
+          go(ast.types[i])
+        }
+        return
+      default:
+        parameters.push(ast)
     }
   }
-  return { literals: [], parameters: [] }
+  go(ast)
+  return { literals, parameters }
 }
 
 /** @internal */
@@ -3295,7 +3391,17 @@ export const toType = memoize(<A extends AST>(ast: A): A => {
     return toType(replaceEncoding(ast, undefined))
   }
   const out: any = ast
-  return out.recur?.(toType) ?? out
+  const type = out.recur?.(toType) ?? out
+  const encodingChecks = type.encodingChecks
+  if (encodingChecks) {
+    return modifyOwnPropertyDescriptors(type, (d) => {
+      d.encodingChecks.value = undefined
+      if (type === ast) {
+        d.checks.value = combineChecks(type.checks, encodingChecks)
+      }
+    })
+  }
+  return type
 })
 
 /**
@@ -3383,45 +3489,6 @@ export function containsUndefined(ast: AST): boolean {
   }
 }
 
-function getTemplateLiteralSource(ast: TemplateLiteral, top: boolean): string {
-  return ast.encodedParts.map((part) =>
-    handleTemplateLiteralASTPartParens(part, getTemplateLiteralASTPartPattern(part), top)
-  ).join("")
-}
-
-/** @internal */
-export const getTemplateLiteralRegExp = memoize((ast: TemplateLiteral): RegExp => {
-  return new globalThis.RegExp(`^${getTemplateLiteralSource(ast, true)}$`)
-})
-
-function getTemplateLiteralASTPartPattern(part: TemplateLiteralPart): string {
-  switch (part._tag) {
-    case "Literal":
-      return RegEx.escape(globalThis.String(part.literal))
-    case "String":
-      return STRING_PATTERN
-    case "Number":
-      return FINITE_PATTERN
-    case "BigInt":
-      return BIGINT_PATTERN
-    case "TemplateLiteral":
-      return getTemplateLiteralSource(part, false)
-    case "Union":
-      return part.types.map(getTemplateLiteralASTPartPattern).join("|")
-  }
-}
-
-function handleTemplateLiteralASTPartParens(part: TemplateLiteralPart, s: string, top: boolean): string {
-  if (isUnion(part)) {
-    if (!top) {
-      return `(?:${s})`
-    }
-  } else if (!top) {
-    return s
-  }
-  return `(${s})`
-}
-
 function fromConst<const T>(
   ast: AST,
   value: T
@@ -3435,6 +3502,11 @@ function fromConst<const T>(
       ? succeed
       : Effect.fail(new SchemaIssue.InvalidType(ast, oinput))
   }
+}
+
+function fromAnyToConst<const T>(value: T): SchemaParser.Parser {
+  const succeed = Effect.succeedSome(value)
+  return (oinput) => oinput._tag === "None" ? Effect.succeedNone : succeed
 }
 
 function fromRefinement<T>(
@@ -3451,6 +3523,52 @@ function fromRefinement<T>(
   }
 }
 
+function applyTemplateLiteralPartChecks<A>(ast: AST, value: A, options: ParseOptions): A | undefined {
+  if (options?.disableChecks || ast.checks === undefined) return value
+  const issues: Array<SchemaIssue.Issue> = []
+  collectIssues(ast.checks, value, issues, ast, options)
+  return issues.length === 0 ? value : undefined
+}
+
+function segmentTemplateLiteralParts(
+  parts: ReadonlyArray<TemplateLiteralPart>,
+  input: string,
+  options: ParseOptions
+): Array<string> | undefined {
+  const out = new Array<string>(parts.length)
+  const failures = new Set<string>()
+  function go(i: number, pos: number): boolean {
+    if (i === parts.length) return pos === input.length
+    const key = `${i}/${pos}`
+    if (failures.has(key)) return false
+    const part = parts[i]
+    if (i === parts.length - 1) {
+      const s = input.slice(pos)
+      if (part.matchPart(s, options) !== undefined) {
+        out[i] = s
+        return true
+      }
+    } else if (part._tag === "Literal") {
+      const s = globalThis.String(part.literal)
+      if (input.startsWith(s, pos) && go(i + 1, pos + s.length)) {
+        out[i] = s
+        return true
+      }
+    } else {
+      for (let end = input.length; end >= pos; end--) {
+        const s = input.slice(pos, end)
+        if (part.matchPart(s, options) !== undefined && go(i + 1, end)) {
+          out[i] = s
+          return true
+        }
+      }
+    }
+    failures.add(key)
+    return false
+  }
+  return go(0, 0) ? out : undefined
+}
+
 /** @internal */
 export const enumsToLiterals = memoize((ast: Enum): Union<Literal> => {
   return new Union(
@@ -3459,38 +3577,40 @@ export const enumsToLiterals = memoize((ast: Enum): Union<Literal> => {
   )
 })
 
-/** @internal */
-export function toCodec(f: (ast: AST) => AST) {
-  function out(ast: AST): AST {
-    return ast.encoding ? replaceEncoding(ast, updateLastLink(ast.encoding, out)) : f(ast)
-  }
-  return memoize(out)
-}
-
-const indexSignatureParameterFromString = toCodec((ast) => {
+const parameterFromPropertyKey = applyToSelfOrLastLinkEncoding((ast) => {
   switch (ast._tag) {
     default:
       return ast
     case "Number":
       return ast.toCodecStringTree()
     case "Union":
-      return ast.recur(indexSignatureParameterFromString)
+      return ast.recur(parameterFromPropertyKey)
   }
 })
 
-const templateLiteralPartFromString = toCodec((ast) => {
+/** @internal */
+export const parameterFromString = applyToSelfOrLastLinkEncoding((ast) => {
   switch (ast._tag) {
     default:
       return ast
-    case "String":
-    case "TemplateLiteral":
-      return ast
-    case "BigInt":
-    case "Number":
-    case "Literal":
+    case "Symbol":
+    case "UniqueSymbol":
       return ast.toCodecStringTree()
     case "Union":
-      return ast.recur(templateLiteralPartFromString)
+      return ast.recur(parameterFromString)
+  }
+})
+
+const partFromString = applyToSelfOrLastLinkEncoding((ast) => {
+  switch (ast._tag) {
+    default:
+      return ast
+    case "Number":
+    case "Literal":
+    case "BigInt":
+      return ast.toCodecStringTree()
+    case "Union":
+      return ast.recur(partFromString)
   }
 })
 
@@ -3501,6 +3621,8 @@ const templateLiteralPartFromString = toCodec((ast) => {
 export const STRING_PATTERN = "[\\s\\S]*?"
 
 const isStringFiniteRegExp = new globalThis.RegExp(`^${FINITE_PATTERN}$`)
+
+const isStringNumberRegExp = new globalThis.RegExp(`(?:${FINITE_PATTERN}|Infinity|-Infinity|NaN)`)
 
 /** @internal */
 export function isStringFinite(annotations?: Schema.Annotations.Filter) {
@@ -3857,10 +3979,7 @@ const StringTree = new Declaration(
     isStringTree(input) ?
       Effect.succeed(input) :
       Effect.fail(new SchemaIssue.InvalidType(ast, Option.some(input))),
-  {
-    expected: "StringTree",
-    toCodecStringTree: () => new Link(unknown, SchemaTransformation.passthrough())
-  }
+  { expected: "StringTree" }
 )
 
 /** @internal */

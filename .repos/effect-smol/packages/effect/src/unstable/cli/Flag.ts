@@ -1,22 +1,12 @@
 /**
- * The `Flag` module provides typed command-line options for Effect CLI
- * applications. A `Flag<A>` describes how to read one named option from the
- * parsed command line, validate it, and produce a value of type `A`.
+ * Defines named options for command-line applications.
  *
- * Use flags for inputs that are naturally named options, such as ports,
- * verbosity switches, configuration files, output directories, enum-like
- * choices, secrets, and repeated values. Constructors such as {@link string},
- * {@link boolean}, {@link integer}, {@link file}, and {@link fileSchema}
- * define the accepted input shape, while combinators add aliases, defaults,
- * optionality, fallback config or prompts, validation, and typed mapping.
- *
- * Flag names are rendered as long options, for example `Flag.integer("port")`
- * parses `--port 8080`. Boolean flags also support the disabled form shown by
- * this module's boolean documentation, and repeated flags are modeled with the
- * repetition combinators instead of by manually inspecting raw arguments. Help
- * text is generated from flag metadata, so prefer {@link withDescription} and
- * {@link withMetavar} when a flag's value, format, or file-system expectation
- * would otherwise be ambiguous.
+ * A `Flag<A>` describes how to read one named value from parsed command-line
+ * input, validate it, and produce an `A`. Flags are useful for inputs such as
+ * ports, verbosity switches, configuration files, output directories, choices,
+ * secrets, and repeated values. The helpers here build flags with aliases,
+ * defaults, optional values, prompts, configuration fallbacks, validation, and
+ * value transformations.
  *
  * @since 4.0.0
  */
@@ -28,6 +18,7 @@ import type * as Redacted from "../../Redacted.ts"
 import type * as Result from "../../Result.ts"
 import type * as Schema from "../../Schema.ts"
 import type * as CliError from "./CliError.ts"
+import type { Environment } from "./Command.ts"
 import * as Param from "./Param.ts"
 import type * as Primitive from "./Primitive.ts"
 
@@ -365,7 +356,7 @@ export const fileParse = (
  */
 export const fileSchema = <A>(
   name: string,
-  schema: Schema.Decoder<A>,
+  schema: Schema.ConstraintDecoder<A, Environment>,
   options?: Primitive.FileSchemaOptions | undefined
 ): Flag<A> => Param.fileSchema(Param.flagKind, name, schema, options)
 
@@ -589,8 +580,8 @@ export const optional = <A>(param: Flag<A>): Flag<Option.Option<A>> => Param.opt
  * @since 4.0.0
  */
 export const withDefault: {
-  <const B>(defaultValue: B | Effect.Effect<B, CliError.CliError, Param.Environment>): <A>(self: Flag<A>) => Flag<A | B>
-  <A, const B>(self: Flag<A>, defaultValue: B | Effect.Effect<B, CliError.CliError, Param.Environment>): Flag<A | B>
+  <const B>(defaultValue: B | Effect.Effect<B, CliError.CliError, Environment>): <A>(self: Flag<A>) => Flag<A | B>
+  <A, const B>(self: Flag<A>, defaultValue: B | Effect.Effect<B, CliError.CliError, Environment>): Flag<A | B>
 } = Param.withDefault
 
 /**
@@ -687,15 +678,15 @@ export const map: {
  */
 export const mapEffect: {
   <A, B>(
-    f: (a: A) => Effect.Effect<B, CliError.CliError, Param.Environment>
+    f: (a: A) => Effect.Effect<B, CliError.CliError, Environment>
   ): (self: Flag<A>) => Flag<B>
   <A, B>(
     self: Flag<A>,
-    f: (a: A) => Effect.Effect<B, CliError.CliError, Param.Environment>
+    f: (a: A) => Effect.Effect<B, CliError.CliError, Environment>
   ): Flag<B>
 } = dual(2, <A, B>(
   self: Flag<A>,
-  f: (a: A) => Effect.Effect<B, CliError.CliError, Param.Environment>
+  f: (a: A) => Effect.Effect<B, CliError.CliError, Environment>
 ) => Param.mapEffect(self, f))
 
 /**
@@ -991,6 +982,6 @@ export const orElseResult: {
  * @since 4.0.0
  */
 export const withSchema: {
-  <A, B>(schema: Schema.Codec<B, A>): (self: Flag<A>) => Flag<B>
-  <A, B>(self: Flag<A>, schema: Schema.Codec<B, A>): Flag<B>
+  <A, B>(schema: Schema.Codec<B, A, Environment, Environment>): (self: Flag<A>) => Flag<B>
+  <A, B>(self: Flag<A>, schema: Schema.Codec<B, A, Environment, Environment>): Flag<B>
 } = dual(2, <A, B>(self: Flag<A>, schema: Schema.Codec<B, A>) => Param.withSchema(self, schema))

@@ -1,34 +1,10 @@
 /**
- * The `OpenAiLanguageModel` module adapts OpenAI-compatible chat-completions
- * providers to the shared Effect AI `LanguageModel` interface. It translates
- * provider-neutral prompts, tools, structured output schemas, and streaming
- * responses into the request and response shapes used by `OpenAiClient`.
- *
- * Use this module when an application wants to talk to OpenAI-compatible
- * endpoints through Effect AI abstractions rather than constructing provider
- * payloads directly. The exported constructors build a language model service
- * from a model id, while `Config` and {@link withConfigOverride} provide scoped
- * defaults for request fields such as temperature, reasoning options, text
- * format, and provider-specific file handling.
- *
- * **Common tasks**
- *
- * - Create a model descriptor with {@link model}
- * - Build or provide the `LanguageModel` service with {@link make} or
- *   {@link layer}
- * - Scope request defaults with {@link Config} and {@link withConfigOverride}
- * - Send tool calls, structured output schemas, images, files, and reasoning
- *   metadata through the provider-neutral Effect AI prompt types
- *
- * **Gotchas**
- *
- * - The module requires an `OpenAiClient` service; configure authentication,
- *   base URL, and HTTP behavior through that client layer.
- * - Compatibility depends on the provider supporting the OpenAI request fields
- *   being used. Optional capabilities such as strict JSON schemas, reasoning
- *   metadata, and tool status fields may vary across providers.
- * - `fileIdPrefixes` tells the prompt conversion which file references are
- *   provider file IDs instead of base64 file contents.
+ * The `OpenAiLanguageModel` module adapts OpenAI-compatible chat completions
+ * providers to Effect AI's `LanguageModel` service. It builds a model service
+ * from a model id, translates prompts, files, tools, structured output schemas,
+ * and provider-specific options into `OpenAiClient` requests, and maps normal
+ * or streaming chat completion results back into Effect AI response content and
+ * metadata.
  *
  * @since 4.0.0
  */
@@ -1088,6 +1064,11 @@ const makeResponse = Effect.fnUntraced(
     const message = choice?.message
 
     if (message !== undefined) {
+      const reasoning = message.reasoning ?? message.reasoning_content
+      if (Predicate.isNotNullish(reasoning) && reasoning.length > 0) {
+        parts.push({ type: "reasoning", text: reasoning })
+      }
+
       if (
         message.content !== undefined && Predicate.isNotNull(message.content) && message.content.length > 0
       ) {
@@ -1161,6 +1142,8 @@ const makeStreamResponse = Effect.fnUntraced(
     let metadataEmitted = false
     let textStarted = false
     let textId = ""
+    let reasoningStarted = false
+    let reasoningId = ""
     let hasToolCalls = false
     const activeToolCalls: Record<number, ActiveToolCall> = {}
 
@@ -1169,6 +1152,14 @@ const makeStreamResponse = Effect.fnUntraced(
         const parts: Array<Response.StreamPartEncoded> = []
 
         if (event === "[DONE]") {
+          if (reasoningStarted) {
+            parts.push({
+              type: "reasoning-end",
+              id: reasoningId,
+              metadata: { openai: { ...makeItemIdMetadata(reasoningId) } }
+            })
+          }
+
           if (textStarted) {
             parts.push({
               type: "text-end",
@@ -1226,6 +1217,7 @@ const makeStreamResponse = Effect.fnUntraced(
         if (!metadataEmitted) {
           metadataEmitted = true
           textId = `${event.id}_message`
+          reasoningId = `${event.id}_reasoning`
           parts.push({
             type: "response-metadata",
             id: event.id,
@@ -1240,7 +1232,29 @@ const makeStreamResponse = Effect.fnUntraced(
           return parts
         }
 
+        const reasoningDelta = choice.delta?.reasoning ?? choice.delta?.reasoning_content
+        if (Predicate.isNotNullish(reasoningDelta) && reasoningDelta.length > 0) {
+          if (!reasoningStarted) {
+            reasoningStarted = true
+            parts.push({
+              type: "reasoning-start",
+              id: reasoningId,
+              metadata: { openai: { ...makeItemIdMetadata(reasoningId) } }
+            })
+          }
+          parts.push({ type: "reasoning-delta", id: reasoningId, delta: reasoningDelta })
+        }
+
         if (choice.delta?.content !== undefined && Predicate.isNotNull(choice.delta.content)) {
+          if (reasoningStarted) {
+            reasoningStarted = false
+            parts.push({
+              type: "reasoning-end",
+              id: reasoningId,
+              metadata: { openai: { ...makeItemIdMetadata(reasoningId) } }
+            })
+          }
+
           if (!textStarted) {
             textStarted = true
             parts.push({
@@ -1259,7 +1273,7 @@ const makeStreamResponse = Effect.fnUntraced(
             const activeToolCall = activeToolCalls[toolIndex]
             const toolId = activeToolCall?.id ?? deltaTool.id ?? `${event.id}_tool_${toolIndex}`
             const providerToolName = deltaTool.function?.name
-            const toolName = providerToolName !== undefined
+            const toolName = Predicate.isNotNullish(providerToolName)
               ? toolNameMapper.getCustomName(providerToolName)
               : activeToolCall?.name ?? toolNameMapper.getCustomName("unknown_tool")
             const argumentsDelta = deltaTool.function?.arguments ?? ""
@@ -1380,7 +1394,7 @@ const unsupportedSchemaError = (error: unknown, method: string): AiError.AiError
     })
   })
 
-const tryJsonSchema = <S extends Schema.Top>(schema: S, method: string) =>
+const tryJsonSchema = <S extends Schema.Constraint>(schema: S, method: string) =>
   Effect.try({
     try: () => Tool.getJsonSchemaFromSchema(schema, { transformer: toCodecOpenAI }),
     catch: (error) => unsupportedSchemaError(error, method)

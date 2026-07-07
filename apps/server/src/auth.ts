@@ -8,6 +8,9 @@
  *
  * @module auth
  */
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeCrypto from "node:crypto";
+
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -21,6 +24,15 @@ const TOKEN_BYTES = 32;
 
 const toHex = (bytes: Uint8Array): string =>
   Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+/** Constant-time equality so a wrong credential can't leak how much of it matched. */
+const timingSafeStringEqual = (left: string, right: string): boolean => {
+  const leftBytes = Buffer.from(left, "utf8");
+  const rightBytes = Buffer.from(right, "utf8");
+  return (
+    leftBytes.length === rightBytes.length && NodeCrypto.timingSafeEqual(leftBytes, rightBytes)
+  );
+};
 
 /**
  * BearerSessionStore - mints and validates opaque bearer tokens.
@@ -46,7 +58,7 @@ const make = Effect.gen(function* () {
   return {
     authenticateBootstrap: (credential) =>
       Effect.gen(function* () {
-        if (credential !== config.bootstrapToken) {
+        if (!timingSafeStringEqual(credential, config.bootstrapToken)) {
           return Option.none();
         }
         const bytes = yield* crypto.randomBytes(TOKEN_BYTES).pipe(Effect.orDie);
