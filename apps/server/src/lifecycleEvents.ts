@@ -43,6 +43,10 @@ const make = Effect.gen(function* () {
   const state = yield* Ref.make<LifecycleSnapshot>({ sequence: 0, events: [] });
 
   return {
+    // Sequence assignment (Ref.modify) is atomic, but PubSub delivery order is
+    // only guaranteed to match sequence order because the lifecycle layer is
+    // the sole publisher and publishes sequentially. Concurrent publishers
+    // would need the modify+publish pair serialized (e.g. a Semaphore).
     publish: (input) =>
       Ref.modify(state, (current) => {
         const nextSequence = current.sequence + 1;

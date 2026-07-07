@@ -59,10 +59,12 @@ const parseUrlOption = (value: string | undefined): URL | undefined => {
   }
 };
 
+// Bounds match the contracts `Port` schema (1–65535); port 0 would bind an
+// ephemeral port that no client could discover.
 const parsePortOption = (value: string | undefined): number | undefined => {
   if (value === undefined) return undefined;
   const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 65535 ? parsed : undefined;
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535 ? parsed : undefined;
 };
 
 /** Resolve the full server config from flags + bootstrap envelope + env. */

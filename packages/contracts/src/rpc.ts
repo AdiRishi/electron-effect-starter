@@ -17,9 +17,9 @@ import {
  */
 export const WS_METHODS = {
   serverGetConfig: "server.getConfig",
-  echo: "echo",
-  subscribeTicks: "subscribeTicks",
-  subscribeServerLifecycle: "subscribeServerLifecycle",
+  serverEcho: "server.echo",
+  serverSubscribeTicks: "server.subscribeTicks",
+  serverSubscribeLifecycle: "server.subscribeLifecycle",
 } as const;
 
 // ── Unary RPCs ──────────────────────────────────────────────────────────────
@@ -32,7 +32,7 @@ export const WsServerGetConfigRpc = Rpc.make(WS_METHODS.serverGetConfig, {
 });
 
 /** Round-trips input → output. The template for a request/response method. */
-export const WsEchoRpc = Rpc.make(WS_METHODS.echo, {
+export const WsServerEchoRpc = Rpc.make(WS_METHODS.serverEcho, {
   payload: EchoInput,
   success: EchoResult,
   error: EnvironmentAuthorizationError,
@@ -41,7 +41,7 @@ export const WsEchoRpc = Rpc.make(WS_METHODS.echo, {
 // ── Streaming RPCs (server → client push) ────────────────────────────────────
 
 /** A monotonic counter. The template for a live server-push stream. */
-export const WsSubscribeTicksRpc = Rpc.make(WS_METHODS.subscribeTicks, {
+export const WsServerSubscribeTicksRpc = Rpc.make(WS_METHODS.serverSubscribeTicks, {
   payload: Schema.Struct({}),
   success: TickEvent,
   error: EnvironmentAuthorizationError,
@@ -49,7 +49,7 @@ export const WsSubscribeTicksRpc = Rpc.make(WS_METHODS.subscribeTicks, {
 });
 
 /** Retained-snapshot + live lifecycle events (the ordered push-bus pattern). */
-export const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecycle, {
+export const WsServerSubscribeLifecycleRpc = Rpc.make(WS_METHODS.serverSubscribeLifecycle, {
   payload: Schema.Struct({}),
   success: ServerLifecycleStreamEvent,
   error: EnvironmentAuthorizationError,
@@ -59,7 +59,7 @@ export const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServer
 /** The wire contract the server decodes against and the client is typed by. */
 export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
-  WsEchoRpc,
-  WsSubscribeTicksRpc,
-  WsSubscribeServerLifecycleRpc,
+  WsServerEchoRpc,
+  WsServerSubscribeTicksRpc,
+  WsServerSubscribeLifecycleRpc,
 );

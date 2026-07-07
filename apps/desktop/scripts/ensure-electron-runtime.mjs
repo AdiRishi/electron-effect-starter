@@ -22,7 +22,9 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 const require = NodeModule.createRequire(import.meta.url);
+// oxlint-disable-next-line app/no-global-process-runtime -- Standalone repair script has no Effect runtime.
 const hostPlatform = NodeOS.platform();
+// oxlint-disable-next-line app/no-global-process-runtime -- Standalone repair script has no Effect runtime.
 const hostArch = NodeOS.arch();
 
 function getPlatformPath() {

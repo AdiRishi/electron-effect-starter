@@ -1,5 +1,6 @@
 packages:
   - apps/*
+  - oxlint-plugin-app
   - packages/*
   - scripts
 
@@ -24,7 +25,9 @@ peerDependencyRules:
     - ioredis
 
 catalog:
+  "@effect/atom-react": 4.0.0-beta.78
   "@effect/platform-node": 4.0.0-beta.78
+  "@oxlint/plugins": ^1.72.0
   "@effect/platform-node-shared": 4.0.0-beta.78
   "@effect/vitest": 4.0.0-beta.78
   "@types/node": 24.12.4

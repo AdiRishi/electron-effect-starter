@@ -42,7 +42,7 @@ export const ServerLifecycleStreamEvent = Schema.Struct({
 export type ServerLifecycleStreamEvent = typeof ServerLifecycleStreamEvent.Type;
 
 /**
- * Emitted by the `subscribeTicks` streaming RPC — a monotonically increasing
+ * Emitted by the `server.subscribeTicks` streaming RPC — a monotonically increasing
  * counter. The toy "server push" that proves the transport streams and that
  * the client re-attaches the subscription across reconnects.
  */

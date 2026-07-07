@@ -6,7 +6,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
-import { BearerSession, type BootstrapBearerInput } from "@app/contracts";
+import { BearerSessionJson, type BootstrapBearerInput } from "@app/contracts";
 
 import * as DesktopBackendManager from "./DesktopBackendManager.ts";
 
@@ -49,7 +49,9 @@ export class DesktopLocalEnvironmentAuth extends Context.Service<
   }
 >()("@app/desktop/backend/DesktopLocalEnvironmentAuth") {}
 
-const decodeBearerSession = Schema.decodeUnknownEffect(BearerSession);
+// The JSON wire codec, not the raw schema: expires_at crosses as an ISO
+// string, which raw BearerSession (DateTime instances only) rejects.
+const decodeBearerSession = Schema.decodeUnknownEffect(BearerSessionJson);
 
 export const make = Effect.gen(function* () {
   const manager = yield* DesktopBackendManager.DesktopBackendManager;

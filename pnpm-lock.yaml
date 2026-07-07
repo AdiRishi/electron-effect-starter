@@ -6,12 +6,18 @@ settings:
 
 catalogs:
   default:
+    '@effect/atom-react':
+      specifier: 4.0.0-beta.78
+      version: 4.0.0-beta.78
     '@effect/platform-node':
       specifier: 4.0.0-beta.78
       version: 4.0.0-beta.78
     '@effect/vitest':
       specifier: 4.0.0-beta.78
       version: 4.0.0-beta.78
+    '@oxlint/plugins':
+      specifier: ^1.72.0
+      version: 1.72.0
     '@types/node':
       specifier: 24.12.4
       version: 24.12.4
@@ -135,6 +141,9 @@ importers:
       '@app/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@effect/atom-react':
+        specifier: 'catalog:'
+        version: 4.0.0-beta.78(effect@4.0.0-beta.78)(react@19.2.6)(scheduler@0.27.0)
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.78
@@ -166,6 +175,31 @@ importers:
       vite:
         specifier: 'catalog:'
         version: 8.1.1(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.9(@types/node@24.12.4)(vite@8.1.1(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0))
+
+  oxlint-plugin-app:
+    dependencies:
+      '@oxlint/plugins':
+        specifier: 'catalog:'
+        version: 1.72.0
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-beta.78
+    devDependencies:
+      '@effect/platform-node':
+        specifier: 'catalog:'
+        version: 4.0.0-beta.78(effect@4.0.0-beta.78)(ioredis@5.11.1)
+      '@effect/vitest':
+        specifier: 'catalog:'
+        version: 4.0.0-beta.78(effect@4.0.0-beta.78)(vitest@4.1.9(@types/node@24.12.4)(vite@8.1.1(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)))
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.12.4
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
       vitest:
         specifier: 'catalog:'
         version: 4.1.9(@types/node@24.12.4)(vite@8.1.1(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0))
@@ -247,6 +281,13 @@ packages:
   '@develar/schema-utils@2.6.5':
     resolution: {integrity: sha512-0cp4PsWQ/9avqTVMCtZ+GirikIA36ikvjtHweU4/j8yLtgObI0+JUPhYFScgwlteveGB1rt3Cm8UhN04XayDig==}
     engines: {node: '>= 8.9.0'}
+
+  '@effect/atom-react@4.0.0-beta.78':
+    resolution: {integrity: sha512-cgxDXJaD0wlbQXbp6tiEmmY+yajwurB0ynkFG20RVucvH4LsQMB3ogiHe0mt42wGggfbVYMEDxgBpQdqDRY8yA==}
+    peerDependencies:
+      effect: ^4.0.0-beta.78
+      react: ^19.2.4
+      scheduler: '*'
 
   '@effect/platform-node-shared@4.0.0-beta.78':
     resolution: {integrity: sha512-mo0ddTPATyCMyqzQasYDL7+NI29vozoMplom+qu9f/onDTd4xG5hvEEfGxfL0Ljygui6keG/YE/E9OZVf2z5WA==}
@@ -637,6 +678,10 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [win32]
+
+  '@oxlint/plugins@1.72.0':
+    resolution: {integrity: sha512-TF6+ruuIwUpT64deU2JvoDs78m1QjYuMB7IP9AZ2p05fkUesumy+3aqKERE5sYd1C8CmL+yt0swwfXlR3/YluQ==}
+    engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
 
   '@pkgjs/parseargs@0.11.0':
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
@@ -2502,6 +2547,12 @@ snapshots:
       ajv: 6.15.0
       ajv-keywords: 3.5.2(ajv@6.15.0)
 
+  '@effect/atom-react@4.0.0-beta.78(effect@4.0.0-beta.78)(react@19.2.6)(scheduler@0.27.0)':
+    dependencies:
+      effect: 4.0.0-beta.78
+      react: 19.2.6
+      scheduler: 0.27.0
+
   '@effect/platform-node-shared@4.0.0-beta.78(effect@4.0.0-beta.78)':
     dependencies:
       '@types/ws': 8.18.1
@@ -2831,6 +2882,8 @@ snapshots:
 
   '@oxlint/binding-win32-x64-msvc@1.72.0':
     optional: true
+
+  '@oxlint/plugins@1.72.0': {}
 
   '@pkgjs/parseargs@0.11.0':
     optional: true

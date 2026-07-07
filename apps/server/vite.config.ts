@@ -1,12 +1,12 @@
-import { builtinModules } from "node:module";
+import * as NodeModule from "node:module";
 
 import { defineConfig } from "vite";
 
 // Bundle every non-Node dependency into the single-file CLI so the packaged
 // `dist/bin.mjs` has no runtime dependency on the monorepo layout.
 const nodeBuiltinIds = new Set([
-  ...builtinModules,
-  ...builtinModules.map((moduleName) => `node:${moduleName}`),
+  ...NodeModule.builtinModules,
+  ...NodeModule.builtinModules.map((moduleName) => `node:${moduleName}`),
 ]);
 
 function isExternalCliDependency(id: string): boolean {

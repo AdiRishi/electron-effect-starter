@@ -13,4 +13,9 @@ export {
   subscribe,
 } from "./client.ts";
 export { makeWsRpcProtocolClient, type WsRpcProtocolClient } from "./protocol.ts";
-export { type RpcSession, connect } from "./session.ts";
+export {
+  type RpcSession,
+  RpcSessionFactory,
+  type RpcSessionFactoryShape,
+  connect,
+} from "./session.ts";
