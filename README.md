@@ -22,6 +22,8 @@ Most Electron starters give you a window and a bundler, then leave the hard part
 Requires Node 24 and pnpm 11.
 
 ```bash
+npx degit AdiRishi/electron-effect-starter my-app
+cd my-app
 pnpm install
 pnpm rename my-app com.mycompany  # make the starter yours (name, product name, app id, data dir)
 pnpm dev            # server + web UI in your browser, with HMR
