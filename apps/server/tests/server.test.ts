@@ -5,14 +5,25 @@ import * as NodePath from "node:path";
 
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
+import * as NodeSocket from "@effect/platform-node/NodeSocket";
 import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import { HttpBody, HttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
+import { RpcClient, RpcSerialization } from "effect/unstable/rpc";
+import * as Socket from "effect/unstable/socket/Socket";
 
-import { BearerSessionJson } from "@app/contracts";
+import {
+  BearerSessionJson,
+  WS_METHODS,
+  WsRpcGroup,
+  type ServerLifecycleStreamEvent,
+} from "@app/contracts";
 
 import * as Auth from "../src/auth.ts";
 import * as ServerConfig from "../src/config.ts";
@@ -37,13 +48,21 @@ NodeFS.writeFileSync(NodePath.join(SCRATCH, "secret.txt"), "TOP_SECRET");
 interface HarnessOptions {
   readonly staticDir?: string;
   readonly devWebUrl?: URL;
+  readonly lifecycleEvents?: Partial<LifecycleEvents.ServerLifecycleEvents["Service"]>;
 }
 
 /** The real route stack + services over the platform test server. */
 const appLayer = (options: HarnessOptions = {}) =>
   HttpRouter.serve(routesLayer).pipe(
     Layer.provideMerge(
-      Layer.mergeAll(Auth.layer, LifecycleEvents.layer, NotesStore.layer, Readiness.layer),
+      Layer.mergeAll(
+        Auth.layer,
+        options.lifecycleEvents === undefined
+          ? LifecycleEvents.layer
+          : Layer.mock(LifecycleEvents.ServerLifecycleEvents)(options.lifecycleEvents),
+        NotesStore.layer,
+        Readiness.layer,
+      ),
     ),
     Layer.provideMerge(
       Layer.unwrap(
@@ -73,6 +92,23 @@ const decodeBearerSession = Schema.decodeUnknownSync(BearerSessionJson);
 
 const postJson = (path: string, body: string) =>
   HttpClient.post(path, { body: HttpBody.text(body, "application/json") });
+
+const wsRpcProtocolLayer = (wsUrl: string) =>
+  RpcClient.layerProtocolSocket().pipe(
+    Layer.provide(
+      Socket.layerWebSocket(wsUrl).pipe(Layer.provide(NodeSocket.layerWebSocketConstructor)),
+    ),
+    Layer.provide(RpcSerialization.layerJson),
+  );
+
+const makeWsRpcClient = RpcClient.make(WsRpcGroup);
+type WsRpcClient =
+  typeof makeWsRpcClient extends Effect.Effect<infer Client, unknown, unknown> ? Client : never;
+
+const withWsRpcClient = <A, E, R>(
+  wsUrl: string,
+  f: (client: WsRpcClient) => Effect.Effect<A, E, R>,
+) => makeWsRpcClient.pipe(Effect.flatMap(f), Effect.provide(wsRpcProtocolLayer(wsUrl)));
 
 /**
  * Issue a request with the path passed through verbatim — no WHATWG URL
@@ -184,6 +220,53 @@ describe("websocket gate", () => {
       const response = yield* HttpClient.get("/ws");
       assert.equal(response.status, 401);
     }).pipe(Effect.provide(appLayer())),
+  );
+
+  it.effect("buffers lifecycle events published while the initial snapshot loads", () =>
+    Effect.gen(function* () {
+      const liveEvents = yield* PubSub.unbounded<ServerLifecycleStreamEvent>();
+      const snapshotEvent: ServerLifecycleStreamEvent = {
+        sequence: 1,
+        phase: "starting",
+        at: DateTime.makeUnsafe("2026-01-01T00:00:00.000Z"),
+      };
+      const liveEvent: ServerLifecycleStreamEvent = {
+        sequence: 2,
+        phase: "ready",
+        at: DateTime.makeUnsafe("2026-01-01T00:00:01.000Z"),
+      };
+      const lifecycleEvents = {
+        snapshot: Effect.gen(function* () {
+          yield* Effect.sleep("25 millis");
+          yield* PubSub.publish(liveEvents, liveEvent);
+          return { sequence: snapshotEvent.sequence, events: [snapshotEvent] };
+        }),
+        stream: Stream.fromPubSub(liveEvents),
+      };
+
+      yield* Effect.gen(function* () {
+        const response = yield* postJson(
+          AUTH_BOOTSTRAP_PATH,
+          JSON.stringify({ credential: BOOTSTRAP_TOKEN }),
+        );
+        const session = decodeBearerSession(yield* response.json);
+        const server = yield* HttpServer.HttpServer;
+        const address = server.address;
+        const port = typeof address === "string" || !("port" in address) ? 0 : address.port;
+        const wsUrl = `ws://127.0.0.1:${port}/ws?access_token=${encodeURIComponent(session.access_token)}`;
+
+        const events = yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[WS_METHODS.serverSubscribeLifecycle]({}).pipe(Stream.take(2), Stream.runCollect),
+          ),
+        ).pipe(Effect.timeout("2 seconds"));
+
+        assert.deepStrictEqual(
+          events.map((event) => event.sequence),
+          [1, 2],
+        );
+      }).pipe(Effect.provide(appLayer({ lifecycleEvents })));
+    }).pipe(TestClock.withLive),
   );
 });
 

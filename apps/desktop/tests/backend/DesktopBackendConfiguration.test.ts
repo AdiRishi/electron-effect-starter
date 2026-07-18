@@ -17,6 +17,7 @@ const desktopEnvironmentLayer = Layer.effect(
         homeDirectory: "/home/user",
         platform: "darwin",
         appVersion: "0.0.0",
+        appPath: "/app",
         isPackaged: false,
         resourcesPath: "/app/resources",
         serverEntryOverride: Option.some("/app/apps/server/dist/bin.mjs"),
@@ -34,6 +35,33 @@ const testLayer = DesktopBackendConfiguration.layer.pipe(
 );
 
 describe("DesktopBackendConfiguration", () => {
+  it.effect("resolves the packaged server from Electron's asar app path", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const environment = DesktopEnvironment.makeWith(
+        {
+          dirname: "/Applications/App.app/Contents/Resources/app.asar/apps/desktop/dist-electron",
+          homeDirectory: "/home/user",
+          platform: "darwin",
+          appVersion: "0.0.0",
+          appPath: "/Applications/App.app/Contents/Resources/app.asar",
+          isPackaged: true,
+          resourcesPath: "/Applications/App.app/Contents/Resources",
+          serverEntryOverride: Option.none(),
+          configuredBackendPort: Option.none(),
+          devServerUrl: Option.none(),
+        },
+        path,
+      );
+
+      assert.equal(
+        environment.backendEntryPath,
+        "/Applications/App.app/Contents/Resources/app.asar/apps/server/dist/bin.mjs",
+      );
+      assert.equal(environment.backendCwd, "/home/user");
+    }).pipe(Effect.provide(Path.layer)),
+  );
+
   it.effect("resolves fd-based server bootstrap without putting the secret in env", () =>
     Effect.gen(function* () {
       const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;

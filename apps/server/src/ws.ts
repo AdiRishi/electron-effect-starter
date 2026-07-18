@@ -14,6 +14,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { Headers, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
@@ -95,9 +96,17 @@ const makeWsRpcLayer = () =>
         [WS_METHODS.serverSubscribeLifecycle]: () =>
           Stream.unwrap(
             Effect.gen(function* () {
+              const liveBuffer = yield* Queue.unbounded<ServerLifecycleStreamEvent>();
+              yield* Effect.forkScoped(
+                lifecycleEvents.stream.pipe(
+                  Stream.runForEach((item) => Queue.offer(liveBuffer, item)),
+                ),
+              );
+              const bufferedLiveStream = Stream.fromQueue(liveBuffer);
+
               const snapshot = yield* lifecycleEvents.snapshot;
               const replay = snapshot.events.toSorted((a, b) => a.sequence - b.sequence);
-              const live = lifecycleEvents.stream.pipe(
+              const live = bufferedLiveStream.pipe(
                 Stream.filter(
                   (event: ServerLifecycleStreamEvent) => event.sequence > snapshot.sequence,
                 ),
