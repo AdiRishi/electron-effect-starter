@@ -24,7 +24,6 @@ import * as Auth from "./auth.ts";
 import * as ServerConfig from "./config.ts";
 import {
   authBootstrapRouteLayer,
-  authWsTicketRouteLayer,
   corsLayer,
   healthRouteLayer,
   staticAndDevRouteLayer,
@@ -41,7 +40,6 @@ import { websocketRpcRouteLayer } from "./ws.ts";
 export const routesLayer = Layer.mergeAll(
   healthRouteLayer,
   authBootstrapRouteLayer,
-  authWsTicketRouteLayer,
   websocketRpcRouteLayer,
   staticAndDevRouteLayer,
 ).pipe(Layer.provide(corsLayer));
@@ -61,11 +59,6 @@ export const makeServerLayer = Layer.unwrap(
     const httpServerLayer = NodeHttpServer.layer(NodeHttp.createServer, {
       host: config.host,
       port: config.port,
-      // No preemptive drain window (the default is 20s): the long-lived `/ws`
-      // connections keep request scopes open, so the default timer would hold
-      // the process alive on SIGTERM waiting for sockets the WS finalizers
-      // already close gracefully.
-      gracefulShutdownTimeout: 0,
     });
 
     // Publish `starting` immediately as the runtime spins up.

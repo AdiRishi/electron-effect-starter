@@ -14,8 +14,9 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
+import { Headers, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
 import {
@@ -31,40 +32,25 @@ import * as LifecycleEvents from "./lifecycleEvents.ts";
 import * as NotesStore from "./notes/NotesStore.ts";
 
 /**
- * The query parameter carrying the short-lived WS ticket. Browsers can't set
- * headers on a WebSocket upgrade, so a credential must ride in the URL — but
- * ONLY the 5-minute ticket is accepted there, never the long-lived bearer
- * (URLs leak into proxy logs, browser history, and `Referer` headers). A
- * non-browser client that can set headers may still present the bearer via
- * `Authorization`.
+ * Extract a bearer token from the upgrade request: `Authorization: Bearer <t>`
+ * header, or `?access_token=<t>` query param (browsers can't set WS headers).
  */
-const WS_TICKET_QUERY_PARAM = "wsTicket";
-
-function extractWsTicket(request: HttpServerRequest.HttpServerRequest): Option.Option<string> {
+function extractBearer(request: HttpServerRequest.HttpServerRequest): Option.Option<string> {
+  const header = Headers.get(request.headers, "authorization");
+  if (Option.isSome(header)) {
+    const match = /^Bearer\s+(.+)$/i.exec(header.value.trim());
+    if (match?.[1]) {
+      return Option.some(match[1].trim());
+    }
+  }
   const url = HttpServerRequest.toURL(request);
   if (Option.isSome(url)) {
-    const ticket = url.value.searchParams.get(WS_TICKET_QUERY_PARAM);
-    if (ticket && ticket.trim().length > 0) {
-      return Option.some(ticket);
+    const token = url.value.searchParams.get("access_token");
+    if (token) {
+      return Option.some(token);
     }
   }
   return Option.none();
-}
-
-/** Authorize the upgrade: a `wsTicket` query param, or a header bearer. */
-function authorizeUpgrade(
-  auth: Auth.BearerSessionStore["Service"],
-  request: HttpServerRequest.HttpServerRequest,
-): Effect.Effect<boolean> {
-  const ticket = extractWsTicket(request);
-  if (Option.isSome(ticket)) {
-    return auth.authenticateWsTicket(ticket.value);
-  }
-  const bearer = Auth.extractAuthorizationBearer(request);
-  if (Option.isSome(bearer)) {
-    return auth.authenticateBearer(bearer.value);
-  }
-  return Effect.succeed(false);
 }
 
 /**
@@ -110,9 +96,17 @@ const makeWsRpcLayer = () =>
         [WS_METHODS.serverSubscribeLifecycle]: () =>
           Stream.unwrap(
             Effect.gen(function* () {
+              const liveBuffer = yield* Queue.unbounded<ServerLifecycleStreamEvent>();
+              yield* Effect.forkScoped(
+                lifecycleEvents.stream.pipe(
+                  Stream.runForEach((item) => Queue.offer(liveBuffer, item)),
+                ),
+              );
+              const bufferedLiveStream = Stream.fromQueue(liveBuffer);
+
               const snapshot = yield* lifecycleEvents.snapshot;
               const replay = snapshot.events.toSorted((a, b) => a.sequence - b.sequence);
-              const live = lifecycleEvents.stream.pipe(
+              const live = bufferedLiveStream.pipe(
                 Stream.filter(
                   (event: ServerLifecycleStreamEvent) => event.sequence > snapshot.sequence,
                 ),
@@ -139,7 +133,12 @@ export const websocketRpcRouteLayer = HttpRouter.add(
     const request = yield* HttpServerRequest.HttpServerRequest;
     const auth = yield* Auth.BearerSessionStore;
 
-    if (!(yield* authorizeUpgrade(auth, request))) {
+    const token = extractBearer(request);
+    if (Option.isNone(token)) {
+      return HttpServerResponse.text("Unauthorized", { status: 401 });
+    }
+    const valid = yield* auth.authenticateBearer(token.value);
+    if (!valid) {
       return HttpServerResponse.text("Unauthorized", { status: 401 });
     }
 

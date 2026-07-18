@@ -1,5 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -13,6 +14,17 @@ import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import { MENU_ACTION_CHANNEL } from "../ipc/channels.ts";
+
+const DEVELOPMENT_LOAD_RETRY_DELAYS_MS = [100, 250, 500, 1_000, 2_000] as const;
+const DEVELOPMENT_RETRYABLE_LOAD_ERROR_CODES = new Set([
+  -2, // ERR_FAILED
+  -7, // ERR_TIMED_OUT
+  -9, // ERR_UNEXPECTED (custom protocol handler rejected)
+  -102, // ERR_CONNECTION_REFUSED
+  -105, // ERR_NAME_NOT_RESOLVED
+  -106, // ERR_INTERNET_DISCONNECTED
+  -118, // ERR_CONNECTION_TIMED_OUT
+]);
 
 // Owns the main BrowserWindow: creates it with the hardened webPreferences,
 // loads the server (or dev) URL, and reveals it on `ready-to-show`. A
@@ -55,21 +67,6 @@ function initialBackgroundColor(shouldUseDarkColors: boolean): string {
   return shouldUseDarkColors ? "#0a0a0a" : "#ffffff";
 }
 
-// Same-origin check for the `will-navigate` guard. Unparseable URLs count as
-// cross-origin (blocked): a URL we can't reason about must not replace the
-// trusted renderer.
-export function isSameOriginNavigation(applicationUrl: string, navigationUrl: string): boolean {
-  try {
-    return new URL(applicationUrl).origin === new URL(navigationUrl).origin;
-  } catch {
-    return false;
-  }
-}
-
-// Delays between renderer load retries (dev only — e.g. the Vite dev server is
-// still coming up). The ladder stays at its last rung until a load succeeds.
-const LOAD_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000] as const;
-
 // The renderer origin: the dev web server in development, otherwise the local
 // backend (which serves the built web app same-origin).
 function resolveApplicationUrl(
@@ -79,6 +76,33 @@ function resolveApplicationUrl(
     onNone: () => `http://127.0.0.1:${environment.defaultBackendPort}`,
     onSome: (url) => url.href,
   });
+}
+
+export function isSameOriginRendererNavigation(input: {
+  readonly applicationUrl: string;
+  readonly navigationUrl: string;
+}): boolean {
+  try {
+    return new URL(input.applicationUrl).origin === new URL(input.navigationUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
+export function isRetryableDevelopmentRendererLoadFailure(input: {
+  readonly applicationUrl: string;
+  readonly errorCode: number;
+  readonly isMainFrame: boolean;
+  readonly validatedUrl: string;
+}): boolean {
+  return (
+    input.isMainFrame &&
+    DEVELOPMENT_RETRYABLE_LOAD_ERROR_CODES.has(input.errorCode) &&
+    isSameOriginRendererNavigation({
+      applicationUrl: input.applicationUrl,
+      navigationUrl: input.validatedUrl,
+    })
+  );
 }
 
 // A minimal cross-platform application menu. The custom items dispatch string
@@ -128,6 +152,7 @@ export const make = Effect.gen(function* () {
   const backendReadyRef = yield* Ref.make(false);
   const applicationUrlRef = yield* Ref.make(resolveApplicationUrl(environment));
   const context = yield* Effect.context<DesktopWindowRuntimeServices>();
+  const runFork = Effect.runForkWith(context);
   const runPromise = Effect.runPromiseWith(context);
 
   const createWindow = Effect.fn("desktop.window.createWindow")(function* () {
@@ -157,17 +182,6 @@ export const make = Effect.gen(function* () {
       return { action: "deny" };
     });
 
-    // Keep the top-level frame pinned to the app origin: a page that navigates
-    // (or is redirected) elsewhere would run a foreign origin with the shell's
-    // webPreferences. Safe external links open in the system browser instead.
-    yield* electronWindow.onWillNavigate(window, (event, url) => {
-      if (isSameOriginNavigation(applicationUrl, url)) return;
-      event.preventDefault();
-      if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
-        void runPromise(electronShell.openExternal(url));
-      }
-    });
-
     yield* electronWindow.onReadyToShow(window, () => {
       void runPromise(electronWindow.reveal(window));
     });
@@ -175,52 +189,90 @@ export const make = Effect.gen(function* () {
       void runPromise(electronWindow.clearMain(Option.some(window)));
     });
 
-    // A failed main-frame load would otherwise leave a permanently blank
-    // window. In dev, retry on a bounded backoff ladder (the web dev server may
-    // still be starting); in prod the backend-readiness gate makes this rare,
-    // so just log. Each failure schedules at most one retry, so there is never
-    // more than one pending reload.
-    let loadRetryIndex = 0;
-    yield* electronWindow.onDidFinishLoad(window, () => {
-      loadRetryIndex = 0;
-    });
-    yield* electronWindow.onDidFailLoad(window, (details) => {
-      if (!details.isMainFrame) return;
-      const retryDelayMs = environment.isDevelopment
-        ? LOAD_RETRY_DELAYS_MS[Math.min(loadRetryIndex, LOAD_RETRY_DELAYS_MS.length - 1)]
-        : undefined;
-      loadRetryIndex += 1;
-      void runPromise(
-        Effect.gen(function* () {
-          yield* logWarning("main window failed to load", {
-            errorCode: details.errorCode,
-            errorDescription: details.errorDescription,
-            url: details.validatedUrl,
-            ...(retryDelayMs === undefined ? {} : { retryDelayMs }),
-          });
-          if (retryDelayMs === undefined) return;
-          yield* Effect.sleep(retryDelayMs);
-          yield* electronWindow.loadUrl(window, applicationUrl).pipe(Effect.ignore);
-        }),
-      );
-    });
-    yield* electronWindow.onRenderProcessGone(window, (details) => {
-      void runPromise(
-        logWarning("main window render process gone", {
-          reason: details.reason,
-          exitCode: details.exitCode,
-        }),
-      );
-    });
+    let developmentLoadRetryIndex = 0;
+    let developmentLoadRetryFiber: Fiber.Fiber<void, never> | undefined;
+    const clearDevelopmentLoadRetry = () => {
+      if (developmentLoadRetryFiber === undefined) {
+        return;
+      }
+      const retryFiber = developmentLoadRetryFiber;
+      developmentLoadRetryFiber = undefined;
+      runFork(Fiber.interrupt(retryFiber));
+    };
+    const loadApplication = () => {
+      if (window.isDestroyed()) {
+        return;
+      }
+      void window.loadURL(applicationUrl).catch(() => undefined);
+    };
+    const scheduleDevelopmentLoadRetry = () => {
+      if (developmentLoadRetryFiber !== undefined || window.isDestroyed()) {
+        return undefined;
+      }
 
-    yield* electronWindow.loadUrl(window, applicationUrl).pipe(
-      Effect.catch((error) =>
-        logWarning("main window failed to load", {
-          url: applicationUrl,
-          message: error.message,
-        }),
-      ),
+      const retryIndex = Math.min(
+        developmentLoadRetryIndex,
+        DEVELOPMENT_LOAD_RETRY_DELAYS_MS.length - 1,
+      );
+      const retryInMs = DEVELOPMENT_LOAD_RETRY_DELAYS_MS[retryIndex] ?? 2_000;
+      developmentLoadRetryIndex += 1;
+      developmentLoadRetryFiber = runFork(
+        Effect.sleep(retryInMs).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              developmentLoadRetryFiber = undefined;
+              if (!window.isDestroyed()) {
+                loadApplication();
+              }
+            }),
+          ),
+        ),
+      );
+      return retryInMs;
+    };
+
+    window.webContents.on("did-finish-load", () => {
+      if (
+        environment.isDevelopment &&
+        !isSameOriginRendererNavigation({
+          applicationUrl,
+          navigationUrl: window.webContents.getURL(),
+        })
+      ) {
+        return;
+      }
+      clearDevelopmentLoadRetry();
+      developmentLoadRetryIndex = 0;
+      window.setTitle(environment.displayName);
+    });
+    window.webContents.on(
+      "did-fail-load",
+      (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+        if (!isMainFrame) {
+          return;
+        }
+        const retryInMs =
+          environment.isDevelopment &&
+          isRetryableDevelopmentRendererLoadFailure({
+            applicationUrl,
+            errorCode,
+            isMainFrame,
+            validatedUrl: validatedURL,
+          })
+            ? scheduleDevelopmentLoadRetry()
+            : undefined;
+        void runPromise(
+          logWarning("main window failed to load", {
+            errorCode,
+            errorDescription,
+            url: validatedURL,
+            ...(retryInMs === undefined ? {} : { retryInMs }),
+          }),
+        );
+      },
     );
+
+    loadApplication();
     return window;
   });
 

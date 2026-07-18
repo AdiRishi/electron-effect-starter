@@ -41,10 +41,6 @@ const fakeElectronWindowLayer = (pushes: Array<Push>) =>
       onReadyToShow: () => Effect.void,
       onClosed: () => Effect.void,
       setWindowOpenHandler: () => Effect.void,
-      onWillNavigate: () => Effect.void,
-      onDidFinishLoad: () => Effect.void,
-      onDidFailLoad: () => Effect.void,
-      onRenderProcessGone: () => Effect.void,
     }),
   );
 
@@ -72,6 +68,7 @@ const environmentLayer = (isPackaged: boolean) =>
           homeDirectory: "/home/user",
           platform: "darwin",
           appVersion: "0.0.0",
+          appPath: "/app",
           isPackaged,
           resourcesPath: "/app/resources",
           serverEntryOverride: Option.none(),

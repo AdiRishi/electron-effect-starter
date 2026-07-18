@@ -5,20 +5,29 @@ import * as NodePath from "node:path";
 
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
+import * as NodeSocket from "@effect/platform-node/NodeSocket";
 import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { HttpBody, HttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
+import { RpcClient, RpcSerialization } from "effect/unstable/rpc";
+import * as Socket from "effect/unstable/socket/Socket";
 
-import { BearerSessionJson, WsTicketJson } from "@app/contracts";
+import {
+  BearerSessionJson,
+  WS_METHODS,
+  WsRpcGroup,
+  type ServerLifecycleStreamEvent,
+} from "@app/contracts";
 
 import * as Auth from "../src/auth.ts";
 import * as ServerConfig from "../src/config.ts";
-import { AUTH_BOOTSTRAP_PATH, AUTH_WS_TICKET_PATH, HEALTH_PATH } from "../src/http.ts";
+import { AUTH_BOOTSTRAP_PATH, HEALTH_PATH } from "../src/http.ts";
 import * as LifecycleEvents from "../src/lifecycleEvents.ts";
 import * as NotesStore from "../src/notes/NotesStore.ts";
 import * as Readiness from "../src/readiness.ts";
@@ -39,13 +48,21 @@ NodeFS.writeFileSync(NodePath.join(SCRATCH, "secret.txt"), "TOP_SECRET");
 interface HarnessOptions {
   readonly staticDir?: string;
   readonly devWebUrl?: URL;
+  readonly lifecycleEvents?: Partial<LifecycleEvents.ServerLifecycleEvents["Service"]>;
 }
 
 /** The real route stack + services over the platform test server. */
 const appLayer = (options: HarnessOptions = {}) =>
   HttpRouter.serve(routesLayer).pipe(
     Layer.provideMerge(
-      Layer.mergeAll(Auth.layer, LifecycleEvents.layer, NotesStore.layer, Readiness.layer),
+      Layer.mergeAll(
+        Auth.layer,
+        options.lifecycleEvents === undefined
+          ? LifecycleEvents.layer
+          : Layer.mock(LifecycleEvents.ServerLifecycleEvents)(options.lifecycleEvents),
+        NotesStore.layer,
+        Readiness.layer,
+      ),
     ),
     Layer.provideMerge(
       Layer.unwrap(
@@ -72,10 +89,26 @@ const appLayer = (options: HarnessOptions = {}) =>
   );
 
 const decodeBearerSession = Schema.decodeUnknownSync(BearerSessionJson);
-const decodeWsTicket = Schema.decodeUnknownSync(WsTicketJson);
 
 const postJson = (path: string, body: string) =>
   HttpClient.post(path, { body: HttpBody.text(body, "application/json") });
+
+const wsRpcProtocolLayer = (wsUrl: string) =>
+  RpcClient.layerProtocolSocket().pipe(
+    Layer.provide(
+      Socket.layerWebSocket(wsUrl).pipe(Layer.provide(NodeSocket.layerWebSocketConstructor)),
+    ),
+    Layer.provide(RpcSerialization.layerJson),
+  );
+
+const makeWsRpcClient = RpcClient.make(WsRpcGroup);
+type WsRpcClient =
+  typeof makeWsRpcClient extends Effect.Effect<infer Client, unknown, unknown> ? Client : never;
+
+const withWsRpcClient = <A, E, R>(
+  wsUrl: string,
+  f: (client: WsRpcClient) => Effect.Effect<A, E, R>,
+) => makeWsRpcClient.pipe(Effect.flatMap(f), Effect.provide(wsRpcProtocolLayer(wsUrl)));
 
 /**
  * Issue a request with the path passed through verbatim — no WHATWG URL
@@ -181,89 +214,59 @@ describe("bearer bootstrap exchange", () => {
   );
 });
 
-describe("websocket ticket exchange", () => {
-  const mintBearer = Effect.gen(function* () {
-    const response = yield* postJson(
-      AUTH_BOOTSTRAP_PATH,
-      JSON.stringify({ credential: BOOTSTRAP_TOKEN }),
-    );
-    const body: unknown = yield* response.json;
-    return decodeBearerSession(body).access_token;
-  });
-
-  it.effect("exchanges a live bearer for a short-lived ticket in the JSON wire shape", () =>
-    Effect.gen(function* () {
-      const bearer = yield* mintBearer;
-      const response = yield* HttpClient.post(AUTH_WS_TICKET_PATH, {
-        headers: { authorization: `Bearer ${bearer}` },
-      });
-      assert.equal(response.status, 200);
-
-      const body: unknown = yield* response.json;
-      const issued = decodeWsTicket(body);
-      assert.match(issued.ticket, /^[0-9a-f]{64}$/);
-      assert.deepEqual(Object.keys(body as object).toSorted(), ["expires_at", "ticket"]);
-
-      // The minted ticket is immediately valid for the WS gate; the ticket is
-      // its own credential, distinct from the bearer.
-      const auth = yield* Auth.BearerSessionStore;
-      assert.isTrue(yield* auth.authenticateWsTicket(issued.ticket));
-      assert.isFalse(yield* auth.authenticateWsTicket(bearer));
-    }).pipe(Effect.provide(appLayer())),
-  );
-
-  it.effect("rejects ticket minting without a live bearer", () =>
-    Effect.gen(function* () {
-      const missing = yield* HttpClient.post(AUTH_WS_TICKET_PATH);
-      assert.equal(missing.status, 401);
-
-      const invalid = yield* HttpClient.post(AUTH_WS_TICKET_PATH, {
-        headers: { authorization: "Bearer not-a-live-session" },
-      });
-      assert.equal(invalid.status, 401);
-    }).pipe(Effect.provide(appLayer())),
-  );
-
-  it.effect("expires tickets after their TTL", () =>
-    Effect.gen(function* () {
-      const auth = yield* Auth.BearerSessionStore;
-      const bearer = yield* mintBearer;
-      const issued = yield* auth.issueWsTicket(bearer);
-      assert.isTrue(Option.isSome(issued));
-      if (Option.isSome(issued)) {
-        assert.isTrue(yield* auth.authenticateWsTicket(issued.value.ticket));
-        yield* TestClock.adjust("6 minutes");
-        assert.isFalse(yield* auth.authenticateWsTicket(issued.value.ticket));
-        // The bearer itself is process-lifetime and still valid.
-        assert.isTrue(yield* auth.authenticateBearer(bearer));
-      }
-    }).pipe(Effect.provide(appLayer())),
-  );
-});
-
 describe("websocket gate", () => {
-  it.effect("rejects /ws without a credential", () =>
+  it.effect("rejects /ws without a bearer token", () =>
     Effect.gen(function* () {
       const response = yield* HttpClient.get("/ws");
       assert.equal(response.status, 401);
     }).pipe(Effect.provide(appLayer())),
   );
 
-  it.effect("rejects the long-lived bearer on the query string — tickets only", () =>
+  it.effect("buffers lifecycle events published while the initial snapshot loads", () =>
     Effect.gen(function* () {
-      const bootstrap = yield* postJson(
-        AUTH_BOOTSTRAP_PATH,
-        JSON.stringify({ credential: BOOTSTRAP_TOKEN }),
-      );
-      const bearer = decodeBearerSession(yield* bootstrap.json).access_token;
+      const liveEvents = yield* PubSub.unbounded<ServerLifecycleStreamEvent>();
+      const snapshotEvent: ServerLifecycleStreamEvent = {
+        sequence: 1,
+        phase: "starting",
+        at: DateTime.makeUnsafe("2026-01-01T00:00:00.000Z"),
+      };
+      const liveEvent: ServerLifecycleStreamEvent = {
+        sequence: 2,
+        phase: "ready",
+        at: DateTime.makeUnsafe("2026-01-01T00:00:01.000Z"),
+      };
+      const lifecycleEvents = {
+        snapshot: Effect.gen(function* () {
+          yield* Effect.sleep("25 millis");
+          yield* PubSub.publish(liveEvents, liveEvent);
+          return { sequence: snapshotEvent.sequence, events: [snapshotEvent] };
+        }),
+        stream: Stream.fromPubSub(liveEvents),
+      };
 
-      // The old-style `?access_token=` carries no weight at all…
-      const viaAccessToken = yield* HttpClient.get(`/ws?access_token=${bearer}`);
-      assert.equal(viaAccessToken.status, 401);
-      // …and a bearer pasted into the ticket param is not a ticket.
-      const viaTicketParam = yield* HttpClient.get(`/ws?wsTicket=${bearer}`);
-      assert.equal(viaTicketParam.status, 401);
-    }).pipe(Effect.provide(appLayer())),
+      yield* Effect.gen(function* () {
+        const response = yield* postJson(
+          AUTH_BOOTSTRAP_PATH,
+          JSON.stringify({ credential: BOOTSTRAP_TOKEN }),
+        );
+        const session = decodeBearerSession(yield* response.json);
+        const server = yield* HttpServer.HttpServer;
+        const address = server.address;
+        const port = typeof address === "string" || !("port" in address) ? 0 : address.port;
+        const wsUrl = `ws://127.0.0.1:${port}/ws?access_token=${encodeURIComponent(session.access_token)}`;
+
+        const events = yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[WS_METHODS.serverSubscribeLifecycle]({}).pipe(Stream.take(2), Stream.runCollect),
+          ),
+        ).pipe(Effect.timeout("2 seconds"));
+
+        assert.deepStrictEqual(
+          events.map((event) => event.sequence),
+          [1, 2],
+        );
+      }).pipe(Effect.provide(appLayer({ lifecycleEvents })));
+    }).pipe(TestClock.withLive),
   );
 });
 

@@ -109,6 +109,7 @@ const environmentLayer = (input?: { readonly isPackaged?: boolean; readonly entr
           homeDirectory: LOG_DIR_HOME,
           platform: "darwin",
           appVersion: "0.0.0-test",
+          appPath: SCRATCH,
           isPackaged: input?.isPackaged ?? false,
           resourcesPath: NodePath.join(SCRATCH, "resources"),
           serverEntryOverride: Option.some(input?.entry ?? ENTRY_PATH),

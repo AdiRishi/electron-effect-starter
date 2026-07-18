@@ -1,29 +1,17 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import * as Socket from "effect/unstable/socket/Socket";
 
+import { bootstrapRemoteBearerSession } from "@app/client-runtime/authorization";
 import {
-  bootstrapRemoteBearerSession,
-  issueWebSocketTicket,
-  type AuthorizationRequestError,
-} from "@app/client-runtime/authorization";
-import {
-  ConnectionBlockedError,
   ConnectionSupervisor,
   connectionSupervisorLayer,
   ConnectionTransientError,
-  Connectivity,
-  ConnectionWakeups,
   INITIAL_CONNECTION_STATE,
-  type ConnectionAttemptError,
-  type ConnectionWakeupsShape,
-  type ConnectivityShape,
-  type NetworkStatus,
   type PreparedConnection,
 } from "@app/client-runtime/connection";
 import { request as rpcRequest, subscribe as rpcSubscribe } from "@app/client-runtime/rpc";
@@ -34,30 +22,16 @@ import { isElectron, resolveConnectionTarget } from "../env.ts";
 const BOOTSTRAP_TOKEN = import.meta.env.VITE_BOOTSTRAP_TOKEN;
 
 /**
- * A rejected credential (401/403) becomes a blocked failure — the supervisor
- * parks and the UI says "not authorized" instead of retrying forever. Anything
- * else (server unreachable, timeout, undecodable response) stays transient.
- */
-function toConnectionError(error: AuthorizationRequestError): ConnectionAttemptError {
-  return error.isRejected
-    ? new ConnectionBlockedError({ reason: "authentication", detail: error.message })
-    : new ConnectionTransientError({ detail: error.message });
-}
-
-/**
  * Obtain a bearer token (integration contract):
  * - In the shell: ask the bridge.
  * - In the browser: POST the bootstrap credential and read `access_token`.
  */
-function obtainBearerToken(httpBaseUrl: string): Effect.Effect<string, ConnectionAttemptError> {
+function obtainBearerToken(httpBaseUrl: string): Effect.Effect<string, Error> {
   if (isElectron && window.desktopBridge) {
     const bridge = window.desktopBridge;
     return Effect.tryPromise({
       try: () => bridge.getBearerToken(),
-      catch: (cause) =>
-        new ConnectionTransientError({
-          detail: `Bridge failed to mint a bearer token: ${String(cause)}`,
-        }),
+      catch: (cause) => new Error(`Bridge failed to mint a bearer token: ${String(cause)}`),
     });
   }
   return bootstrapRemoteBearerSession({
@@ -66,78 +40,22 @@ function obtainBearerToken(httpBaseUrl: string): Effect.Effect<string, Connectio
     clientMetadata: { label: "web", deviceType: "web" },
   }).pipe(
     Effect.map((session) => session.access_token),
-    Effect.mapError(toConnectionError),
+    Effect.mapError((error) => new Error(error.message)),
   );
 }
 
-/** Build the fully-formed WS URL, carrying the short-lived ticket as a query param. */
-function socketUrl(wsBaseUrl: string, ticket: string): string {
+/** Build the fully-formed WS URL, carrying the token as a query param. */
+function socketUrl(wsBaseUrl: string, token: string): string {
   const base = wsBaseUrl.replace(/\/$/, "");
-  return `${base}/ws?wsTicket=${encodeURIComponent(ticket)}`;
+  return `${base}/ws?access_token=${encodeURIComponent(token)}`;
 }
-
-function currentNetworkStatus(): NetworkStatus {
-  if (typeof navigator === "undefined") {
-    return "unknown";
-  }
-  return navigator.onLine ? "online" : "offline";
-}
-
-/** `navigator.onLine` + `online`/`offline` events → the supervisor's network seam. */
-const browserConnectivity: ConnectivityShape = {
-  status: Effect.sync(currentNetworkStatus),
-  changes:
-    typeof window === "undefined"
-      ? Stream.empty
-      : Stream.callback<NetworkStatus>((queue) =>
-          Effect.acquireRelease(
-            Effect.sync(() => {
-              const online = () => Queue.offerUnsafe(queue, "online");
-              const offline = () => Queue.offerUnsafe(queue, "offline");
-              window.addEventListener("online", online);
-              window.addEventListener("offline", offline);
-              return { online, offline };
-            }),
-            ({ offline, online }) =>
-              Effect.sync(() => {
-                window.removeEventListener("online", online);
-                window.removeEventListener("offline", offline);
-              }),
-          ).pipe(Effect.asVoid),
-        ),
-};
-
-/** Tab-refocus → app-active wakeups, so the supervisor health-probes the socket. */
-const browserWakeups: ConnectionWakeupsShape = {
-  changes:
-    typeof document === "undefined"
-      ? Stream.empty
-      : Stream.callback<"application-active">((queue) =>
-          Effect.acquireRelease(
-            Effect.sync(() => {
-              const listener = () => {
-                if (document.visibilityState === "visible") {
-                  Queue.offerUnsafe(queue, "application-active");
-                }
-              };
-              document.addEventListener("visibilitychange", listener);
-              return listener;
-            }),
-            (listener) =>
-              Effect.sync(() => {
-                document.removeEventListener("visibilitychange", listener);
-              }),
-          ).pipe(Effect.asVoid),
-        ),
-};
 
 /**
  * The connection layer: the supervisor (which owns the socket + reconnect
- * loop) over its platform seams — the browser WebSocket constructor, network
- * status, and tab-visibility wakeups. Credentials are resolved inside EVERY
- * attempt (bearer → short-lived WS ticket → URL), so a bridge whose server
- * bootstrap is not ready yet, or a failed mint, is just another attempt
- * failure; a *rejected* credential parks the supervisor as `blocked`.
+ * loop) over the one platform seam it needs — a browser WebSocket constructor.
+ * The connection target and bearer token are resolved inside EVERY attempt, so
+ * a bridge whose server bootstrap is not ready yet, or a failed mint, is just
+ * another transient failure the supervisor backs off from and retries.
  */
 export function makeConnectionLayer(): Layer.Layer<ConnectionSupervisor> {
   const connection: PreparedConnection = {
@@ -145,20 +63,13 @@ export function makeConnectionLayer(): Layer.Layer<ConnectionSupervisor> {
     prepareSocketUrl: Effect.suspend(() => {
       const target = resolveConnectionTarget();
       return obtainBearerToken(target.httpBaseUrl).pipe(
-        Effect.flatMap((bearer) =>
-          issueWebSocketTicket({
-            httpBaseUrl: target.httpBaseUrl,
-            bearerToken: bearer,
-          }).pipe(Effect.mapError(toConnectionError)),
-        ),
-        Effect.map((issued) => socketUrl(target.wsBaseUrl, issued.ticket)),
+        Effect.map((token) => socketUrl(target.wsBaseUrl, token)),
+        Effect.mapError((error) => new ConnectionTransientError({ detail: error.message })),
       );
     }),
   };
   return connectionSupervisorLayer(connection).pipe(
     Layer.provide(Socket.layerWebSocketConstructorGlobal),
-    Layer.provide(Layer.succeed(Connectivity, browserConnectivity)),
-    Layer.provide(Layer.succeed(ConnectionWakeups, browserWakeups)),
   );
 }
 
@@ -184,11 +95,6 @@ export function createConnectionAtoms<R, E>(
   const stateAtom = Atom.make((get) =>
     Option.getOrElse(AsyncResult.value(get(stateResultAtom)), () => INITIAL_CONNECTION_STATE),
   ).pipe(Atom.withLabel("connection-state"));
-
-  /** Cut a backoff or blocked park short — the UI's "retry now" button. */
-  const retryNowAtom = runtime.fn(() =>
-    ConnectionSupervisor.pipe(Effect.flatMap((supervisor) => supervisor.retryNow)),
-  );
 
   /**
    * Server config, re-fetched per session: every fresh session emits one
@@ -236,7 +142,6 @@ export function createConnectionAtoms<R, E>(
 
   return {
     state: stateAtom,
-    retryNow: retryNowAtom,
     serverConfig: serverConfigAtom,
     lifecycle: lifecycleAtom,
   } as const;

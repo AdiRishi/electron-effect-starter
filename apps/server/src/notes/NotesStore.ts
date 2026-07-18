@@ -18,6 +18,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SynchronizedRef from "effect/SynchronizedRef";
@@ -74,22 +75,11 @@ function readNotes(
   notesPath: string,
 ): Effect.Effect<ReadonlyArray<Note>> {
   // Missing or corrupt file → start empty, same posture as the desktop
-  // settings store: domain state must never block server startup. But a
-  // missing file is the normal first run, while an unreadable or undecodable
-  // one is data damage — and since the next mutation persists over it, the
-  // warning logged here is the only evidence the old contents ever existed.
-  const empty: ReadonlyArray<Note> = [];
+  // settings store: domain state must never block server startup.
   return fileSystem.readFileString(notesPath).pipe(
     Effect.flatMap((raw) => decodeNotesDocument(raw)),
     Effect.map((document) => document.notes),
-    Effect.catch((error) =>
-      error._tag === "PlatformError" && error.reason._tag === "NotFound"
-        ? Effect.succeed(empty)
-        : Effect.logWarning("failed to load notes file; starting empty", {
-            path: notesPath,
-            error,
-          }).pipe(Effect.as(empty)),
-    ),
+    Effect.orElseSucceed((): ReadonlyArray<Note> => []),
   );
 }
 
@@ -207,13 +197,20 @@ export const make = Effect.gen(function* () {
     get changes() {
       return Stream.unwrap(
         Effect.gen(function* () {
+          const liveStream = Stream.fromPubSub(pubsub);
+          const liveBuffer = yield* Queue.unbounded<NoteUpsertedEvent | NoteRemovedEvent>();
+          yield* Effect.forkScoped(
+            liveStream.pipe(Stream.runForEach((item) => Queue.offer(liveBuffer, item))),
+          );
+          const bufferedLiveStream = Stream.fromQueue(liveBuffer);
+
           const current = yield* SynchronizedRef.get(state);
           const snapshot: NotesSnapshotEvent = {
             sequence: current.sequence,
             type: "snapshot",
             notes: current.notes,
           };
-          const live = Stream.fromPubSub(pubsub).pipe(
+          const live = bufferedLiveStream.pipe(
             Stream.filter((event) => event.sequence > snapshot.sequence),
           );
           return Stream.concat(Stream.make(snapshot as NotesStreamEvent), live);

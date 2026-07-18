@@ -3,13 +3,6 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-// The shutdown latch, in two stages. `DesktopApp.program` blocks on
-// `awaitRequest`; the Electron `window-all-closed` / `before-quit` listeners
-// fire `request`, which releases the scoped program and runs the finalizers
-// (backend SIGTERM, etc.). Once those finalizers have finished the program
-// fires `markComplete`, and only then does the lifecycle allow Electron to
-// actually quit — otherwise Electron tears the process down mid-finalizer and
-// orphans the backend child.
 export class DesktopShutdown extends Context.Service<
   DesktopShutdown,
   {

@@ -92,8 +92,7 @@ const makeScriptedHarness = (events: ReadonlyArray<NotesStreamEvent>) => {
         const closed = yield* Deferred.make<never, ConnectionTransientError>();
         return {
           client: fakeClient,
-          ready: Effect.void,
-          probe: Effect.void,
+          connected: Effect.void,
           closed: Deferred.await(closed),
         } satisfies RpcSession;
       }),
