@@ -1,6 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Predicate from "effect/Predicate";
 import * as Ref from "effect/Ref";
 
 import {
@@ -30,23 +31,21 @@ interface UpdateStatePatch {
 }
 
 function readVersion(info: unknown): string | null {
-  if (typeof info === "object" && info !== null && "version" in info) {
-    const value = (info as { version?: unknown }).version;
-    return typeof value === "string" ? value : null;
+  if (Predicate.hasProperty("version")(info)) {
+    return Predicate.isString(info.version) ? info.version : null;
   }
   return null;
 }
 
 function readPercent(progress: unknown): string | null {
-  if (typeof progress === "object" && progress !== null && "percent" in progress) {
-    const value = (progress as { percent?: unknown }).percent;
-    return typeof value === "number" ? `${Math.round(value)}%` : null;
+  if (Predicate.hasProperty("percent")(progress)) {
+    return Predicate.isNumber(progress.percent) ? `${Math.round(progress.percent)}%` : null;
   }
   return null;
 }
 
 function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return Predicate.isError(error) ? error.message : String(error);
 }
 
 // Each electron-updater event maps to a partial state update. `undefined`

@@ -39,4 +39,4 @@ Unit tests live in each package's `tests/` directory, mirroring the source tree:
 
 `.repos/` holds read-only vendored reference repos. See `.repos/AGENTS.md` for more details.
 
-- When writing Effect code, read `.repos/effect-smol/LLMS.md` first and inspect `.repos/effect-smol/` for examples of idiomatic usage, tests, module structure, and API design.
+- When writing Effect code, read `.repos/effect/LLMS.md` first and inspect `.repos/effect/` for examples of idiomatic usage, tests, module structure, and API design.

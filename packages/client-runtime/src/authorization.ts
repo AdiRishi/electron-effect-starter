@@ -1,5 +1,6 @@
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
 import { BearerSessionJson, type BearerSession, type BootstrapBearerInput } from "@app/contracts";
@@ -25,7 +26,7 @@ export class BearerBootstrapError extends Schema.TaggedErrorClass<BearerBootstra
 const decodeBearerSession = Schema.decodeUnknownEffect(BearerSessionJson);
 
 const describeCause = (cause: unknown): string =>
-  cause instanceof Error ? cause.message : String(cause);
+  Predicate.isError(cause) ? cause.message : String(cause);
 
 const bearerBootstrapError = (httpBaseUrl: string, cause: unknown): BearerBootstrapError =>
   new BearerBootstrapError({

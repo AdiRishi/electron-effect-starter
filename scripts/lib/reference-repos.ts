@@ -18,9 +18,9 @@ export interface ReferenceRepo {
 
 export const REFERENCE_REPOS: ReadonlyArray<ReferenceRepo> = [
   {
-    id: "effect-smol",
-    prefix: ".repos/effect-smol",
-    repository: "https://github.com/Effect-TS/effect-smol.git",
+    id: "effect",
+    prefix: ".repos/effect",
+    repository: "https://github.com/Effect-TS/effect.git",
     latestRef: "main",
     installedPackage: "effect",
     versionTagPrefix: "effect@",

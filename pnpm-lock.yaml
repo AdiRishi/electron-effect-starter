@@ -7,14 +7,14 @@ settings:
 catalogs:
   default:
     '@effect/atom-react':
-      specifier: 4.0.0-beta.93
-      version: 4.0.0-beta.93
+      specifier: 4.0.0-beta.99
+      version: 4.0.0-beta.99
     '@effect/platform-node':
-      specifier: 4.0.0-beta.93
-      version: 4.0.0-beta.93
+      specifier: 4.0.0-beta.99
+      version: 4.0.0-beta.99
     '@effect/vitest':
-      specifier: 4.0.0-beta.93
-      version: 4.0.0-beta.93
+      specifier: 4.0.0-beta.99
+      version: 4.0.0-beta.99
     '@oxlint/plugins':
       specifier: ^1.72.0
       version: 1.72.0
@@ -22,8 +22,8 @@ catalogs:
       specifier: 24.12.4
       version: 24.12.4
     effect:
-      specifier: 4.0.0-beta.93
-      version: 4.0.0-beta.93
+      specifier: 4.0.0-beta.99
+      version: 4.0.0-beta.99
     oxfmt:
       specifier: ^0.57.0
       version: 0.57.0
@@ -41,7 +41,7 @@ catalogs:
       version: 4.1.9
 
 overrides:
-  '@effect/platform-node-shared': 4.0.0-beta.93
+  '@effect/platform-node-shared': 4.0.0-beta.99
   node-abi: 4.31.0
   toml: 4.1.1
 
@@ -75,10 +75,10 @@ importers:
         version: link:../../packages/shared
       '@effect/platform-node':
         specifier: 'catalog:'
-        version: 4.0.0-beta.93(effect@4.0.0-beta.93)(ioredis@5.11.1)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(ioredis@5.11.1)
       effect:
         specifier: 'catalog:'
-        version: 4.0.0-beta.93
+        version: 4.0.0-beta.99
       electron:
         specifier: ^33.0.0
         version: 33.4.11
@@ -88,7 +88,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.0.0-beta.93(effect@4.0.0-beta.93)(vitest@4.1.9(@types/node@24.12.4)(vite@8.1.3(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)))
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.9(@types/node@24.12.4)(vite@8.1.3(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)))
       '@types/node':
         specifier: 'catalog:'
         version: 24.12.4
@@ -115,14 +115,14 @@ importers:
         version: link:../../packages/shared
       '@effect/platform-node':
         specifier: 'catalog:'
-        version: 4.0.0-beta.93(effect@4.0.0-beta.93)(ioredis@5.11.1)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(ioredis@5.11.1)
       effect:
         specifier: 'catalog:'
-        version: 4.0.0-beta.93
+        version: 4.0.0-beta.99
     devDependencies:
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.0.0-beta.93(effect@4.0.0-beta.93)(vitest@4.1.9(@types/node@24.12.4)(vite@8.1.3(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)))
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.9(@types/node@24.12.4)(vite@8.1.3(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)))
       '@types/node':
         specifier: 'catalog:'
         version: 24.12.4
@@ -146,10 +146,10 @@ importers:
         version: link:../../packages/contracts
       '@effect/atom-react':
         specifier: 'catalog:'
-        version: 4.0.0-beta.93(effect@4.0.0-beta.93)(react@19.2.7)(scheduler@0.27.0)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(react@19.2.7)(scheduler@0.27.0)
       effect:
         specifier: 'catalog:'
-        version: 4.0.0-beta.93
+        version: 4.0.0-beta.99
       react:
         specifier: 19.2.7
         version: 19.2.7
@@ -189,14 +189,14 @@ importers:
         version: 1.72.0
       effect:
         specifier: 'catalog:'
-        version: 4.0.0-beta.93
+        version: 4.0.0-beta.99
     devDependencies:
       '@effect/platform-node':
         specifier: 'catalog:'
-        version: 4.0.0-beta.93(effect@4.0.0-beta.93)(ioredis@5.11.1)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(ioredis@5.11.1)
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.0.0-beta.93(effect@4.0.0-beta.93)(vitest@4.1.9(@types/node@24.12.4)(vite@8.1.3(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)))
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.9(@types/node@24.12.4)(vite@8.1.3(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)))
       '@types/node':
         specifier: 'catalog:'
         version: 24.12.4
@@ -214,11 +214,11 @@ importers:
         version: link:../contracts
       effect:
         specifier: 'catalog:'
-        version: 4.0.0-beta.93
+        version: 4.0.0-beta.99
     devDependencies:
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.0.0-beta.93(effect@4.0.0-beta.93)(vitest@4.1.9(@types/node@26.1.0)(vite@8.1.3(@types/node@26.1.0)(jiti@2.7.0)(yaml@2.9.0)))
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.9(@types/node@26.1.0)(vite@8.1.3(@types/node@26.1.0)(jiti@2.7.0)(yaml@2.9.0)))
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -230,11 +230,11 @@ importers:
     dependencies:
       effect:
         specifier: 'catalog:'
-        version: 4.0.0-beta.93
+        version: 4.0.0-beta.99
     devDependencies:
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.0.0-beta.93(effect@4.0.0-beta.93)(vitest@4.1.9(@types/node@26.1.0)(vite@8.1.3(@types/node@26.1.0)(jiti@2.7.0)(yaml@2.9.0)))
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.9(@types/node@26.1.0)(vite@8.1.3(@types/node@26.1.0)(jiti@2.7.0)(yaml@2.9.0)))
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
@@ -246,14 +246,14 @@ importers:
     dependencies:
       effect:
         specifier: 'catalog:'
-        version: 4.0.0-beta.93
+        version: 4.0.0-beta.99
     devDependencies:
       '@effect/platform-node':
         specifier: 'catalog:'
-        version: 4.0.0-beta.93(effect@4.0.0-beta.93)(ioredis@5.11.1)
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(ioredis@5.11.1)
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.0.0-beta.93(effect@4.0.0-beta.93)(vitest@4.1.9(@types/node@24.12.4)(vite@8.1.3(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)))
+        version: 4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.9(@types/node@24.12.4)(vite@8.1.3(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)))
       '@types/node':
         specifier: 'catalog:'
         version: 24.12.4
@@ -278,30 +278,30 @@ importers:
 
 packages:
 
-  '@effect/atom-react@4.0.0-beta.93':
-    resolution: {integrity: sha512-43FOYozhZT+VIQBH5LVAbabhdjGCuxGKdVTeUnkMp5NY+/g3nDLcAyAkNYn99G3+XDbqFvJaqmNJP7NLF5+WFg==}
+  '@effect/atom-react@4.0.0-beta.99':
+    resolution: {integrity: sha512-sV5dlwK0kAldhX2jYhKnBSIYmrkY47NX7d6eV7vBuCOxJvcqeVgXlOC8kagWUWUQ5a866kiqYo+uPT/ELHUysg==}
     peerDependencies:
-      effect: ^4.0.0-beta.93
+      effect: ^4.0.0-beta.99
       react: ^19.2.4
       scheduler: '*'
 
-  '@effect/platform-node-shared@4.0.0-beta.93':
-    resolution: {integrity: sha512-XUqZ2u5GglBqY8q2jj4Q7GjN5K/enedk8auZM9rY/l5a/myaQTrQp3QnvpIK4/Yg0WFjLGuctGPMKWRk3OLIrA==}
+  '@effect/platform-node-shared@4.0.0-beta.99':
+    resolution: {integrity: sha512-POBAowafsAAb3bH1x1rJlWnv32yMAazFgEuRW5LhkW/JJA5VGoEk9OnuoUkIH1OW6K/X6IrdNpqcO+5e9lPQJA==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.0-beta.93
+      effect: ^4.0.0-beta.99
 
-  '@effect/platform-node@4.0.0-beta.93':
-    resolution: {integrity: sha512-QagsCGR0ZOXaCQqS5qGR2mcDng4LiP2bYhiiX1D6UC8cT9vsusVVOHiJWn8CupeDx+yVnPcu81QmA/SDt6GM1w==}
+  '@effect/platform-node@4.0.0-beta.99':
+    resolution: {integrity: sha512-jnK2KMW4W50AEOKK+Tgvab3YPHBxa3ApLQE8BCad+LH57JOziKzOjqtEpAgJgmao3t77x1UESK4JraaHJDHaYA==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.0-beta.93
+      effect: ^4.0.0-beta.99
       ioredis: ^5.7.0
 
-  '@effect/vitest@4.0.0-beta.93':
-    resolution: {integrity: sha512-gMAnZ9PiMeJMDED9s0jWgCOhc2JccrTCxowhur/KriImsHnHIRj4VG/vK0xLw0Axe4AkTWzXNdRsFrYOjBTl3A==}
+  '@effect/vitest@4.0.0-beta.99':
+    resolution: {integrity: sha512-SiZo3UGTsG2itbqLU1SJVmFraK+0AkrEU7ZLRpQALx3lFRBaohzB/7UQKVsRjCHHjDg0kNkGitZusGRN3mVAhg==}
     peerDependencies:
-      effect: ^4.0.0-beta.93
+      effect: ^4.0.0-beta.99
       vitest: ^3.0.0 || ^4.0.0
 
   '@electron/asar@3.4.1':
@@ -1246,8 +1246,8 @@ packages:
   duplexer2@0.1.4:
     resolution: {integrity: sha512-asLFVfWWtJ90ZyOUHMqk7/S2w2guQKxUI2itj3d92ADHhxUSbCMGi1f1cBcJ7xM1To+pE/Khbwo1yuNbMEPKeA==}
 
-  effect@4.0.0-beta.93:
-    resolution: {integrity: sha512-wNS5MKFa3C42uBfIDik2oJ78lhpoYz2hN4oBR0229BeeDCIrkg/FiOvoiPGdCVlWa7MEKxEL5I0f8AILVHSD9A==}
+  effect@4.0.0-beta.99:
+    resolution: {integrity: sha512-hP1C61uzINfLl/4kKMwcqksxd34s4sQ3VSjsWjhGrkx9CRlXaqnfOK9dpTEKynQ6rA7wU9rb3c+48eDYw7uzxA==}
 
   ejs@3.1.10:
     resolution: {integrity: sha512-UeJmFfOrAQS8OJWPZ4qtgHyWExa088/MtK5UEyoJGFH67cDEXkZSviOiKRCZ4Xij0zxI3JECgYs3oKx+AizQBA==}
@@ -1339,8 +1339,8 @@ packages:
     engines: {node: '>= 10.17.0'}
     hasBin: true
 
-  fast-check@4.8.0:
-    resolution: {integrity: sha512-GOJ158CUMnN6cSahsv4+ExARvIDuzzinFjkp0E9WtiBa5zcVeLozVkWaE4IzFcc+Y48Wp1EDlUZsXRyAztQcSg==}
+  fast-check@4.9.0:
+    resolution: {integrity: sha512-7ms6T7SybUev/PQITciI0yLM2pOSFy5zpG8Ty7tQofcVaQUvrMXp6CBwqF6fThLCLOrfBtuHAtwq6Yu4XPCllg==}
     engines: {node: '>=12.17.0'}
 
   fast-deep-equal@3.1.3:
@@ -2325,25 +2325,25 @@ packages:
 
 snapshots:
 
-  '@effect/atom-react@4.0.0-beta.93(effect@4.0.0-beta.93)(react@19.2.7)(scheduler@0.27.0)':
+  '@effect/atom-react@4.0.0-beta.99(effect@4.0.0-beta.99)(react@19.2.7)(scheduler@0.27.0)':
     dependencies:
-      effect: 4.0.0-beta.93
+      effect: 4.0.0-beta.99
       react: 19.2.7
       scheduler: 0.27.0
 
-  '@effect/platform-node-shared@4.0.0-beta.93(effect@4.0.0-beta.93)':
+  '@effect/platform-node-shared@4.0.0-beta.99(effect@4.0.0-beta.99)':
     dependencies:
       '@types/ws': 8.18.1
-      effect: 4.0.0-beta.93
+      effect: 4.0.0-beta.99
       ws: 8.21.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.0.0-beta.93(effect@4.0.0-beta.93)(ioredis@5.11.1)':
+  '@effect/platform-node@4.0.0-beta.99(effect@4.0.0-beta.99)(ioredis@5.11.1)':
     dependencies:
-      '@effect/platform-node-shared': 4.0.0-beta.93(effect@4.0.0-beta.93)
-      effect: 4.0.0-beta.93
+      '@effect/platform-node-shared': 4.0.0-beta.99(effect@4.0.0-beta.99)
+      effect: 4.0.0-beta.99
       ioredis: 5.11.1
       mime: 4.1.0
       undici: 8.7.0
@@ -2351,14 +2351,14 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/vitest@4.0.0-beta.93(effect@4.0.0-beta.93)(vitest@4.1.9(@types/node@24.12.4)(vite@8.1.3(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)))':
+  '@effect/vitest@4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.9(@types/node@24.12.4)(vite@8.1.3(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0)))':
     dependencies:
-      effect: 4.0.0-beta.93
+      effect: 4.0.0-beta.99
       vitest: 4.1.9(@types/node@24.12.4)(vite@8.1.3(@types/node@24.12.4)(jiti@2.7.0)(yaml@2.9.0))
 
-  '@effect/vitest@4.0.0-beta.93(effect@4.0.0-beta.93)(vitest@4.1.9(@types/node@26.1.0)(vite@8.1.3(@types/node@26.1.0)(jiti@2.7.0)(yaml@2.9.0)))':
+  '@effect/vitest@4.0.0-beta.99(effect@4.0.0-beta.99)(vitest@4.1.9(@types/node@26.1.0)(vite@8.1.3(@types/node@26.1.0)(jiti@2.7.0)(yaml@2.9.0)))':
     dependencies:
-      effect: 4.0.0-beta.93
+      effect: 4.0.0-beta.99
       vitest: 4.1.9(@types/node@26.1.0)(vite@8.1.3(@types/node@26.1.0)(jiti@2.7.0)(yaml@2.9.0))
 
   '@electron/asar@3.4.1':
@@ -3213,10 +3213,10 @@ snapshots:
     dependencies:
       readable-stream: 2.3.8
 
-  effect@4.0.0-beta.93:
+  effect@4.0.0-beta.99:
     dependencies:
       '@standard-schema/spec': 1.1.0
-      fast-check: 4.8.0
+      fast-check: 4.9.0
       find-my-way-ts: 0.1.6
       ini: 7.0.0
       kubernetes-types: 1.30.0
@@ -3360,7 +3360,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  fast-check@4.8.0:
+  fast-check@4.9.0:
     dependencies:
       pure-rand: 8.4.1
 

@@ -13,6 +13,7 @@ import * as NodeFS from "node:fs";
 
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
 import {
@@ -66,10 +67,7 @@ export const readBootstrapEnvelope = Effect.fn("bootstrap.readBootstrapEnvelope"
     catch: (cause) => new BootstrapEnvelopeReadError({ fd, cause }),
   }).pipe(
     Effect.catchTag("BootstrapEnvelopeReadError", (error) => {
-      const code =
-        typeof error.cause === "object" && error.cause !== null && "code" in error.cause
-          ? (error.cause as { code?: unknown }).code
-          : undefined;
+      const code = Predicate.hasProperty("code")(error.cause) ? error.cause.code : undefined;
       return code === "EBADF" || code === "ENOENT" ? Effect.succeed(null) : Effect.fail(error);
     }),
   );
