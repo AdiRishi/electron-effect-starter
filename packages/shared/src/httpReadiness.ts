@@ -1,6 +1,7 @@
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
@@ -14,23 +15,23 @@ export const DEFAULT_HTTP_READY_PROBE_TIMEOUT_MS = 1_000;
  * `cause`/`reason` chains.
  */
 export function describeReadinessCause(cause: unknown): unknown {
-  if (cause instanceof Error) {
+  if (Predicate.isError(cause)) {
     const tag = (cause as { readonly _tag?: unknown })._tag;
     const nested = (cause as { readonly cause?: unknown }).cause;
     return {
-      ...(typeof tag === "string" ? { _tag: tag } : { name: cause.name }),
+      ...(Predicate.isString(tag) ? { _tag: tag } : { name: cause.name }),
       message: cause.message,
       ...(nested === undefined ? {} : { cause: describeReadinessCause(nested) }),
     };
   }
-  if (typeof cause !== "object" || cause === null) {
+  if (!Predicate.isObjectOrArray(cause)) {
     return cause;
   }
 
   const record = cause as Readonly<Record<string, unknown>>;
   return {
-    ...(typeof record._tag === "string" ? { _tag: record._tag } : {}),
-    ...(typeof record.message === "string" ? { message: record.message } : {}),
+    ...(Predicate.isString(record._tag) ? { _tag: record._tag } : {}),
+    ...(Predicate.isString(record.message) ? { message: record.message } : {}),
     ...(record.reason === undefined ? {} : { reason: describeReadinessCause(record.reason) }),
     ...(record.cause === undefined ? {} : { cause: describeReadinessCause(record.cause) }),
   };
@@ -70,7 +71,7 @@ export const waitForHttpReady = Effect.fn("shared.httpReadiness.waitForHttpReady
   const intervalMs = input.intervalMs ?? 100;
   const probeTimeoutMs = input.probeTimeoutMs ?? DEFAULT_HTTP_READY_PROBE_TIMEOUT_MS;
   const retryPolicy = Schedule.spaced(Duration.millis(intervalMs)).pipe(
-    Schedule.take(Math.max(0, Math.ceil(timeoutMs / intervalMs))),
+    Schedule.upTo({ times: Math.max(0, Math.ceil(timeoutMs / intervalMs)) }),
   );
   const requestUrl = new URL(input.path ?? "/", input.baseUrl).toString();
   const client = yield* HttpClient.HttpClient;
@@ -83,13 +84,13 @@ export const waitForHttpReady = Effect.fn("shared.httpReadiness.waitForHttpReady
   const madeErrors = new WeakSet<object>();
   const fail = (cause: unknown): E => {
     const error = makeError({ requestUrl, probeTimeoutMs, attempt, cause });
-    if (typeof error === "object" && error !== null) {
+    if (Predicate.isObjectOrArray(error)) {
       madeErrors.add(error);
     }
     return error;
   };
   const isMadeError = (value: unknown): value is E =>
-    typeof value === "object" && value !== null && madeErrors.has(value);
+    Predicate.isObjectOrArray(value) && madeErrors.has(value);
 
   yield* Effect.logDebug("httpReadiness.start", {
     baseUrl: input.baseUrl,
