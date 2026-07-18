@@ -68,6 +68,7 @@ const environmentLayer = (isPackaged: boolean) =>
           homeDirectory: "/home/user",
           platform: "darwin",
           appVersion: "0.0.0",
+          appPath: "/app",
           isPackaged,
           resourcesPath: "/app/resources",
           serverEntryOverride: Option.none(),

@@ -103,7 +103,7 @@ const scopedProgram = Effect.scoped(
     const shutdown = yield* DesktopShutdown.DesktopShutdown;
     const manager = yield* DesktopBackendManager.DesktopBackendManager;
 
-    yield* Effect.addFinalizer(() => manager.stop);
+    yield* Effect.addFinalizer(() => manager.stop.pipe(Effect.ensuring(shutdown.markComplete)));
 
     yield* startup;
     yield* shutdown.awaitRequest;

@@ -25,6 +25,7 @@ export interface MakeDesktopEnvironmentInput {
   readonly homeDirectory: string;
   readonly platform: NodeJS.Platform;
   readonly appVersion: string;
+  readonly appPath: string;
   readonly isPackaged: boolean;
   readonly resourcesPath: string;
   /** `APP_SERVER_ENTRY` override, if set. */
@@ -43,6 +44,7 @@ export class DesktopEnvironment extends Context.Service<
     readonly isPackaged: boolean;
     readonly isDevelopment: boolean;
     readonly appVersion: string;
+    readonly appPath: string;
     readonly resourcesPath: string;
     readonly homeDirectory: string;
     /** Base app-data dir, e.g. ~/.electron-effect-starter — settings + logs live under here. */
@@ -87,7 +89,7 @@ export function makeWith(
 
   // Resolve the server entry to spawn. Priority:
   //   1. APP_SERVER_ENTRY override (used by the dev runner).
-  //   2. Packaged: the bundled server at resources/app/apps/server/dist/bin.mjs.
+  //   2. Packaged: the bundled server under Electron's app path.
   //   3. Dev default: the server's built dist relative to this monorepo.
   // The dev runner points APP_SERVER_ENTRY at the server's src/bin.ts (run via
   // tsx) or its built dist/bin.mjs, so most local setups exercise branch (1).
@@ -95,10 +97,10 @@ export function makeWith(
     onSome: (override) => override,
     onNone: () =>
       input.isPackaged
-        ? path.join(input.resourcesPath, "app", "apps", "server", "dist", "bin.mjs")
+        ? path.join(input.appPath, "apps/server/dist/bin.mjs")
         : path.resolve(input.dirname, "..", "..", "server", "dist", "bin.mjs"),
   });
-  const backendCwd = path.dirname(backendEntryPath);
+  const backendCwd = input.isPackaged ? input.homeDirectory : path.dirname(backendEntryPath);
 
   const appInfo: DesktopAppInfo = {
     name: displayName,
@@ -113,6 +115,7 @@ export function makeWith(
     isPackaged: input.isPackaged,
     isDevelopment,
     appVersion: input.appVersion,
+    appPath: input.appPath,
     resourcesPath: input.resourcesPath,
     homeDirectory: input.homeDirectory,
     baseDir,
@@ -135,7 +138,13 @@ export function makeWith(
 export function layer(
   metadata: Pick<
     MakeDesktopEnvironmentInput,
-    "dirname" | "homeDirectory" | "platform" | "appVersion" | "isPackaged" | "resourcesPath"
+    | "dirname"
+    | "homeDirectory"
+    | "platform"
+    | "appVersion"
+    | "appPath"
+    | "isPackaged"
+    | "resourcesPath"
   >,
 ): Layer.Layer<DesktopEnvironment> {
   return Layer.effect(

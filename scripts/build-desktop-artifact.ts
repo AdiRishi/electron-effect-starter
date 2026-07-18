@@ -34,21 +34,21 @@ const platform = arg(
 );
 const target = arg("target", platform === "mac" ? "dmg" : platform === "win" ? "nsis" : "AppImage");
 
-function sh(command: string): void {
-  process.stdout.write(`\n$ ${command}\n`);
-  NodeChildProcess.execSync(command, { cwd: REPO_ROOT, stdio: "inherit" });
+function run(command: string, args: ReadonlyArray<string>, cwd = REPO_ROOT): void {
+  process.stdout.write(`\n$ ${command} ${args.join(" ")}\n`);
+  NodeChildProcess.execFileSync(command, args, { cwd, stdio: "inherit" });
 }
 
 function main(): void {
   // 1. Build all three packages (order matters: the server serves the web build).
-  sh("pnpm --filter @app/web build");
-  sh("pnpm --filter @app/server build");
-  sh("pnpm --filter @app/desktop build");
+  run("pnpm", ["--filter", "@app/web", "build"]);
+  run("pnpm", ["--filter", "@app/server", "build"]);
+  run("pnpm", ["--filter", "@app/desktop", "build"]);
 
   // 2. Stage an app directory electron-builder will pack.
   const stage = NodePath.join(REPO_ROOT, "release/app");
   NodeFS.rmSync(stage, { recursive: true, force: true });
-  NodeFS.mkdirSync(NodePath.join(stage, "apps/server/dist"), {
+  NodeFS.mkdirSync(NodePath.join(stage, "apps/desktop"), {
     recursive: true,
   });
 
@@ -56,30 +56,50 @@ function main(): void {
     NodeFS.cpSync(NodePath.join(REPO_ROOT, from), NodePath.join(stage, to), {
       recursive: true,
     });
-  copy("apps/desktop/dist-electron", "dist-electron");
+  copy("apps/desktop/dist-electron", "apps/desktop/dist-electron");
   copy("apps/server/dist", "apps/server/dist");
   copy("apps/web/dist", "apps/server/dist/client");
 
-  // Minimal package.json for the packaged app (main = built Electron entry).
+  const desktopPackageJson = JSON.parse(
+    NodeFS.readFileSync(NodePath.join(REPO_ROOT, "apps/desktop/package.json"), "utf8"),
+  ) as {
+    readonly dependencies: { readonly "electron-updater": string };
+  };
+  const electronPackageJson = JSON.parse(
+    NodeFS.readFileSync(
+      NodePath.join(REPO_ROOT, "apps/desktop/node_modules/electron/package.json"),
+      "utf8",
+    ),
+  ) as { readonly version: string };
+
   NodeFS.writeFileSync(
     NodePath.join(stage, "package.json"),
     JSON.stringify(
       {
         name: "electron-effect-starter",
         version: "0.0.0",
-        main: "dist-electron/main.cjs",
+        main: "apps/desktop/dist-electron/main.cjs",
+        dependencies: {
+          "electron-updater": desktopPackageJson.dependencies["electron-updater"],
+        },
+        devDependencies: {
+          electron: electronPackageJson.version,
+        },
       },
       null,
       2,
     ),
   );
+  NodeFS.writeFileSync(NodePath.join(stage, "pnpm-workspace.yaml"), "packages: []\n");
 
-  // 3. electron-builder config. `asarUnpack` keeps the server bundle spawnable
-  //    (a child process can't be launched from inside the asar archive).
+  process.stdout.write("\n[desktop-artifact] Installing staged production dependencies...\n");
+  run("pnpm", ["install", "--prod"], stage);
+
+  // 3. electron-builder config.
   const config = {
     appId: APP_ID,
     productName: PRODUCT_NAME,
-    directories: { app: "release/app", output: "release/dist" },
+    directories: { output: NodePath.join(REPO_ROOT, "release/dist") },
     files: ["**/*"],
     asarUnpack: ["apps/server/**"],
     mac: { target: [target], category: "public.app-category.developer-tools" },
@@ -91,7 +111,19 @@ function main(): void {
   NodeFS.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
   // 4. Pack. Requires `electron-builder` (a devDependency of @app/desktop).
-  sh(`pnpm --filter @app/desktop exec electron-builder --${platform} --config ${configPath}`);
+  run("pnpm", [
+    "--filter",
+    "@app/desktop",
+    "exec",
+    "electron-builder",
+    "--projectDir",
+    stage,
+    `--${platform}`,
+    "--config",
+    configPath,
+    "--publish",
+    "never",
+  ]);
   process.stdout.write(`\n✔ Artifacts in release/dist\n`);
 }
 

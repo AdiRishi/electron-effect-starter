@@ -13,6 +13,7 @@ import * as Electron from "electron";
 
 export interface ElectronAppMetadata {
   readonly appVersion: string;
+  readonly appPath: string;
   readonly isPackaged: boolean;
   readonly resourcesPath: string;
 }
@@ -20,7 +21,7 @@ export interface ElectronAppMetadata {
 export class ElectronAppMetadataReadError extends Schema.TaggedErrorClass<ElectronAppMetadataReadError>()(
   "ElectronAppMetadataReadError",
   {
-    property: Schema.Literals(["app-version"]),
+    property: Schema.Literals(["app-version", "app-path"]),
     cause: Schema.Defect(),
   },
 ) {
@@ -79,9 +80,14 @@ export const make = ElectronApp.of({
       try: () => Electron.app.getVersion(),
       catch: (cause) => new ElectronAppMetadataReadError({ property: "app-version", cause }),
     });
+    const appPath = yield* Effect.try({
+      try: () => Electron.app.getAppPath(),
+      catch: (cause) => new ElectronAppMetadataReadError({ property: "app-path", cause }),
+    });
 
     return {
       appVersion,
+      appPath,
       isPackaged: Electron.app.isPackaged,
       resourcesPath: process.resourcesPath,
     };

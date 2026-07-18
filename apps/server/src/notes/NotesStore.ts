@@ -18,6 +18,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SynchronizedRef from "effect/SynchronizedRef";
@@ -196,13 +197,20 @@ export const make = Effect.gen(function* () {
     get changes() {
       return Stream.unwrap(
         Effect.gen(function* () {
+          const liveStream = Stream.fromPubSub(pubsub);
+          const liveBuffer = yield* Queue.unbounded<NoteUpsertedEvent | NoteRemovedEvent>();
+          yield* Effect.forkScoped(
+            liveStream.pipe(Stream.runForEach((item) => Queue.offer(liveBuffer, item))),
+          );
+          const bufferedLiveStream = Stream.fromQueue(liveBuffer);
+
           const current = yield* SynchronizedRef.get(state);
           const snapshot: NotesSnapshotEvent = {
             sequence: current.sequence,
             type: "snapshot",
             notes: current.notes,
           };
-          const live = Stream.fromPubSub(pubsub).pipe(
+          const live = bufferedLiveStream.pipe(
             Stream.filter((event) => event.sequence > snapshot.sequence),
           );
           return Stream.concat(Stream.make(snapshot as NotesStreamEvent), live);

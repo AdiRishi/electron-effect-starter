@@ -50,6 +50,7 @@ const desktopEnvironmentLayer = Layer.unwrap(
       homeDirectory: NodeOS.homedir(),
       platform,
       appVersion: metadata.appVersion,
+      appPath: metadata.appPath,
       isPackaged: metadata.isPackaged,
       resourcesPath: metadata.resourcesPath,
     });
