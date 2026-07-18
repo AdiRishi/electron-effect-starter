@@ -1,85 +1,36 @@
-# Electron Effect Starter
+<!-- Use a static Shields badge because pkg.pr.new's dynamic badge times out while counting this repository's releases. -->
 
-![Effect](https://img.shields.io/badge/Effect-v4-312E81) ![Electron](https://img.shields.io/badge/Electron-33-47848F?logo=electron&logoColor=white) ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white) ![pnpm](https://img.shields.io/badge/pnpm-11-F69220?logo=pnpm&logoColor=white)
+[![pkg.pr.new](https://img.shields.io/badge/pkg.pr.new-Effect--TS%2Feffect-black)](https://pkg.pr.new/~/Effect-TS/effect)
 
-**Everything you need to build a serious desktop app with [Effect](https://effect.website) and Electron.** A shell that supervises a local Effect server, typed RPC and IPC everywhere, and one React build that runs in the shell _and_ in your browser.
+# Effect
 
-## 🤔 Why should I use this?
+Effect is a library for building robust, maintainable, type-safe, and production grade applications in TypeScript.
 
-Most Electron starters give you a window and a bundler, then leave the hard parts to you — process supervision, secure IPC, auth, reconnect logic, packaging landmines. This one ships with the hard parts already solved, as Effect programs end to end.
+> **Effect V4 is currently in beta.** The `main` branch contains v4 development.
 
-- ⚡️ **Effect v4 everywhere** — the Electron main process, the server, and the client transport are all Effect programs: Layers, typed errors, scoped cleanup
-- 🔒 **Typed wires** — every RPC and IPC message is an `effect/Schema` contract, validated on both sides
-- 🛡️ **Secure by default** — sandboxed renderer, context isolation, secrets passed over fd 3 (never argv or env), bearer auth on the WebSocket
-- 🔄 **Reconnects that just work** — one supervisor, capped backoff, streams re-attach themselves after every blip
-- 🌐 **Develop in the browser** — the same web build runs in the Electron shell and in a plain browser tab with HMR
-- 🖥️ **A supervised backend** — the shell health-checks the server before showing a window, and restarts it with backoff if it dies
-- 📦 **Packaging solved** — electron-builder wiring with the ESM/CJS and Node-version landmines already defused
-- 🤖 **Agent-ready** — `AGENTS.md` conventions and the Effect source vendored in-repo, so coding agents read real code instead of guessing
+## Install V4 Beta
 
-## ⚡️ Quick start
-
-Requires Node 24 and pnpm 11.
-
-```bash
-pnpm install
-pnpm rename my-app com.mycompany  # make the starter yours (name, product name, app id, data dir)
-pnpm dev            # server + web UI in your browser, with HMR
+```sh
+npm install effect@beta
 ```
 
-```bash
-pnpm dev:desktop    # the real Electron shell
-pnpm dist:desktop   # build a distributable installer
-pnpm check          # typecheck + lint + format
-pnpm test           # vitest across every package
+## Effect v3
+
+The Effect v3 source code is available on the [`v3`](https://github.com/Effect-TS/effect/tree/v3) branch.
+
+```sh
+npm install effect@latest
 ```
 
-No `.env` needed — ports are derived per checkout, so multiple clones never collide.
+Issues and pull requests meant for Effect v3 should target the [`v3`](https://github.com/Effect-TS/effect/tree/v3) branch.
 
-## 🏗️ How it works
+## Resources
 
-```
-┌─────────────────────────────┐    spawns · supervises · restarts    ┌──────────────────────────┐
-│  Electron shell             │─────────────────────────────────────▶│  Local Effect server     │
-│  apps/desktop               │    bootstrap token over fd 3         │  apps/server             │
-│  (an Effect program)        │                                      │  HTTP + WS RPC, loopback │
-└──────────────┬──────────────┘                                      └────────────▲─────────────┘
-               │  schema-validated IPC bridge                                     │
-               ▼                                                                  │
-┌─────────────────────────────┐    WebSocket RPC at /ws, bearer-authorized        │
-│  Renderer — apps/web        │───────────────────────────────────────────────────┘
-│  (same build also runs in   │
-│  a plain browser)           │
-└─────────────────────────────┘
-```
+- Documentation (https://effect.website)
+- Discord (https://discord.gg/effect-ts)
+- Effect v3 source (https://github.com/Effect-TS/effect/tree/v3)
+- Effect v4 source (https://github.com/Effect-TS/effect/tree/main)
 
-- **The shell owns the server.** It picks the port, spawns the server, probes its health endpoint, and reveals the window only when the backend answers.
-- **Trust is minted once.** A per-launch token reaches the server over fd 3, gets exchanged for a bearer, and is checked once — at the WebSocket upgrade.
-- **Exactly one thing reconnects.** The connection supervisor is the only retrier; a browser opened before the server starts simply converges on "Connected".
-- **One build, two hosts.** Bridge present → shell. Bridge absent → browser fallbacks. Components never branch on the host.
+## License
 
-The `docs/` folder has the full story behind every decision.
-
-## 📝 The sample app: synced notes
-
-The UI is a deliberately small notes app that exercises every seam the starter builds: schema-validated mutations (`notes.create` / `update` / `delete`), a snapshot-then-live push-bus subscription (`notes.subscribe`), atomic persistence in the server's data dir, and typed domain errors. Open `pnpm dev` in a browser tab **and** `pnpm dev:desktop` side by side — a note flashes in every window as each change round-trips through the local server. That's the whole architecture, visible.
-
-It's built to be deleted: the domain lives in exactly four bounded places — `packages/contracts/src/notes.ts` (+ its `rpc.ts` entries), `apps/server/src/notes/`, and `apps/web/src/features/notes/`. Replace them with your own domain and everything else keeps working.
-
-## 📁 Repo tour
-
-| Path                      | What it is                                                                               |
-| ------------------------- | ---------------------------------------------------------------------------------------- |
-| `apps/desktop`            | Electron shell: backend supervision, window, menus, updater, IPC bridge                  |
-| `apps/server`             | Effect HTTP + WS RPC server; serves the built web app, owns the auth exchange            |
-| `apps/web`                | React 19 + Vite + Tailwind UI; the synced-notes sample app                               |
-| `packages/contracts`      | Schema-only wire contracts: RPC surface, IPC bridge, auth. No runtime logic              |
-| `packages/client-runtime` | Connection supervisor + typed RPC client (`/connection`, `/rpc`, `/authorization`)       |
-| `packages/shared`         | Cross-app utilities: port finding, readiness probes, atomic writes. Subpath imports only |
-| `scripts`                 | Dev runner, desktop packaging, `.repos` sync — dependency-free where it matters          |
-| `docs/adr`                | Six short records of every decision you might otherwise be tempted to revisit            |
-| `.repos`                  | Vendored, read-only Effect source for reference — never imported, never edited           |
-
-## ❤️ Built on T3 Code
-
-This starter is distilled from [**T3 Code**](https://github.com/pingdotgg/t3code) — the shell-supervised server, the schema contracts, the connection supervisor, even the tooling choices all trace back to patterns it pioneered. If you want to see them driving a real product, go read that codebase. Huge thanks to the T3 team. 🙏
+MIT

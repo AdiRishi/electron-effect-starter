@@ -1,42 +1,148 @@
-# AGENTS.md
+This is the Effect library repository, focusing on functional programming patterns and effect systems in TypeScript.
 
-## Task Completion Requirements
+## Overview
 
-- `pnpm check` and `pnpm test` must pass before considering tasks completed.
+- The git base branch is `main`.
+- Use `pnpm` as the package manager.
+- Keep changes focused and follow established patterns in the repository.
+- Before writing code, read the relevant files in `./.patterns/` and inspect similar existing code.
 
-## Project Snapshot
+## Think Before Coding
 
-Electron Effect Starter is a starter for Effect v4 desktop apps: an Electron shell supervising a local Effect server (HTTP + WebSocket RPC), with one React web build that runs in the shell and in a plain browser.
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
 
-## Core Priorities
+Before implementing:
 
-1. Performance first.
-2. Reliability first.
-3. Keep behavior predictable under load and during failures (session restarts, reconnects, partial streams).
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
 
-If a tradeoff is required, choose correctness and robustness over short-term convenience.
+## Simplicity First
 
-## Maintainability
+**Minimum code that solves the problem. Nothing speculative.**
 
-Long term maintainability is a core priority. If you add new functionality, first check if there is shared logic that can be extracted to a separate module. Duplicate logic across multiple files is a code smell and should be avoided. Don't be afraid to change existing code. Don't take shortcuts by just adding local logic to solve a problem.
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
 
-## Tests
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
 
-Unit tests live in each package's `tests/` directory, mirroring the source tree: the test for `src/state/connection.ts` is `tests/state/connection.test.ts`. Never colocate `.test.ts` files under `src/`. When adding a package, include `tests/**` in its `tsconfig.json` or the tests silently stop typechecking (see `docs/adr/0007`).
+## Surgical Changes
 
-## Package Roles
+**Touch only what you must. Clean up only your own mess.**
 
-- `apps/desktop`: Electron shell. Spawns and supervises the local server, owns windows/menus/updates, and exposes a schema-validated IPC bridge to the renderer.
-- `apps/server`: Effect HTTP + WebSocket RPC server. Serves the built web app, handles the bearer-auth exchange, and publishes lifecycle events.
-- `apps/web`: React/Vite UI. Connects to the server over WebSocket RPC; the same build runs in the shell and in a plain browser.
-- `packages/contracts`: effect/Schema contracts for the WS RPC surface, the IPC bridge, and the auth/bootstrap types. Keep this package schema-only — no runtime logic.
-- `packages/shared`: Runtime utilities consumed by multiple apps. Explicit subpath exports (e.g. `@app/shared/Net`) — no barrel index.
-- `packages/client-runtime`: Client transport: the connection supervisor and typed RPC client. Subpath exports only (`/connection`, `/rpc`, `/authorization`).
-- `scripts`: Repo tooling — dev runner, desktop packaging, reference-repo sync.
-- `oxlint-plugin-app`: Custom oxlint rules (Node namespace imports, HostProcess injection, hoisted Schema compilers, @effect/vitest in tests). Wired via `jsPlugins` in `.oxlintrc.json`.
+When editing existing code:
 
-## Vendored Repositories
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
 
-`.repos/` holds read-only vendored reference repos. See `.repos/AGENTS.md` for more details.
+When your changes create orphans:
 
-- When writing Effect code, read `.repos/effect/LLMS.md` first and inspect `.repos/effect/` for examples of idiomatic usage, tests, module structure, and API design.
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+## Workflow
+
+1. Inspect nearby implementation, tests, and pattern docs before editing.
+2. Prefer existing abstractions and conventions over introducing new ones.
+3. For ad hoc runnable code, create a temporary file in `scratchpad/`, run it with `node scratchpad/<file>.ts`, and delete it when done.
+   The local runtime is Node 24, which can run TypeScript files directly; use plain `node` for local TypeScript probes instead of `tsx` unless `node` fails.
+4. Run the validation appropriate to the change type.
+5. Report which validation commands were run and any commands that could not be run.
+
+## Validation
+
+Use the narrowest validation that still covers the change:
+
+| Change type                      | Validation                                                                         |
+| -------------------------------- | ---------------------------------------------------------------------------------- |
+| Code changes                     | `pnpm lint-fix`, targeted `pnpm test <test_file.ts>`, `pnpm check`                 |
+| Tests-only changes               | `pnpm lint-fix`, targeted `pnpm test <test_file.ts>`, `pnpm check`                 |
+| Type-level/API type changes      | Targeted `pnpm test-types <filename>`, plus `pnpm check` when source types changed |
+| JSDoc text/category/link changes | `pnpm lint`                                                                        |
+| JSDoc example changes            | `pnpm lint`; from the changed package directory, run `pnpm docgen`                 |
+| Docs-only changes                | `pnpm lint-fix`; no tests required unless examples or code changed                 |
+
+## Bundle Size Preview
+
+When asked to show bundle-size impact for a commit, use the existing bundle comparison workflow:
+
+1. For the latest commit, run `pnpm bundle-compare HEAD~1`.
+   For another base, run `pnpm bundle-compare <base-ref>`.
+2. Read the Markdown report from `tmp/bundle-stats.txt` and summarize the non-zero differences.
+3. Leave `tmp/bundle-base` in place unless cleanup is requested. To clean it up, run `git worktree remove --force tmp/bundle-base`.
+
+## Coding Patterns
+
+Read `.patterns/effect.md` before changing Effect code. In particular:
+
+- Prefer `Effect.fnUntraced` over functions that only return `Effect.gen`.
+- Prefer class syntax for `Context.Service`.
+- Do not use `async` / `await` or `try` / `catch`; use Effect APIs such as `Effect.gen`, `Effect.fnUntraced`, and `Effect.tryPromise`.
+- Do not use `Date.now` or `new Date`; use `Clock`, and use `TestClock` in tests.
+
+## Testing
+
+Read `.patterns/testing.md` before writing or changing tests.
+
+- Test files are located in `packages/*/test/`.
+- Main Effect library tests are in `packages/effect/test/`.
+- Use `it.effect` for Effect-returning tests.
+- Use regular `it` for pure synchronous tests.
+- Do not use `Effect.runSync` in tests.
+- Do not use `expect` from Vitest; use `assert` from `@effect/vitest`.
+- Type-level tests are in `packages/*/typetest/` and run with `pnpm test-types <filename>`.
+
+## Documentation
+
+- For AI documentation, read `ai-docs/README.md` very carefully before writing examples.
+- AI documentation changes may include explanatory comments when useful.
+- For public JSDoc `@category` guidance, read `.patterns/jsdoc.md`.
+- When JSDoc examples are localized to a single package, run `pnpm docgen` from that package directory instead of the repository root.
+
+## Generated Files
+
+Do not hand-edit generated files. Run the appropriate generator instead.
+
+- `index.ts` barrel files are generated; run `pnpm codegen` after adding or removing modules.
+
+## Changesets
+
+Create a changeset in `.changeset/` for runtime behavior changes or exported type/API changes:
+
+```md
+---
+"package-name": patch/minor/major
+---
+
+A description of the change.
+```
+
+Tests-only changes, internal refactors, docs-only changes, and JSDoc-only maintenance may skip changesets by maintainer decision.
