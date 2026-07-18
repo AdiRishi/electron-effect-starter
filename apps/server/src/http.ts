@@ -10,7 +10,13 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 
-import { BearerSessionJson, BootstrapBearerInput, type BearerSession } from "@app/contracts";
+import {
+  BearerSessionJson,
+  BootstrapBearerInput,
+  WsTicketJson,
+  type BearerSession,
+  type WsTicket,
+} from "@app/contracts";
 
 import * as Auth from "./auth.ts";
 import * as ServerConfig from "./config.ts";
@@ -18,11 +24,13 @@ import * as Readiness from "./readiness.ts";
 
 export const HEALTH_PATH = "/.well-known/app/health";
 export const AUTH_BOOTSTRAP_PATH = "/api/auth/bootstrap/bearer";
+export const AUTH_WS_TICKET_PATH = "/api/auth/ws-ticket";
 
 // Encodes via the JSON wire codec so `expires_at` leaves as an ISO string —
 // `HttpServerResponse.json` alone would stringify the raw DateTime instance,
 // which the client's decoder rejects.
 const respondBearerSession = HttpServerResponse.schemaJson(BearerSessionJson);
+const respondWsTicket = HttpServerResponse.schemaJson(WsTicketJson);
 
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 
@@ -103,6 +111,36 @@ export const authBootstrapRouteLayer = HttpRouter.add(
     };
     // Encoding a value we just constructed can only fail on a schema bug — die.
     return yield* respondBearerSession(session).pipe(Effect.orDie);
+  }),
+);
+
+/**
+ * `POST /api/auth/ws-ticket` — exchange a live bearer (over `Authorization`,
+ * where headers work) for a short-lived ticket the `/ws` upgrade accepts in
+ * its query string. See `auth.ts` for why the bearer itself never rides in a
+ * URL.
+ */
+export const authWsTicketRouteLayer = HttpRouter.add(
+  "POST",
+  AUTH_WS_TICKET_PATH,
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const auth = yield* Auth.BearerSessionStore;
+
+    const bearer = Auth.extractAuthorizationBearer(request);
+    if (Option.isNone(bearer)) {
+      return HttpServerResponse.text("Unauthorized", { status: 401 });
+    }
+    const issued = yield* auth.issueWsTicket(bearer.value);
+    if (Option.isNone(issued)) {
+      return HttpServerResponse.text("Unauthorized", { status: 401 });
+    }
+
+    const ticket: WsTicket = {
+      ticket: issued.value.ticket,
+      expires_at: issued.value.expiresAt,
+    };
+    return yield* respondWsTicket(ticket).pipe(Effect.orDie);
   }),
 );
 

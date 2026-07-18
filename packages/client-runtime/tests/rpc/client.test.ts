@@ -26,7 +26,8 @@ const tick = (n: number): TickEvent => ({ tick: n, at: AT });
 /** A live-looking session around a hand-rolled client record. */
 const session = (client: WsRpcProtocolClient): RpcSession => ({
   client,
-  connected: Effect.void,
+  ready: Effect.void,
+  probe: Effect.void,
   closed: Effect.never,
 });
 
@@ -42,7 +43,11 @@ const transportError = () =>
 const makeHarness = Effect.gen(function* () {
   const state = yield* SubscriptionRef.make<ConnectionState>(INITIAL_CONNECTION_STATE);
   const activeSession = yield* SubscriptionRef.make<Option.Option<RpcSession>>(Option.none());
-  const supervisor = ConnectionSupervisor.of({ state, session: activeSession });
+  const supervisor = ConnectionSupervisor.of({
+    state,
+    session: activeSession,
+    retryNow: Effect.void,
+  });
   return { activeSession, supervisor };
 });
 

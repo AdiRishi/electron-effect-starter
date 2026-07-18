@@ -113,8 +113,55 @@ export class ElectronWindow extends Context.Service<
       window: Electron.BrowserWindow,
       handler: Parameters<Electron.WebContents["setWindowOpenHandler"]>[0],
     ) => Effect.Effect<void>;
+    /** Observe top-level navigation attempts (call `event.preventDefault()` to block). */
+    readonly onWillNavigate: (
+      window: Electron.BrowserWindow,
+      handler: (event: Electron.Event, url: string) => void,
+    ) => Effect.Effect<void>;
+    /** Fires when a load settles successfully. */
+    readonly onDidFinishLoad: (
+      window: Electron.BrowserWindow,
+      handler: () => void,
+    ) => Effect.Effect<void>;
+    /** Fires when a load fails (including subframes — check `isMainFrame`). */
+    readonly onDidFailLoad: (
+      window: Electron.BrowserWindow,
+      handler: (details: {
+        readonly errorCode: number;
+        readonly errorDescription: string;
+        readonly validatedUrl: string;
+        readonly isMainFrame: boolean;
+      }) => void,
+    ) => Effect.Effect<void>;
+    /** Fires when the renderer process crashes or is killed. */
+    readonly onRenderProcessGone: (
+      window: Electron.BrowserWindow,
+      handler: (details: Electron.RenderProcessGoneDetails) => void,
+    ) => Effect.Effect<void>;
   }
 >()("@app/desktop/electron/ElectronWindow") {}
+
+// Listeners live exactly as long as the window (webContents dies with it), so
+// unlike app-level listeners these need no scope-bound removal.
+const addWebContentsListener = <Args extends ReadonlyArray<unknown>>(
+  platform: string,
+  window: Electron.BrowserWindow,
+  eventName: string,
+  listener: (...args: Args) => void,
+): Effect.Effect<void> =>
+  Effect.try({
+    try: () => {
+      window.webContents.on(eventName as never, listener as never);
+    },
+    catch: (cause) =>
+      new ElectronWindowOperationError({
+        operation: "add-window-listener",
+        platform,
+        windowId: window.id,
+        channel: null,
+        cause,
+      }),
+  }).pipe(Effect.orDie);
 
 export const make = Effect.gen(function* () {
   const platform = yield* HostProcessPlatform;
@@ -326,6 +373,34 @@ export const make = Effect.gen(function* () {
             cause,
           }),
       }).pipe(Effect.orDie),
+    onWillNavigate: (window, handler) =>
+      addWebContentsListener(platform, window, "will-navigate", handler),
+    onDidFinishLoad: (window, handler) =>
+      addWebContentsListener(platform, window, "did-finish-load", handler),
+    onDidFailLoad: (window, handler) =>
+      addWebContentsListener(
+        platform,
+        window,
+        "did-fail-load",
+        (
+          _event: Electron.Event,
+          errorCode: number,
+          errorDescription: string,
+          validatedUrl: string,
+          isMainFrame: boolean,
+        ) => {
+          handler({ errorCode, errorDescription, validatedUrl, isMainFrame });
+        },
+      ),
+    onRenderProcessGone: (window, handler) =>
+      addWebContentsListener(
+        platform,
+        window,
+        "render-process-gone",
+        (_event: Electron.Event, details: Electron.RenderProcessGoneDetails) => {
+          handler(details);
+        },
+      ),
   });
 });
 

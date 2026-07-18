@@ -55,6 +55,21 @@ function initialBackgroundColor(shouldUseDarkColors: boolean): string {
   return shouldUseDarkColors ? "#0a0a0a" : "#ffffff";
 }
 
+// Same-origin check for the `will-navigate` guard. Unparseable URLs count as
+// cross-origin (blocked): a URL we can't reason about must not replace the
+// trusted renderer.
+export function isSameOriginNavigation(applicationUrl: string, navigationUrl: string): boolean {
+  try {
+    return new URL(applicationUrl).origin === new URL(navigationUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
+// Delays between renderer load retries (dev only — e.g. the Vite dev server is
+// still coming up). The ladder stays at its last rung until a load succeeds.
+const LOAD_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000] as const;
+
 // The renderer origin: the dev web server in development, otherwise the local
 // backend (which serves the built web app same-origin).
 function resolveApplicationUrl(
@@ -142,11 +157,60 @@ export const make = Effect.gen(function* () {
       return { action: "deny" };
     });
 
+    // Keep the top-level frame pinned to the app origin: a page that navigates
+    // (or is redirected) elsewhere would run a foreign origin with the shell's
+    // webPreferences. Safe external links open in the system browser instead.
+    yield* electronWindow.onWillNavigate(window, (event, url) => {
+      if (isSameOriginNavigation(applicationUrl, url)) return;
+      event.preventDefault();
+      if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
+        void runPromise(electronShell.openExternal(url));
+      }
+    });
+
     yield* electronWindow.onReadyToShow(window, () => {
       void runPromise(electronWindow.reveal(window));
     });
     yield* electronWindow.onClosed(window, () => {
       void runPromise(electronWindow.clearMain(Option.some(window)));
+    });
+
+    // A failed main-frame load would otherwise leave a permanently blank
+    // window. In dev, retry on a bounded backoff ladder (the web dev server may
+    // still be starting); in prod the backend-readiness gate makes this rare,
+    // so just log. Each failure schedules at most one retry, so there is never
+    // more than one pending reload.
+    let loadRetryIndex = 0;
+    yield* electronWindow.onDidFinishLoad(window, () => {
+      loadRetryIndex = 0;
+    });
+    yield* electronWindow.onDidFailLoad(window, (details) => {
+      if (!details.isMainFrame) return;
+      const retryDelayMs = environment.isDevelopment
+        ? LOAD_RETRY_DELAYS_MS[Math.min(loadRetryIndex, LOAD_RETRY_DELAYS_MS.length - 1)]
+        : undefined;
+      loadRetryIndex += 1;
+      void runPromise(
+        Effect.gen(function* () {
+          yield* logWarning("main window failed to load", {
+            errorCode: details.errorCode,
+            errorDescription: details.errorDescription,
+            url: details.validatedUrl,
+            ...(retryDelayMs === undefined ? {} : { retryDelayMs }),
+          });
+          if (retryDelayMs === undefined) return;
+          yield* Effect.sleep(retryDelayMs);
+          yield* electronWindow.loadUrl(window, applicationUrl).pipe(Effect.ignore);
+        }),
+      );
+    });
+    yield* electronWindow.onRenderProcessGone(window, (details) => {
+      void runPromise(
+        logWarning("main window render process gone", {
+          reason: details.reason,
+          exitCode: details.exitCode,
+        }),
+      );
     });
 
     yield* electronWindow.loadUrl(window, applicationUrl).pipe(

@@ -56,7 +56,8 @@ const makeScriptedHarness = () => {
         drops.push(closed);
         return {
           client: fakeClient,
-          connected: Effect.void,
+          ready: Effect.void,
+          probe: Effect.void,
           closed: Deferred.await(closed),
         } satisfies RpcSession;
       }),

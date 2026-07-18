@@ -74,11 +74,22 @@ function readNotes(
   notesPath: string,
 ): Effect.Effect<ReadonlyArray<Note>> {
   // Missing or corrupt file → start empty, same posture as the desktop
-  // settings store: domain state must never block server startup.
+  // settings store: domain state must never block server startup. But a
+  // missing file is the normal first run, while an unreadable or undecodable
+  // one is data damage — and since the next mutation persists over it, the
+  // warning logged here is the only evidence the old contents ever existed.
+  const empty: ReadonlyArray<Note> = [];
   return fileSystem.readFileString(notesPath).pipe(
     Effect.flatMap((raw) => decodeNotesDocument(raw)),
     Effect.map((document) => document.notes),
-    Effect.orElseSucceed((): ReadonlyArray<Note> => []),
+    Effect.catch((error) =>
+      error._tag === "PlatformError" && error.reason._tag === "NotFound"
+        ? Effect.succeed(empty)
+        : Effect.logWarning("failed to load notes file; starting empty", {
+            path: notesPath,
+            error,
+          }).pipe(Effect.as(empty)),
+    ),
   );
 }
 

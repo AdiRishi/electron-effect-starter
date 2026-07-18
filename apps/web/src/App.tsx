@@ -1,4 +1,4 @@
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { useEffect, useState } from "react";
 
 import type { ConnectionPhase } from "@app/client-runtime/connection";
@@ -15,14 +15,19 @@ const STATUS_LABEL: Record<ConnectionPhase, string> = {
   connecting: "connecting",
   connected: "connected",
   reconnecting: "reconnecting",
+  offline: "offline",
+  blocked: "not authorized",
 };
 
 // Connected wears the accent: the brand color IS the color of a live bus.
+// Blocked is red (retrying can't fix it); offline is inert (no attempts run).
 const STATUS_DOT: Record<ConnectionPhase, string> = {
   idle: "bg-muted",
   connecting: "bg-amber-400 animate-pulse",
   connected: "bg-accent",
   reconnecting: "bg-amber-400 animate-pulse",
+  offline: "bg-muted",
+  blocked: "bg-red-500",
 };
 
 const THEMES: readonly DesktopTheme[] = ["light", "dark", "system"];
@@ -32,6 +37,7 @@ export function App() {
   const config = useAtomValue(connectionAtoms.serverConfig);
   const lifecycle = useAtomValue(connectionAtoms.lifecycle);
   const notesView = useAtomValue(notesAtoms.view);
+  const retryNow = useAtomSet(connectionAtoms.retryNow);
 
   const { theme, setTheme } = useTheme();
   const connected = connectionState.phase === "connected";
@@ -86,6 +92,15 @@ export function App() {
             {STATUS_LABEL[connectionState.phase]}
             {connectionState.attempt > 0 && ` (attempt ${connectionState.attempt})`}
           </span>
+          {connectionState.phase === "blocked" && (
+            <button
+              type="button"
+              onClick={() => retryNow()}
+              className="rounded-md border border-border px-1.5 py-0.5 text-[11px] transition-colors outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-accent"
+            >
+              retry
+            </button>
+          )}
           {config && <Meter label={`${config.appName} v${config.version}`} />}
           {lifecycle && <Meter label={lifecycle} />}
           <Meter label={`seq ${notesView.sequence}`} />

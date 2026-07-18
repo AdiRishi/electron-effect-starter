@@ -103,7 +103,9 @@ const scopedProgram = Effect.scoped(
     const shutdown = yield* DesktopShutdown.DesktopShutdown;
     const manager = yield* DesktopBackendManager.DesktopBackendManager;
 
-    yield* Effect.addFinalizer(() => manager.stop);
+    // `markComplete` releases the lifecycle's quit barrier, so it must fire
+    // even when the backend stop itself fails or is interrupted.
+    yield* Effect.addFinalizer(() => manager.stop.pipe(Effect.ensuring(shutdown.markComplete)));
 
     yield* startup;
     yield* shutdown.awaitRequest;

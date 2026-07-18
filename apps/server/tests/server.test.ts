@@ -9,14 +9,16 @@ import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as TestClock from "effect/testing/TestClock";
 import { HttpBody, HttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
 
-import { BearerSessionJson } from "@app/contracts";
+import { BearerSessionJson, WsTicketJson } from "@app/contracts";
 
 import * as Auth from "../src/auth.ts";
 import * as ServerConfig from "../src/config.ts";
-import { AUTH_BOOTSTRAP_PATH, HEALTH_PATH } from "../src/http.ts";
+import { AUTH_BOOTSTRAP_PATH, AUTH_WS_TICKET_PATH, HEALTH_PATH } from "../src/http.ts";
 import * as LifecycleEvents from "../src/lifecycleEvents.ts";
 import * as NotesStore from "../src/notes/NotesStore.ts";
 import * as Readiness from "../src/readiness.ts";
@@ -70,6 +72,7 @@ const appLayer = (options: HarnessOptions = {}) =>
   );
 
 const decodeBearerSession = Schema.decodeUnknownSync(BearerSessionJson);
+const decodeWsTicket = Schema.decodeUnknownSync(WsTicketJson);
 
 const postJson = (path: string, body: string) =>
   HttpClient.post(path, { body: HttpBody.text(body, "application/json") });
@@ -178,11 +181,88 @@ describe("bearer bootstrap exchange", () => {
   );
 });
 
+describe("websocket ticket exchange", () => {
+  const mintBearer = Effect.gen(function* () {
+    const response = yield* postJson(
+      AUTH_BOOTSTRAP_PATH,
+      JSON.stringify({ credential: BOOTSTRAP_TOKEN }),
+    );
+    const body: unknown = yield* response.json;
+    return decodeBearerSession(body).access_token;
+  });
+
+  it.effect("exchanges a live bearer for a short-lived ticket in the JSON wire shape", () =>
+    Effect.gen(function* () {
+      const bearer = yield* mintBearer;
+      const response = yield* HttpClient.post(AUTH_WS_TICKET_PATH, {
+        headers: { authorization: `Bearer ${bearer}` },
+      });
+      assert.equal(response.status, 200);
+
+      const body: unknown = yield* response.json;
+      const issued = decodeWsTicket(body);
+      assert.match(issued.ticket, /^[0-9a-f]{64}$/);
+      assert.deepEqual(Object.keys(body as object).toSorted(), ["expires_at", "ticket"]);
+
+      // The minted ticket is immediately valid for the WS gate; the ticket is
+      // its own credential, distinct from the bearer.
+      const auth = yield* Auth.BearerSessionStore;
+      assert.isTrue(yield* auth.authenticateWsTicket(issued.ticket));
+      assert.isFalse(yield* auth.authenticateWsTicket(bearer));
+    }).pipe(Effect.provide(appLayer())),
+  );
+
+  it.effect("rejects ticket minting without a live bearer", () =>
+    Effect.gen(function* () {
+      const missing = yield* HttpClient.post(AUTH_WS_TICKET_PATH);
+      assert.equal(missing.status, 401);
+
+      const invalid = yield* HttpClient.post(AUTH_WS_TICKET_PATH, {
+        headers: { authorization: "Bearer not-a-live-session" },
+      });
+      assert.equal(invalid.status, 401);
+    }).pipe(Effect.provide(appLayer())),
+  );
+
+  it.effect("expires tickets after their TTL", () =>
+    Effect.gen(function* () {
+      const auth = yield* Auth.BearerSessionStore;
+      const bearer = yield* mintBearer;
+      const issued = yield* auth.issueWsTicket(bearer);
+      assert.isTrue(Option.isSome(issued));
+      if (Option.isSome(issued)) {
+        assert.isTrue(yield* auth.authenticateWsTicket(issued.value.ticket));
+        yield* TestClock.adjust("6 minutes");
+        assert.isFalse(yield* auth.authenticateWsTicket(issued.value.ticket));
+        // The bearer itself is process-lifetime and still valid.
+        assert.isTrue(yield* auth.authenticateBearer(bearer));
+      }
+    }).pipe(Effect.provide(appLayer())),
+  );
+});
+
 describe("websocket gate", () => {
-  it.effect("rejects /ws without a bearer token", () =>
+  it.effect("rejects /ws without a credential", () =>
     Effect.gen(function* () {
       const response = yield* HttpClient.get("/ws");
       assert.equal(response.status, 401);
+    }).pipe(Effect.provide(appLayer())),
+  );
+
+  it.effect("rejects the long-lived bearer on the query string — tickets only", () =>
+    Effect.gen(function* () {
+      const bootstrap = yield* postJson(
+        AUTH_BOOTSTRAP_PATH,
+        JSON.stringify({ credential: BOOTSTRAP_TOKEN }),
+      );
+      const bearer = decodeBearerSession(yield* bootstrap.json).access_token;
+
+      // The old-style `?access_token=` carries no weight at all…
+      const viaAccessToken = yield* HttpClient.get(`/ws?access_token=${bearer}`);
+      assert.equal(viaAccessToken.status, 401);
+      // …and a bearer pasted into the ticket param is not a ticket.
+      const viaTicketParam = yield* HttpClient.get(`/ws?wsTicket=${bearer}`);
+      assert.equal(viaTicketParam.status, 401);
     }).pipe(Effect.provide(appLayer())),
   );
 });

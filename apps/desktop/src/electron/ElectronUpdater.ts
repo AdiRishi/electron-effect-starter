@@ -78,6 +78,10 @@ export const make = ElectronUpdater.of({
   setAutoDownload: (value) =>
     Effect.suspend(() => {
       autoUpdater.autoDownload = value;
+      // electron-updater defaults autoInstallOnAppQuit to true; with the manual
+      // flow that would silently install a downloaded-but-deferred update on
+      // quit, bypassing the explicit install action. Keep both flags in step.
+      autoUpdater.autoInstallOnAppQuit = value;
       return Effect.void;
     }),
   setChannel: (channel) =>

@@ -38,13 +38,20 @@ function repoPortOffset(): number {
   return hash.readUInt16BE(0) % 2000;
 }
 
+// Probe IPv4 AND IPv6: on a dual-stack host a port can be free on 127.0.0.1
+// yet already bound on ::1, and picking it would make the child fail with
+// EADDRINUSE after the runner reported it as chosen.
+const PORT_PROBE_HOSTS = ["127.0.0.1", "0.0.0.0", "::1", "::"] as const;
+
 function canListen(port: number, host: string): Promise<boolean> {
   return new Promise((resolve) => {
     const server = NodeNet.createServer();
-    server.once("error", () => {
+    server.once("error", (error: NodeJS.ErrnoException) => {
       server.removeAllListeners();
       server.close();
-      resolve(false);
+      // A host without that address family (e.g. IPv6 disabled) can't have a
+      // conflict on it either — only a real bind conflict disqualifies.
+      resolve(error.code !== "EADDRINUSE" && error.code !== "EACCES");
     });
     server.once("listening", () => {
       server.close(() => resolve(true));
@@ -55,7 +62,8 @@ function canListen(port: number, host: string): Promise<boolean> {
 
 async function pickPort(start: number): Promise<number> {
   for (let port = start; port <= MAX_PORT; port += 1) {
-    if ((await canListen(port, "127.0.0.1")) && (await canListen(port, "0.0.0.0"))) {
+    const results = await Promise.all(PORT_PROBE_HOSTS.map((host) => canListen(port, host)));
+    if (results.every(Boolean)) {
       return port;
     }
   }
@@ -159,9 +167,31 @@ async function main(): Promise<void> {
     children.push(run("@app/desktop", "start", desktopEnv));
   }
 
+  // SIGTERM the children and wait for them to exit (escalating to SIGKILL
+  // after a grace period) instead of exiting immediately — an instant exit
+  // orphans any child that is slow on SIGTERM, leaving stray processes
+  // holding the dev ports for the next run.
+  const FORCE_KILL_AFTER_MS = 1500;
+  let shuttingDown = false;
   const shutdown = () => {
-    for (const child of children) child.kill("SIGTERM");
-    process.exit(0);
+    if (shuttingDown) return;
+    shuttingDown = true;
+    const alive = () =>
+      children.filter((child) => child.exitCode === null && child.signalCode === null);
+    if (alive().length === 0) process.exit(0);
+    const forceKill = setTimeout(() => {
+      for (const child of alive()) child.kill("SIGKILL");
+      process.exit(0);
+    }, FORCE_KILL_AFTER_MS);
+    for (const child of alive()) {
+      child.once("exit", () => {
+        if (alive().length === 0) {
+          clearTimeout(forceKill);
+          process.exit(0);
+        }
+      });
+      child.kill("SIGTERM");
+    }
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);

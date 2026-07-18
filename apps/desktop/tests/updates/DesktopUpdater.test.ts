@@ -41,6 +41,10 @@ const fakeElectronWindowLayer = (pushes: Array<Push>) =>
       onReadyToShow: () => Effect.void,
       onClosed: () => Effect.void,
       setWindowOpenHandler: () => Effect.void,
+      onWillNavigate: () => Effect.void,
+      onDidFinishLoad: () => Effect.void,
+      onDidFailLoad: () => Effect.void,
+      onRenderProcessGone: () => Effect.void,
     }),
   );
 
