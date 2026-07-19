@@ -57,11 +57,12 @@ export const bootstrapRemoteBearerSession = (input: {
     };
 
     return yield* Effect.tryPromise({
-      try: async () => {
+      try: async (signal) => {
         const response = await globalThis.fetch(url, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
+          signal,
         });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status} ${response.statusText}`);

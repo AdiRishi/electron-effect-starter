@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -167,6 +168,28 @@ describe("rpc client", () => {
 
       assert.deepEqual(yield* Ref.get(values), [7]);
       yield* Fiber.interrupt(consumer);
+    }),
+  );
+
+  it.effect("does not classify subscription defects as expected failures", () =>
+    Effect.gen(function* () {
+      const defect = new Error("subscription invariant failed");
+      const client = {
+        [WS_METHODS.serverSubscribeTicks]: () => Stream.die(defect),
+      } as unknown as WsRpcProtocolClient;
+      const { activeSession, supervisor } = yield* makeHarness;
+
+      yield* SubscriptionRef.set(activeSession, Option.some(session(client)));
+      const exit = yield* subscribe(WS_METHODS.serverSubscribeTicks, {}).pipe(
+        Stream.runDrain,
+        Effect.provideService(ConnectionSupervisor, supervisor),
+        Effect.exit,
+      );
+
+      assert.isTrue(Exit.isFailure(exit));
+      if (Exit.isFailure(exit)) {
+        assert.isTrue(Cause.hasDies(exit.cause));
+      }
     }),
   );
 

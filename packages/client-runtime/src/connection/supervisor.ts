@@ -1,3 +1,4 @@
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -10,6 +11,7 @@ import * as Socket from "effect/unstable/socket/Socket";
 import * as RpcSession from "../rpc/session.ts";
 import {
   type ConnectionState,
+  ConnectionTransientError,
   INITIAL_CONNECTION_STATE,
   type PreparedConnection,
 } from "./model.ts";
@@ -20,6 +22,13 @@ import {
  */
 const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000] as const;
 const MAX_RETRY_DELAY_MS = 16_000;
+
+/**
+ * Bounds the whole establishment phase (connect + readiness probe). The socket
+ * layer's own open-timeout only bounds the raw open; a socket that opens but
+ * whose readiness probe hangs would otherwise freeze the loop forever.
+ */
+const CONNECTION_ESTABLISHMENT_TIMEOUT = "15 seconds";
 
 /**
  * The failure counter resets only after a session survives this long. A server
@@ -34,6 +43,32 @@ function retryDelayMs(attemptIndex: number): number {
   // guarantees `index` is in range, so the fallback is never taken at runtime.
   return RETRY_DELAYS_MS[index] ?? MAX_RETRY_DELAY_MS;
 }
+
+/**
+ * Collapse any non-interrupt cause into a `ConnectionTransientError` the loop
+ * can back off from. Pure interrupts are re-raised so closing the enclosing
+ * scope still tears the loop down cleanly; unexpected defects are logged and
+ * synthesized into a transient failure instead of killing the supervisor fiber.
+ */
+const failureFromCause = (
+  connection: PreparedConnection,
+  cause: Cause.Cause<ConnectionTransientError>,
+): Effect.Effect<ConnectionTransientError> =>
+  Effect.gen(function* () {
+    if (Cause.hasInterruptsOnly(cause)) {
+      return yield* Effect.interrupt;
+    }
+    const typedFailure = cause.reasons.find(Cause.isFailReason);
+    if (typedFailure !== undefined) {
+      return typedFailure.error;
+    }
+    yield* Effect.logError("Connection attempt failed with an unexpected defect.", {
+      cause: Cause.pretty(cause),
+    });
+    return new ConnectionTransientError({
+      detail: `${connection.label} connection failed unexpectedly.`,
+    });
+  });
 
 /**
  * Supervises exactly one connection: connect → hold open until it drops → wait
@@ -77,11 +112,27 @@ const runLoop = (
 
       // The inner program never succeeds — it either fails to connect or holds
       // open until the socket drops (both surface a `ConnectionTransientError`).
-      // Catch that failure so the loop sees it as a value to back off from.
+      // Handle the FULL cause (not just the typed failure) so a defect from the
+      // session can never escape the loop and kill the supervisor fiber.
       const outcome = yield* Effect.scoped(
         Effect.gen(function* () {
-          const active = yield* sessions.connect(connection);
-          yield* active.connected;
+          // Establishment (connect + readiness probe) is bounded as a whole; a
+          // hung probe against an open-but-dead socket cannot freeze the loop.
+          const active = yield* Effect.gen(function* () {
+            const session = yield* sessions.connect(connection);
+            yield* session.connected;
+            return session;
+          }).pipe(
+            Effect.timeoutOrElse({
+              duration: CONNECTION_ESTABLISHMENT_TIMEOUT,
+              orElse: () =>
+                Effect.fail(
+                  new ConnectionTransientError({
+                    detail: `${connection.label} did not respond during connection setup.`,
+                  }),
+                ),
+            }),
+          );
           everConnected = true;
           connectedAtMs = yield* Clock.currentTimeMillis;
           yield* SubscriptionRef.set(supervisor.session, Option.some(active));
@@ -93,7 +144,12 @@ const runLoop = (
           // Block here until the socket drops; `closed` fails with the reason.
           return yield* active.closed;
         }),
-      ).pipe(Effect.catch(Effect.succeed));
+      ).pipe(
+        Effect.matchCauseEffect({
+          onFailure: (cause) => failureFromCause(connection, cause),
+          onSuccess: Effect.succeed,
+        }),
+      );
 
       // The session scope has closed, so clear it before backing off.
       yield* SubscriptionRef.set(supervisor.session, Option.none());

@@ -156,6 +156,84 @@ describe("ConnectionSupervisor", () => {
     }).pipe(Effect.scoped, Effect.provide(Socket.layerWebSocketConstructorGlobal)),
   );
 
+  it.effect("converts unexpected session defects into retryable failures", () =>
+    Effect.gen(function* () {
+      const scripted = yield* makeScriptedFactory;
+      const attempts = yield* Ref.make(0);
+      const factory = {
+        connect: () =>
+          Ref.updateAndGet(attempts, (n) => n + 1).pipe(
+            Effect.flatMap((attempt) =>
+              attempt === 1
+                ? Effect.die(new Error("Native transport defect."))
+                : scripted.factory.connect(),
+            ),
+          ),
+      };
+      const supervisor = yield* start(CONNECTION).pipe(
+        Effect.provideService(RpcSessionFactory, factory),
+      );
+
+      const failed = yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "reconnecting" && state.attempt === 1,
+      );
+      assert.equal(failed.lastError, "test connection failed unexpectedly.");
+
+      // The defect must not have killed the loop: the next attempt succeeds.
+      yield* TestClock.adjust("1 second");
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      assert.equal(yield* Ref.get(attempts), 2);
+    }).pipe(Effect.scoped, Effect.provide(Socket.layerWebSocketConstructorGlobal)),
+  );
+
+  it.effect("retries when a session never becomes ready", () =>
+    Effect.gen(function* () {
+      const factory = {
+        connect: () =>
+          Effect.succeed({
+            client: {} as WsRpcProtocolClient,
+            connected: Effect.never,
+            closed: Effect.never,
+          } satisfies RpcSession),
+      };
+      const supervisor = yield* start(CONNECTION).pipe(
+        Effect.provideService(RpcSessionFactory, factory),
+      );
+
+      yield* awaitState(supervisor.state, (state) => state.phase === "connecting");
+      yield* TestClock.adjust("14 seconds");
+      assert.equal((yield* SubscriptionRef.get(supervisor.state)).phase, "connecting");
+
+      yield* TestClock.adjust("1 second");
+      const retrying = yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "reconnecting",
+      );
+
+      assert.equal(retrying.lastError, "test did not respond during connection setup.");
+      assert.isTrue(Option.isNone(yield* SubscriptionRef.get(supervisor.session)));
+    }).pipe(Effect.scoped, Effect.provide(Socket.layerWebSocketConstructorGlobal)),
+  );
+
+  it.effect("interrupts a connection attempt when setup times out", () =>
+    Effect.gen(function* () {
+      const factory = { connect: () => Effect.never };
+      const supervisor = yield* start(CONNECTION).pipe(
+        Effect.provideService(RpcSessionFactory, factory),
+      );
+
+      yield* awaitState(supervisor.state, (state) => state.phase === "connecting");
+      yield* TestClock.adjust("15 seconds");
+      const retrying = yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "reconnecting" && state.attempt === 1,
+      );
+
+      assert.equal(retrying.lastError, "test did not respond during connection setup.");
+    }).pipe(Effect.scoped, Effect.provide(Socket.layerWebSocketConstructorGlobal)),
+  );
+
   it.effect("resets backoff only after a stable (30s+) session", () =>
     Effect.gen(function* () {
       const scripted = yield* makeScriptedFactory;

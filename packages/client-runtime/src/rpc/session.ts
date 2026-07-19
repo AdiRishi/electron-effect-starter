@@ -8,6 +8,8 @@ import * as RpcClient from "effect/unstable/rpc/RpcClient";
 import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";
 import * as Socket from "effect/unstable/socket/Socket";
 
+import { WS_METHODS } from "@app/contracts";
+
 import { ConnectionTransientError, type PreparedConnection } from "../connection/model.ts";
 import { makeWsRpcProtocolClient, type WsRpcProtocolClient } from "./protocol.ts";
 
@@ -15,8 +17,10 @@ const SOCKET_OPEN_TIMEOUT = "15 seconds";
 
 /**
  * A live RPC session bound to one open WebSocket. `client` is the typed method
- * surface; `connected` resolves once the socket handshake succeeds; `closed`
- * fails once the socket drops so the supervisor can react and reconnect.
+ * surface; `connected` resolves once the socket handshake succeeds AND a cheap
+ * `server.getConfig` round-trip proves the far side actually answers — a socket
+ * that opens against a dead server never reports healthy; `closed` fails once
+ * the socket drops so the supervisor can react and reconnect.
  */
 export interface RpcSession {
   readonly client: WsRpcProtocolClient;
@@ -86,9 +90,23 @@ export const connect = (
     );
     const client = yield* makeWsRpcProtocolClient.pipe(Effect.provide(protocolContext));
 
+    // Application-level readiness probe: the config round-trip is cached so
+    // repeated awaits of `connected` never refire the RPC.
+    const initialSync = yield* Effect.cached(
+      client[WS_METHODS.serverGetConfig]({}).pipe(
+        Effect.mapError((error) => new ConnectionTransientError({ detail: error.message })),
+        Effect.asVoid,
+        Effect.withSpan("clientRuntime.rpcSession.initialSync"),
+      ),
+    );
+
     return {
       client,
-      connected: Deferred.await(connected).pipe(Effect.raceFirst(Deferred.await(disconnected))),
+      connected: Deferred.await(connected).pipe(
+        Effect.andThen(initialSync),
+        Effect.asVoid,
+        Effect.raceFirst(Deferred.await(disconnected)),
+      ),
       closed: Deferred.await(disconnected),
     } satisfies RpcSession;
   });
