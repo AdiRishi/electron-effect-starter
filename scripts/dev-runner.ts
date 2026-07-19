@@ -22,6 +22,8 @@ const REPO_ROOT = NodePath.dirname(NodePath.dirname(NodeURL.fileURLToPath(import
 const BASE_SERVER_PORT = 13773;
 const BASE_WEB_PORT = 5733;
 const MAX_PORT = 65_535;
+const DEV_PORT_PROBE_HOSTS = ["127.0.0.1", "0.0.0.0", "::1", "::"] as const;
+const FORCE_KILL_AFTER_MS = 1500;
 
 const isMode = (value: string): value is Mode => (MODES as readonly string[]).includes(value);
 
@@ -41,23 +43,30 @@ function repoPortOffset(): number {
 function canListen(port: number, host: string): Promise<boolean> {
   return new Promise((resolve) => {
     const server = NodeNet.createServer();
-    server.once("error", () => {
+    server.once("error", (cause: NodeJS.ErrnoException) => {
       server.removeAllListeners();
       server.close();
-      resolve(false);
+      // Hosts without IPv6 reject "::1"/"::" binds with EADDRNOTAVAIL; treat
+      // that as available so the probe doesn't mark every port as busy.
+      resolve(cause.code === "EADDRNOTAVAIL");
     });
     server.once("listening", () => {
       server.close(() => resolve(true));
     });
-    server.listen(port, host);
+    server.listen({ host, port });
   });
 }
 
 async function pickPort(start: number): Promise<number> {
   for (let port = start; port <= MAX_PORT; port += 1) {
-    if ((await canListen(port, "127.0.0.1")) && (await canListen(port, "0.0.0.0"))) {
-      return port;
+    let available = true;
+    for (const host of DEV_PORT_PROBE_HOSTS) {
+      if (!(await canListen(port, host))) {
+        available = false;
+        break;
+      }
     }
+    if (available) return port;
   }
   throw new Error(`No free port available from ${start}.`);
 }
@@ -159,9 +168,30 @@ async function main(): Promise<void> {
     children.push(run("@app/desktop", "start", desktopEnv));
   }
 
+  // SIGTERM everything, give children a short grace period to exit cleanly,
+  // then SIGKILL any survivor so nothing is orphaned when the runner exits.
+  let shuttingDown = false;
   const shutdown = () => {
-    for (const child of children) child.kill("SIGTERM");
-    process.exit(0);
+    if (shuttingDown) return;
+    shuttingDown = true;
+    const alive = children.filter((child) => child.exitCode === null && child.signalCode === null);
+    if (alive.length === 0) process.exit(0);
+    let remaining = alive.length;
+    const forceKillTimer = setTimeout(() => {
+      for (const child of alive) {
+        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      }
+    }, FORCE_KILL_AFTER_MS);
+    for (const child of alive) {
+      child.once("exit", () => {
+        remaining -= 1;
+        if (remaining === 0) {
+          clearTimeout(forceKillTimer);
+          process.exit(0);
+        }
+      });
+      child.kill("SIGTERM");
+    }
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
