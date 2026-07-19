@@ -112,6 +112,8 @@ const environmentLayer = (input?: { readonly isPackaged?: boolean; readonly entr
           appPath: SCRATCH,
           isPackaged: input?.isPackaged ?? false,
           resourcesPath: NodePath.join(SCRATCH, "resources"),
+          appDataDirectory: Option.none(),
+          xdgConfigHome: Option.none(),
           serverEntryOverride: Option.some(input?.entry ?? ENTRY_PATH),
           configuredBackendPort: Option.some(PORT),
           devServerUrl: Option.none(),
@@ -216,6 +218,55 @@ describe("DesktopBackendManager", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("cancels a scheduled restart when start is requested manually", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* harness.manager.start;
+      yield* harness.awaitReady;
+
+      yield* harness.exitCurrent(1);
+      yield* Effect.gen(function* () {
+        while ((yield* harness.notReadyCount) < 1) {
+          yield* Effect.yieldNow;
+        }
+      });
+
+      // A manual start during the backoff window spawns immediately and
+      // cancels the scheduled restart.
+      yield* harness.manager.start;
+      yield* Effect.gen(function* () {
+        while ((yield* harness.spawnCount) < 2) {
+          yield* Effect.yieldNow;
+        }
+      });
+
+      yield* harness.manager.stop;
+      yield* TestClock.adjust("500 millis");
+      assert.equal(yield* harness.spawnCount, 2);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("does not restart after stop cancels a scheduled restart", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* harness.manager.start;
+      yield* harness.awaitReady;
+
+      yield* harness.exitCurrent(1);
+      yield* Effect.gen(function* () {
+        while ((yield* harness.notReadyCount) < 1) {
+          yield* Effect.yieldNow;
+        }
+      });
+
+      // Stop during the backoff window cancels the pending restart; nothing
+      // respawns once the delay elapses.
+      yield* harness.manager.stop;
+      yield* TestClock.adjust("5 seconds");
+      assert.equal(yield* harness.spawnCount, 1);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("does not spawn when the server entry is missing, and keeps retrying", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({ entry: NodePath.join(SCRATCH, "missing.mjs") });
@@ -237,7 +288,9 @@ describe("DesktopBackendManager", () => {
 
       const logPath = NodePath.join(
         LOG_DIR_HOME,
-        ".electron-effect-starter",
+        "Library",
+        "Application Support",
+        "electron-effect-starter",
         "logs",
         "server-child.log",
       );

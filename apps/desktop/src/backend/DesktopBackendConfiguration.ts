@@ -11,6 +11,20 @@ import type { ServerBootstrapEnvelope } from "@app/contracts";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 
+// Every APP_* env var the server reads. The child receives its authoritative
+// values through the fd3 envelope and the explicit patch below, so inherited
+// values from a developer shell are cleared before spawning.
+const DESKTOP_BACKEND_ENV_NAMES = [
+  "APP_BOOTSTRAP_TOKEN",
+  "APP_DATA_DIR",
+  "APP_DEV_WEB_URL",
+  "APP_SERVER_HOST",
+  "APP_SERVER_PORT",
+] as const;
+
+const backendChildEnvPatch = (): Record<string, string | undefined> =>
+  Object.fromEntries(DESKTOP_BACKEND_ENV_NAMES.map((name) => [name, undefined]));
+
 // The concrete recipe for spawning + reaching the server child. `httpBaseUrl`
 // is where the shell probes for readiness and points the window; `bootstrapToken`
 // is the shared secret the renderer later exchanges for a bearer session.
@@ -78,10 +92,16 @@ export const make = Effect.gen(function* () {
           cwd: environment.backendCwd,
           env: {
             ELECTRON_RUN_AS_NODE: "1",
-            // The server receives these through fd3. Clear inherited env values
-            // so a developer shell cannot accidentally override the envelope.
-            APP_BOOTSTRAP_TOKEN: undefined,
-            APP_SERVER_PORT: undefined,
+            ...backendChildEnvPatch(),
+            // The server persists to the shell's app-data base, and in dev it
+            // still needs the dev-web URL for its CORS/redirect handling —
+            // both re-provided here from the resolved environment rather than
+            // inherited from the shell's own (clearable) env.
+            APP_DATA_DIR: environment.baseDir,
+            ...Option.match(environment.devServerUrl, {
+              onNone: () => ({}),
+              onSome: (devServerUrl) => ({ APP_DEV_WEB_URL: devServerUrl.href }),
+            }),
           },
           bootstrapEnvelope: {
             desktopBootstrapToken: bootstrapToken,
