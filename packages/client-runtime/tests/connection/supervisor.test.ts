@@ -9,6 +9,7 @@ import * as TestClock from "effect/testing/TestClock";
 import * as Socket from "effect/unstable/socket/Socket";
 
 import {
+  ConnectionBlockedError,
   ConnectionTransientError,
   type ConnectionState,
   type PreparedConnection,
@@ -231,6 +232,84 @@ describe("ConnectionSupervisor", () => {
       );
 
       assert.equal(retrying.lastError, "test did not respond during connection setup.");
+    }).pipe(Effect.scoped, Effect.provide(Socket.layerWebSocketConstructorGlobal)),
+  );
+
+  it.effect("keeps blocked failures idle until an external signal requests another attempt", () =>
+    Effect.gen(function* () {
+      const scripted = yield* makeScriptedFactory;
+      const attempts = yield* Ref.make(0);
+      const factory = {
+        connect: () =>
+          Ref.updateAndGet(attempts, (n) => n + 1).pipe(
+            Effect.flatMap((attempt) =>
+              attempt === 1
+                ? Effect.fail(
+                    new ConnectionBlockedError({
+                      reason: "authentication",
+                      detail: "Authentication required.",
+                    }),
+                  )
+                : scripted.factory.connect(),
+            ),
+          ),
+      };
+      const supervisor = yield* start(CONNECTION).pipe(
+        Effect.provideService(RpcSessionFactory, factory),
+      );
+
+      const blocked = yield* awaitState(supervisor.state, (state) => state.phase === "blocked");
+      assert.equal(blocked.lastError, "Authentication required.");
+      assert.isTrue(Option.isNone(yield* SubscriptionRef.get(supervisor.session)));
+
+      // Parked: no amount of elapsed time triggers another attempt.
+      yield* TestClock.adjust("1 hour");
+      assert.equal(yield* Ref.get(attempts), 1);
+      assert.equal((yield* SubscriptionRef.get(supervisor.state)).phase, "blocked");
+
+      // The external signal wakes the loop for an immediate fresh attempt.
+      yield* supervisor.retryNow;
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      assert.equal(yield* Ref.get(attempts), 2);
+    }).pipe(Effect.scoped, Effect.provide(Socket.layerWebSocketConstructorGlobal)),
+  );
+
+  it.effect("blocks when the credential mint is rejected outright", () =>
+    Effect.gen(function* () {
+      const mints = yield* Ref.make(0);
+      const connection: PreparedConnection = {
+        label: "test",
+        prepareSocketUrl: Ref.update(mints, (n) => n + 1).pipe(
+          Effect.andThen(
+            Effect.fail(
+              new ConnectionBlockedError({
+                reason: "permission",
+                detail: "The bootstrap credential was rejected.",
+              }),
+            ),
+          ),
+        ),
+      };
+
+      const supervisor = yield* start(connection);
+
+      const blocked = yield* awaitState(supervisor.state, (state) => state.phase === "blocked");
+      assert.equal(blocked.lastError, "The bootstrap credential was rejected.");
+
+      yield* TestClock.adjust("1 hour");
+      assert.equal(yield* Ref.get(mints), 1);
+
+      // The retry mints again immediately (no backoff) and parks once more.
+      yield* supervisor.retryNow;
+      for (let i = 0; i < 100; i += 1) {
+        const settled =
+          (yield* Ref.get(mints)) === 2 &&
+          (yield* SubscriptionRef.get(supervisor.state)).phase === "blocked";
+        if (settled) break;
+        yield* Effect.yieldNow;
+      }
+      assert.equal(yield* Ref.get(mints), 2);
+      assert.equal((yield* SubscriptionRef.get(supervisor.state)).phase, "blocked");
     }).pipe(Effect.scoped, Effect.provide(Socket.layerWebSocketConstructorGlobal)),
   );
 

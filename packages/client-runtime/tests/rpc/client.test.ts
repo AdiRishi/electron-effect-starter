@@ -43,7 +43,11 @@ const transportError = () =>
 const makeHarness = Effect.gen(function* () {
   const state = yield* SubscriptionRef.make<ConnectionState>(INITIAL_CONNECTION_STATE);
   const activeSession = yield* SubscriptionRef.make<Option.Option<RpcSession>>(Option.none());
-  const supervisor = ConnectionSupervisor.of({ state, session: activeSession });
+  const supervisor = ConnectionSupervisor.of({
+    state,
+    session: activeSession,
+    retryNow: Effect.void,
+  });
   return { activeSession, supervisor };
 });
 

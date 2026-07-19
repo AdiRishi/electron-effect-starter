@@ -10,10 +10,38 @@ import * as Socket from "effect/unstable/socket/Socket";
 
 import { WS_METHODS } from "@app/contracts";
 
-import { ConnectionTransientError, type PreparedConnection } from "../connection/model.ts";
+import {
+  type ConnectionAttemptError,
+  ConnectionBlockedError,
+  ConnectionTransientError,
+  type PreparedConnection,
+} from "../connection/model.ts";
 import { makeWsRpcProtocolClient, type WsRpcProtocolClient } from "./protocol.ts";
 
 const SOCKET_OPEN_TIMEOUT = "15 seconds";
+
+type InitialConfigError = Effect.Error<
+  ReturnType<WsRpcProtocolClient[typeof WS_METHODS.serverGetConfig]>
+>;
+
+/**
+ * Classify the readiness probe's failures: an authorization rejection means the
+ * credential this session presented will keep being rejected — blocked — while
+ * transport failures are the socket's problem and stay transient.
+ */
+function mapInitialConfigError(error: InitialConfigError): ConnectionAttemptError {
+  switch (error._tag) {
+    case "EnvironmentAuthorizationError":
+      return new ConnectionBlockedError({
+        reason: "permission",
+        detail: error.message,
+      });
+    case "RpcClientError":
+      return new ConnectionTransientError({
+        detail: error.message,
+      });
+  }
+}
 
 /**
  * A live RPC session bound to one open WebSocket. `client` is the typed method
@@ -24,7 +52,7 @@ const SOCKET_OPEN_TIMEOUT = "15 seconds";
  */
 export interface RpcSession {
   readonly client: WsRpcProtocolClient;
-  readonly connected: Effect.Effect<void, ConnectionTransientError>;
+  readonly connected: Effect.Effect<void, ConnectionAttemptError>;
   readonly closed: Effect.Effect<never, ConnectionTransientError>;
 }
 
@@ -37,12 +65,13 @@ export interface RpcSession {
  */
 export const connect = (
   connection: PreparedConnection,
-): Effect.Effect<RpcSession, ConnectionTransientError, Scope.Scope | Socket.WebSocketConstructor> =>
+): Effect.Effect<RpcSession, ConnectionAttemptError, Scope.Scope | Socket.WebSocketConstructor> =>
   Effect.gen(function* () {
     const webSocketConstructor = yield* Socket.WebSocketConstructor;
 
     // Mint a fresh credential and build the URL for THIS attempt. A failed mint
-    // fails `connect`, which the supervisor treats as a transient drop.
+    // fails `connect` — transient mints get backed off and retried, while a
+    // rejected credential blocks the supervisor.
     const socketUrl = yield* connection.prepareSocketUrl;
 
     const connected = yield* Deferred.make<void, ConnectionTransientError>();
@@ -94,7 +123,7 @@ export const connect = (
     // repeated awaits of `connected` never refire the RPC.
     const initialSync = yield* Effect.cached(
       client[WS_METHODS.serverGetConfig]({}).pipe(
-        Effect.mapError((error) => new ConnectionTransientError({ detail: error.message })),
+        Effect.mapError(mapInitialConfigError),
         Effect.asVoid,
         Effect.withSpan("clientRuntime.rpcSession.initialSync"),
       ),
@@ -114,11 +143,7 @@ export const connect = (
 export interface RpcSessionFactoryShape {
   readonly connect: (
     connection: PreparedConnection,
-  ) => Effect.Effect<
-    RpcSession,
-    ConnectionTransientError,
-    Scope.Scope | Socket.WebSocketConstructor
-  >;
+  ) => Effect.Effect<RpcSession, ConnectionAttemptError, Scope.Scope | Socket.WebSocketConstructor>;
 }
 
 /**

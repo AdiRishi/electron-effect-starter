@@ -6,8 +6,13 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import * as Socket from "effect/unstable/socket/Socket";
 
-import { bootstrapRemoteBearerSession } from "@app/client-runtime/authorization";
 import {
+  type BearerBootstrapError,
+  bootstrapRemoteBearerSession,
+} from "@app/client-runtime/authorization";
+import {
+  type ConnectionAttemptError,
+  ConnectionBlockedError,
   ConnectionSupervisor,
   connectionSupervisorLayer,
   ConnectionTransientError,
@@ -22,16 +27,36 @@ import { isElectron, resolveConnectionTarget } from "../env.ts";
 const BOOTSTRAP_TOKEN = import.meta.env.VITE_BOOTSTRAP_TOKEN;
 
 /**
+ * Classify a failed bootstrap exchange: an explicit auth rejection means the
+ * bootstrap credential itself is being refused — retrying with backoff cannot
+ * fix that, so the supervisor should park (`blocked`) until the credential
+ * changes. Everything else (network, timeout, bad payload) stays transient.
+ */
+export function mapBearerBootstrapError(error: BearerBootstrapError): ConnectionAttemptError {
+  switch (error.status) {
+    case 401:
+      return new ConnectionBlockedError({ reason: "authentication", detail: error.detail });
+    case 403:
+      return new ConnectionBlockedError({ reason: "permission", detail: error.detail });
+    default:
+      return new ConnectionTransientError({ detail: error.detail });
+  }
+}
+
+/**
  * Obtain a bearer token (integration contract):
  * - In the shell: ask the bridge.
  * - In the browser: POST the bootstrap credential and read `access_token`.
  */
-function obtainBearerToken(httpBaseUrl: string): Effect.Effect<string, Error> {
+function obtainBearerToken(httpBaseUrl: string): Effect.Effect<string, ConnectionAttemptError> {
   if (isElectron && window.desktopBridge) {
     const bridge = window.desktopBridge;
     return Effect.tryPromise({
       try: () => bridge.getBearerToken(),
-      catch: (cause) => new Error(`Bridge failed to mint a bearer token: ${String(cause)}`),
+      catch: (cause) =>
+        new ConnectionTransientError({
+          detail: `Bridge failed to mint a bearer token: ${String(cause)}`,
+        }),
     });
   }
   return bootstrapRemoteBearerSession({
@@ -40,7 +65,7 @@ function obtainBearerToken(httpBaseUrl: string): Effect.Effect<string, Error> {
     clientMetadata: { label: "web", deviceType: "web" },
   }).pipe(
     Effect.map((session) => session.access_token),
-    Effect.mapError((error) => new Error(error.message)),
+    Effect.mapError(mapBearerBootstrapError),
   );
 }
 
@@ -55,7 +80,8 @@ function socketUrl(wsBaseUrl: string, token: string): string {
  * loop) over the one platform seam it needs — a browser WebSocket constructor.
  * The connection target and bearer token are resolved inside EVERY attempt, so
  * a bridge whose server bootstrap is not ready yet, or a failed mint, is just
- * another transient failure the supervisor backs off from and retries.
+ * another transient failure the supervisor backs off from and retries — while
+ * a rejected credential (401/403) blocks the loop until it changes.
  */
 export function makeConnectionLayer(): Layer.Layer<ConnectionSupervisor> {
   const connection: PreparedConnection = {
@@ -64,7 +90,6 @@ export function makeConnectionLayer(): Layer.Layer<ConnectionSupervisor> {
       const target = resolveConnectionTarget();
       return obtainBearerToken(target.httpBaseUrl).pipe(
         Effect.map((token) => socketUrl(target.wsBaseUrl, token)),
-        Effect.mapError((error) => new ConnectionTransientError({ detail: error.message })),
       );
     }),
   };
