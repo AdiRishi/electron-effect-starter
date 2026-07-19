@@ -28,6 +28,10 @@ export interface MakeDesktopEnvironmentInput {
   readonly appPath: string;
   readonly isPackaged: boolean;
   readonly resourcesPath: string;
+  /** `APPDATA`, if set (Windows roaming config root). */
+  readonly appDataDirectory: Option.Option<string>;
+  /** `XDG_CONFIG_HOME`, if set (Linux config root). */
+  readonly xdgConfigHome: Option.Option<string>;
   /** `APP_SERVER_ENTRY` override, if set. */
   readonly serverEntryOverride: Option.Option<string>;
   /** `APP_SERVER_PORT`, if set. */
@@ -47,7 +51,11 @@ export class DesktopEnvironment extends Context.Service<
     readonly appPath: string;
     readonly resourcesPath: string;
     readonly homeDirectory: string;
-    /** Base app-data dir, e.g. ~/.electron-effect-starter — settings + logs live under here. */
+    /**
+     * Base app-data dir under the platform's config root (AppData/Roaming,
+     * Library/Application Support, XDG config) — settings + logs live under
+     * here, and the spawned server child is pointed at it via APP_DATA_DIR.
+     */
     readonly baseDir: string;
     readonly desktopSettingsPath: string;
     readonly logDir: string;
@@ -82,7 +90,15 @@ export function makeWith(
   const isDevelopment = Option.isSome(input.devServerUrl);
   const displayName = isDevelopment ? `${APP_BASE_NAME} (Dev)` : APP_BASE_NAME;
 
-  const baseDir = path.join(input.homeDirectory, ".electron-effect-starter");
+  const appDataDirectory =
+    platform === "win32"
+      ? Option.getOrElse(input.appDataDirectory, () =>
+          path.join(input.homeDirectory, "AppData", "Roaming"),
+        )
+      : platform === "darwin"
+        ? path.join(input.homeDirectory, "Library", "Application Support")
+        : Option.getOrElse(input.xdgConfigHome, () => path.join(input.homeDirectory, ".config"));
+  const baseDir = path.join(appDataDirectory, "electron-effect-starter");
   const logDir = path.join(baseDir, "logs");
   const desktopSettingsPath = path.join(baseDir, "desktop-settings.json");
   const preloadPath = path.join(input.dirname, "preload.cjs");
@@ -151,12 +167,16 @@ export function layer(
     DesktopEnvironment,
     Effect.gen(function* () {
       const path = yield* Path.Path;
+      const appDataDirectory = yield* Config.string("APPDATA").pipe(Config.option);
+      const xdgConfigHome = yield* Config.string("XDG_CONFIG_HOME").pipe(Config.option);
       const serverEntryOverride = yield* Config.string("APP_SERVER_ENTRY").pipe(Config.option);
       const configuredBackendPort = yield* Config.port("APP_SERVER_PORT").pipe(Config.option);
       const devServerUrl = yield* Config.url("APP_DEV_WEB_URL").pipe(Config.option);
       return makeWith(
         {
           ...metadata,
+          appDataDirectory,
+          xdgConfigHome,
           serverEntryOverride,
           configuredBackendPort,
           devServerUrl,

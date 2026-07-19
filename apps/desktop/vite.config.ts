@@ -46,7 +46,7 @@ function electronEntryConfig(input: {
       sourcemap: true,
       emptyOutDir: input.emptyOutDir,
       minify: false,
-      target: "node20",
+      target: "node22",
       rollupOptions: {
         external: (id) => !shouldBundle(id),
       },

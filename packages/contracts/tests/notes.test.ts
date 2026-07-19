@@ -47,18 +47,33 @@ describe("NoteCreateInput", () => {
 
 describe("NotesStreamEvent", () => {
   it("discriminates the three event types by tag", () => {
-    const snapshot = decodeStreamEvent({ sequence: 2, type: "snapshot", notes: [WIRE_NOTE] });
+    const snapshot = decodeStreamEvent({
+      version: 1,
+      sequence: 2,
+      type: "snapshot",
+      notes: [WIRE_NOTE],
+    });
     assert.strictEqual(snapshot.type, "snapshot");
 
-    const upserted = decodeStreamEvent({ sequence: 3, type: "noteUpserted", note: WIRE_NOTE });
+    const upserted = decodeStreamEvent({
+      version: 1,
+      sequence: 3,
+      type: "noteUpserted",
+      note: WIRE_NOTE,
+    });
     assert.strictEqual(upserted.type, "noteUpserted");
 
-    const removed = decodeStreamEvent({ sequence: 4, type: "noteRemoved", id: "note-1" });
+    const removed = decodeStreamEvent({
+      version: 1,
+      sequence: 4,
+      type: "noteRemoved",
+      id: "note-1",
+    });
     assert.strictEqual(removed.type, "noteRemoved");
   });
 
   it("rejects an unknown event type", () => {
-    assert.throws(() => decodeStreamEvent({ sequence: 1, type: "notesCleared" }));
+    assert.throws(() => decodeStreamEvent({ version: 1, sequence: 1, type: "notesCleared" }));
   });
 });
 

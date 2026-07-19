@@ -89,6 +89,29 @@ export function isSameOriginRendererNavigation(input: {
   }
 }
 
+// The policy injected on documents served from the application origin. The
+// renderer talks to the local backend (and, in dev, the Vite dev server) over
+// http/ws, so connections are restricted by scheme rather than by host;
+// 'unsafe-inline' keeps Vite's injected dev scripts/styles working.
+export function makeDesktopContentSecurityPolicy(): string {
+  const scriptSources = ["'self'", "'unsafe-inline'"];
+  const connectSources = ["'self'", "http:", "https:", "ws:", "wss:"];
+
+  return [
+    "default-src 'self'",
+    `script-src ${scriptSources.join(" ")}`,
+    `connect-src ${connectSources.join(" ")}`,
+    "img-src 'self' blob: data: http: https:",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data:",
+    "worker-src 'self' blob:",
+    "frame-src 'self'",
+    "form-action 'self'",
+  ].join("; ");
+}
+
+const DESKTOP_CONTENT_SECURITY_POLICY = makeDesktopContentSecurityPolicy();
+
 export function isRetryableDevelopmentRendererLoadFailure(input: {
   readonly applicationUrl: string;
   readonly errorCode: number;
@@ -174,12 +197,47 @@ export const make = Effect.gen(function* () {
       },
     });
 
+    // The backend serves no Content-Security-Policy of its own, so the shell
+    // pins one on every response from the application origin. Other origins
+    // (e.g. dev-mode API calls to the backend) are left untouched.
+    window.webContents.session.webRequest.onHeadersReceived(
+      { urls: [`${new URL(applicationUrl).origin}/*`] },
+      (details, callback) => {
+        callback({
+          responseHeaders: {
+            ...details.responseHeaders,
+            "Content-Security-Policy": [DESKTOP_CONTENT_SECURITY_POLICY],
+          },
+        });
+      },
+    );
+
     // Open http/https links externally instead of navigating the shell.
     yield* electronWindow.setWindowOpenHandler(window, ({ url }) => {
       if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
         void runPromise(electronShell.openExternal(url));
       }
       return { action: "deny" };
+    });
+    window.webContents.on("will-navigate", (event, url) => {
+      if (
+        isSameOriginRendererNavigation({
+          applicationUrl,
+          navigationUrl: url,
+        })
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
+        void runPromise(electronShell.openExternal(url));
+      }
+    });
+
+    window.on("page-title-updated", (event) => {
+      event.preventDefault();
+      window.setTitle(environment.displayName);
     });
 
     yield* electronWindow.onReadyToShow(window, () => {
@@ -271,6 +329,14 @@ export const make = Effect.gen(function* () {
         );
       },
     );
+    window.webContents.on("render-process-gone", (_event, details) => {
+      void runPromise(
+        logWarning("main window render process gone", {
+          reason: details.reason,
+          exitCode: details.exitCode,
+        }),
+      );
+    });
 
     loadApplication();
     return window;

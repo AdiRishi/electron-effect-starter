@@ -145,6 +145,7 @@ export const make = Effect.gen(function* () {
           const now = yield* DateTime.now;
           const note: Note = { id, text: input.text, createdAt: now, updatedAt: now };
           const event: NoteUpsertedEvent = {
+            version: 1,
             sequence: current.sequence + 1,
             type: "noteUpserted",
             note,
@@ -163,6 +164,7 @@ export const make = Effect.gen(function* () {
           const now = yield* DateTime.now;
           const note: Note = { ...existing, text: input.text, updatedAt: now };
           const event: NoteUpsertedEvent = {
+            version: 1,
             sequence: current.sequence + 1,
             type: "noteUpserted",
             note,
@@ -182,6 +184,7 @@ export const make = Effect.gen(function* () {
             return yield* new NoteNotFoundError({ id: input.id });
           }
           const event: NoteRemovedEvent = {
+            version: 1,
             sequence: current.sequence + 1,
             type: "noteRemoved",
             id: input.id,
@@ -206,6 +209,7 @@ export const make = Effect.gen(function* () {
 
           const current = yield* SynchronizedRef.get(state);
           const snapshot: NotesSnapshotEvent = {
+            version: 1,
             sequence: current.sequence,
             type: "snapshot",
             notes: current.notes,

@@ -11,9 +11,6 @@ allowBuilds:
 
 overrides:
   "@effect/platform-node-shared": "catalog:"
-  # electron-builder's native-rebuild tooling needs a node-abi recent enough to
-  # know Electron 33's ABI.
-  node-abi: 4.31.0
   # Deduplicate electron-builder's transitive toml parser onto one version.
   toml: 4.1.1
 

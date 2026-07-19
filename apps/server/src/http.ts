@@ -189,7 +189,13 @@ export const staticAndDevRouteLayer = HttpRouter.add(
       });
     }
 
-    return yield* HttpServerResponse.file(filePath, { status: 200 }).pipe(
+    return yield* HttpServerResponse.file(filePath, {
+      status: 200,
+      headers: {
+        "Cache-Control": "private, max-age=3600",
+        "X-Content-Type-Options": "nosniff",
+      },
+    }).pipe(
       Effect.orElseSucceed(() => HttpServerResponse.text("Internal Server Error", { status: 500 })),
     );
   }),

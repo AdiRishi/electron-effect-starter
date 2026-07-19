@@ -1,5 +1,8 @@
 // Connection model + reconnect supervisor.
 export {
+  type ConnectionAttemptError,
+  ConnectionBlockedError,
+  ConnectionBlockedReason,
   type ConnectionPhase,
   type ConnectionState,
   ConnectionTransientError,

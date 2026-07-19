@@ -55,6 +55,7 @@ export class ElectronUpdater extends Context.Service<
   {
     readonly setFeedURL: (options: ElectronUpdaterFeedUrl) => Effect.Effect<void>;
     readonly setAutoDownload: (value: boolean) => Effect.Effect<void>;
+    readonly setAutoInstallOnAppQuit: (value: boolean) => Effect.Effect<void>;
     readonly setChannel: (channel: string) => Effect.Effect<void>;
     readonly checkForUpdates: Effect.Effect<void, ElectronUpdaterCheckForUpdatesError>;
     readonly downloadUpdate: Effect.Effect<void, ElectronUpdaterDownloadUpdateError>;
@@ -78,6 +79,11 @@ export const make = ElectronUpdater.of({
   setAutoDownload: (value) =>
     Effect.suspend(() => {
       autoUpdater.autoDownload = value;
+      return Effect.void;
+    }),
+  setAutoInstallOnAppQuit: (value) =>
+    Effect.suspend(() => {
+      autoUpdater.autoInstallOnAppQuit = value;
       return Effect.void;
     }),
   setChannel: (channel) =>

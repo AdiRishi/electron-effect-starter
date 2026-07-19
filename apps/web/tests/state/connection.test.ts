@@ -7,7 +7,9 @@ import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import * as Socket from "effect/unstable/socket/Socket";
 import { describe, expect, it, vi } from "vitest";
 
+import { BearerBootstrapError } from "@app/client-runtime/authorization";
 import {
+  ConnectionBlockedError,
   ConnectionTransientError,
   connectionSupervisorLayer,
   type PreparedConnection,
@@ -18,7 +20,7 @@ import {
   type WsRpcProtocolClient,
 } from "@app/client-runtime/rpc";
 
-import { createConnectionAtoms } from "../../src/state/connection.ts";
+import { createConnectionAtoms, mapBearerBootstrapError } from "../../src/state/connection.ts";
 
 const AT = DateTime.fromDateUnsafe(new Date(0));
 
@@ -44,9 +46,9 @@ const makeScriptedHarness = () => {
   const fakeClient = {
     "server.getConfig": () => Effect.succeed(SERVER_CONFIG),
     "server.subscribeLifecycle": () =>
-      Stream.fromIterable([{ sequence: 1, phase: "ready" as const, at: AT }]).pipe(
-        Stream.concat(Stream.never),
-      ),
+      Stream.fromIterable([
+        { version: 1 as const, sequence: 1, phase: "ready" as const, at: AT },
+      ]).pipe(Stream.concat(Stream.never)),
   } as unknown as WsRpcProtocolClient;
 
   const factory = {
@@ -119,5 +121,59 @@ describe("connection atoms", () => {
     });
 
     for (const unmount of unmounts) unmount();
+  });
+
+  it("surfaces a blocked connection distinctly from reconnecting", async () => {
+    const factory = {
+      connect: () =>
+        Effect.fail(
+          new ConnectionBlockedError({
+            reason: "authentication",
+            detail: "Authentication required.",
+          }),
+        ),
+    };
+    const layer = connectionSupervisorLayer(CONNECTION).pipe(
+      Layer.provide(Socket.layerWebSocketConstructorGlobal),
+      Layer.provide(Layer.succeed(RpcSessionFactory, factory)),
+    );
+    const atoms = createConnectionAtoms(Atom.runtime(layer));
+    const registry = AtomRegistry.make();
+
+    const unmount = registry.mount(atoms.state);
+
+    await vi.waitFor(() => {
+      expect(registry.get(atoms.state).phase).toBe("blocked");
+      expect(registry.get(atoms.state).lastError).toBe("Authentication required.");
+    });
+
+    unmount();
+  });
+});
+
+describe("mapBearerBootstrapError", () => {
+  it("blocks an HTTP 401 as an authentication rejection", () => {
+    const error = mapBearerBootstrapError(
+      new BearerBootstrapError({ detail: "HTTP 401 Unauthorized", status: 401 }),
+    );
+    expect(error).toBeInstanceOf(ConnectionBlockedError);
+    expect(error).toMatchObject({ reason: "authentication", detail: "HTTP 401 Unauthorized" });
+  });
+
+  it("blocks an HTTP 403 as a permission rejection", () => {
+    const error = mapBearerBootstrapError(
+      new BearerBootstrapError({ detail: "HTTP 403 Forbidden", status: 403 }),
+    );
+    expect(error).toBeInstanceOf(ConnectionBlockedError);
+    expect(error).toMatchObject({ reason: "permission", detail: "HTTP 403 Forbidden" });
+  });
+
+  it("keeps every other failure transient", () => {
+    expect(
+      mapBearerBootstrapError(new BearerBootstrapError({ detail: "fetch failed" })),
+    ).toBeInstanceOf(ConnectionTransientError);
+    expect(
+      mapBearerBootstrapError(new BearerBootstrapError({ detail: "HTTP 503", status: 503 })),
+    ).toBeInstanceOf(ConnectionTransientError);
   });
 });
