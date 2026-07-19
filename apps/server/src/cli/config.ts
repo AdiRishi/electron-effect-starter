@@ -18,12 +18,14 @@ import { Flag } from "effect/unstable/cli";
  *
  * @module cli/config
  */
+import { Port } from "@app/contracts";
 import { HostProcessEnvironment } from "@app/shared/hostProcess";
 
 import { type BootstrapEnvelope, readBootstrapEnvelope } from "../bootstrap.ts";
 import * as ServerConfig from "../config.ts";
 
 export const portFlag = Flag.integer("port").pipe(
+  Flag.withSchema(Port),
   Flag.withDescription("Port for the HTTP/WebSocket server (default 13773 or APP_SERVER_PORT)."),
   Flag.optional,
 );
@@ -74,6 +76,9 @@ const parsePortOption = (value: string | undefined): number | undefined => {
 /** Resolve the full server config from flags + bootstrap envelope + env. */
 export const resolveServerConfig = Effect.fn("cli.resolveServerConfig")(function* (
   flags: CliServerFlags,
+  options?: {
+    timeoutMs?: number;
+  },
 ) {
   const env = yield* HostProcessEnvironment;
   const crypto = yield* Crypto.Crypto;
@@ -82,7 +87,7 @@ export const resolveServerConfig = Effect.fn("cli.resolveServerConfig")(function
   const bootstrapFd = Option.getOrUndefined(flags.bootstrapFd);
   const bootstrapEnvelope =
     bootstrapFd !== undefined
-      ? yield* readBootstrapEnvelope(bootstrapFd)
+      ? yield* readBootstrapEnvelope(bootstrapFd, options)
       : Option.none<BootstrapEnvelope>();
   const bootstrap = Option.getOrUndefined(bootstrapEnvelope);
 

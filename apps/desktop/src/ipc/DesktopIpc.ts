@@ -53,6 +53,13 @@ export class DesktopIpcUnregistrationError extends Schema.TaggedErrorClass<Deskt
   }
 }
 
+export const DesktopIpcError = Schema.Union([
+  DesktopIpcRegistrationError,
+  DesktopIpcUnregistrationError,
+]);
+export type DesktopIpcError = typeof DesktopIpcError.Type;
+export const isDesktopIpcError = Schema.is(DesktopIpcError);
+
 export interface DesktopIpcMethod<E, R> {
   readonly channel: string;
   readonly handler: (raw: unknown) => Effect.Effect<unknown, E, R>;

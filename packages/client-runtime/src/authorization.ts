@@ -9,13 +9,16 @@ const BOOTSTRAP_TIMEOUT = Duration.seconds(10);
 
 /**
  * Raised when the bearer-bootstrap exchange fails — a network error, a non-2xx
- * status, or a response that does not decode as a `BearerSession`. The web app
- * surfaces this as "could not reach the server".
+ * status, or a response that does not decode as a `BearerSession`. `status`
+ * carries the HTTP status when the server answered with one, so callers can
+ * tell an auth rejection (401/403 — retrying is pointless) apart from a
+ * network or timeout failure (retrying may succeed).
  */
 export class BearerBootstrapError extends Schema.TaggedErrorClass<BearerBootstrapError>()(
   "BearerBootstrapError",
   {
     detail: Schema.String,
+    status: Schema.optionalKey(Schema.Number),
   },
 ) {
   override get message(): string {
@@ -57,18 +60,25 @@ export const bootstrapRemoteBearerSession = (input: {
     };
 
     return yield* Effect.tryPromise({
-      try: async () => {
+      try: async (signal) => {
         const response = await globalThis.fetch(url, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
+          signal,
         });
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status} ${response.statusText}`);
+          throw new BearerBootstrapError({
+            detail: `Could not bootstrap a bearer session from ${input.httpBaseUrl}: HTTP ${response.status} ${response.statusText}`,
+            status: response.status,
+          });
         }
         return await response.json();
       },
-      catch: (cause) => bearerBootstrapError(input.httpBaseUrl, cause),
+      catch: (cause) =>
+        cause instanceof BearerBootstrapError
+          ? cause
+          : bearerBootstrapError(input.httpBaseUrl, cause),
     }).pipe(
       Effect.flatMap((json) =>
         decodeBearerSession(json).pipe(

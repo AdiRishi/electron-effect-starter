@@ -15,14 +15,17 @@ const STATUS_LABEL: Record<ConnectionPhase, string> = {
   connecting: "connecting",
   connected: "connected",
   reconnecting: "reconnecting",
+  blocked: "blocked",
 };
 
 // Connected wears the accent: the brand color IS the color of a live bus.
+// Blocked is steady red — the supervisor is parked, not trying.
 const STATUS_DOT: Record<ConnectionPhase, string> = {
   idle: "bg-muted",
   connecting: "bg-amber-400 animate-pulse",
   connected: "bg-accent",
   reconnecting: "bg-amber-400 animate-pulse",
+  blocked: "bg-red-400",
 };
 
 const THEMES: readonly DesktopTheme[] = ["light", "dark", "system"];

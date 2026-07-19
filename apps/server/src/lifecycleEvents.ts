@@ -51,6 +51,7 @@ const make = Effect.gen(function* () {
       Ref.modify(state, (current) => {
         const nextSequence = current.sequence + 1;
         const nextEvent: ServerLifecycleStreamEvent = {
+          version: 1,
           sequence: nextSequence,
           phase: input.phase,
           at: input.at,

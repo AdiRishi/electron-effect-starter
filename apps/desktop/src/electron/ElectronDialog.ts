@@ -35,6 +35,19 @@ export class ElectronDialogConfirmError extends Schema.TaggedErrorClass<Electron
   }
 }
 
+export class ElectronDialogShowErrorBoxError extends Schema.TaggedErrorClass<ElectronDialogShowErrorBoxError>()(
+  "ElectronDialogShowErrorBoxError",
+  {
+    titleLength: Schema.Number,
+    contentLength: Schema.Number,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Failed to show the Electron error box with a ${this.titleLength}-character title and ${this.contentLength}-character content.`;
+  }
+}
+
 export interface ElectronDialogPickFolderInput {
   readonly owner: Option.Option<Electron.BrowserWindow>;
   readonly defaultPath: Option.Option<string>;
@@ -128,8 +141,13 @@ export const make = ElectronDialog.of({
   showErrorBox: (title, content) =>
     Effect.try({
       try: () => Electron.dialog.showErrorBox(title, content),
-      catch: (cause) => cause,
-    }).pipe(Effect.ignore),
+      catch: (cause) =>
+        new ElectronDialogShowErrorBoxError({
+          titleLength: title.length,
+          contentLength: content.length,
+          cause,
+        }),
+    }).pipe(Effect.orDie),
 });
 
 export const layer = Layer.succeed(ElectronDialog, make);

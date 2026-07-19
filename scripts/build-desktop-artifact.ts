@@ -39,6 +39,48 @@ function run(command: string, args: ReadonlyArray<string>, cwd = REPO_ROOT): voi
   NodeChildProcess.execFileSync(command, args, { cwd, stdio: "inherit" });
 }
 
+function validateBundledClientAssets(clientDir: string): void {
+  const indexPath = NodePath.join(clientDir, "index.html");
+  if (!NodeFS.existsSync(indexPath)) {
+    throw new Error(
+      `[desktop-artifact] ${indexPath} is missing. The web build output is missing or stale; ` +
+        "run `pnpm --filter @app/web build` and retry.",
+    );
+  }
+  const assetsDir = NodePath.join(clientDir, "assets");
+  if (!NodeFS.existsSync(assetsDir) || NodeFS.readdirSync(assetsDir).length === 0) {
+    throw new Error(
+      `[desktop-artifact] ${assetsDir} is empty or missing. The web build output is missing ` +
+        "or stale; run `pnpm --filter @app/web build` and retry.",
+    );
+  }
+}
+
+/**
+ * Carries the root workspace's `allowBuilds` entries into the staged
+ * workspace config. Without them the staged `pnpm install --prod` fails with
+ * ERR_PNPM_IGNORED_BUILDS for dependencies that have lifecycle scripts.
+ */
+function readWorkspaceAllowBuilds(): Record<string, boolean> {
+  const raw = NodeFS.readFileSync(NodePath.join(REPO_ROOT, "pnpm-workspace.yaml"), "utf8");
+  const allowBuilds: Record<string, boolean> = {};
+  let inBlock = false;
+  for (const line of raw.split("\n")) {
+    if (/^allowBuilds:\s*$/.test(line)) {
+      inBlock = true;
+      continue;
+    }
+    if (!inBlock) continue;
+    const entry = /^ {2}([^\s:]+):\s*(true|false)\s*$/.exec(line);
+    if (entry) {
+      allowBuilds[entry[1] as string] = entry[2] === "true";
+      continue;
+    }
+    if (line.trim().length > 0 && !line.startsWith(" ")) inBlock = false;
+  }
+  return allowBuilds;
+}
+
 function main(): void {
   // 1. Build all three packages (order matters: the server serves the web build).
   run("pnpm", ["--filter", "@app/web", "build"]);
@@ -59,6 +101,7 @@ function main(): void {
   copy("apps/desktop/dist-electron", "apps/desktop/dist-electron");
   copy("apps/server/dist", "apps/server/dist");
   copy("apps/web/dist", "apps/server/dist/client");
+  validateBundledClientAssets(NodePath.join(stage, "apps/server/dist/client"));
 
   const desktopPackageJson = JSON.parse(
     NodeFS.readFileSync(NodePath.join(REPO_ROOT, "apps/desktop/package.json"), "utf8"),
@@ -90,7 +133,17 @@ function main(): void {
       2,
     ),
   );
-  NodeFS.writeFileSync(NodePath.join(stage, "pnpm-workspace.yaml"), "packages: []\n");
+  const allowBuilds = readWorkspaceAllowBuilds();
+  const allowBuildsYaml =
+    Object.keys(allowBuilds).length > 0
+      ? `allowBuilds:\n${Object.entries(allowBuilds)
+          .map(([name, allowed]) => `  ${name}: ${String(allowed)}`)
+          .join("\n")}\n`
+      : "";
+  NodeFS.writeFileSync(
+    NodePath.join(stage, "pnpm-workspace.yaml"),
+    `packages: []\n${allowBuildsYaml}`,
+  );
 
   process.stdout.write("\n[desktop-artifact] Installing staged production dependencies...\n");
   run("pnpm", ["install", "--prod"], stage);

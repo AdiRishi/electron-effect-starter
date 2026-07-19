@@ -33,6 +33,12 @@ import * as NotesStore from "./notes/NotesStore.ts";
 import * as Readiness from "./readiness.ts";
 import { websocketRpcRouteLayer } from "./ws.ts";
 
+// Effect's default preemptive shutdown waits 20s before finalizing request scopes.
+// The app's primary transport is long-lived WebSocket RPC, whose Effect scope
+// finalizer already closes the websocket gracefully. Do not add an artificial
+// drain before those finalizers get a chance to run.
+const HTTP_PREEMPTIVE_SHUTDOWN_GRACE_MS = 0;
+
 /**
  * All HTTP routes. Order matters only for the `*` catch-all, which HttpRouter
  * dispatches after the exact-path routes. CORS wraps the whole router.
@@ -59,6 +65,7 @@ export const makeServerLayer = Layer.unwrap(
     const httpServerLayer = NodeHttpServer.layer(NodeHttp.createServer, {
       host: config.host,
       port: config.port,
+      gracefulShutdownTimeout: HTTP_PREEMPTIVE_SHUTDOWN_GRACE_MS,
     });
 
     // Publish `starting` immediately as the runtime spins up.

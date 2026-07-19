@@ -17,13 +17,13 @@
     "@app/shared": "workspace:*",
     "@effect/platform-node": "catalog:",
     "effect": "catalog:",
-    "electron": "^33.0.0",
+    "electron": "41.5.0",
     "electron-updater": "^6.8.9"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
-    "electron-builder": "26.15.3",
+    "electron-builder": "26.15.6",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:"

@@ -41,6 +41,7 @@ const NOTE_B = note("b", "second", 2_000);
 describe("applyNotesEvent", () => {
   it("replaces state on snapshot and marks snapshot notes revision 0", () => {
     const view = applyNotesEvent(INITIAL_NOTES_VIEW, {
+      version: 1,
       sequence: 5,
       type: "snapshot",
       notes: [NOTE_A, NOTE_B],
@@ -51,19 +52,29 @@ describe("applyNotesEvent", () => {
   });
 
   it("upserts with the event sequence as the revision, and removes by id", () => {
-    let view = applyNotesEvent(INITIAL_NOTES_VIEW, { sequence: 1, type: "snapshot", notes: [] });
-    view = applyNotesEvent(view, { sequence: 2, type: "noteUpserted", note: NOTE_A });
+    let view = applyNotesEvent(INITIAL_NOTES_VIEW, {
+      version: 1,
+      sequence: 1,
+      type: "snapshot",
+      notes: [],
+    });
+    view = applyNotesEvent(view, { version: 1, sequence: 2, type: "noteUpserted", note: NOTE_A });
     expect(view.entries.get(NOTE_A.id)).toEqual({ note: NOTE_A, revision: 2 });
 
-    view = applyNotesEvent(view, { sequence: 3, type: "noteRemoved", id: NOTE_A.id });
+    view = applyNotesEvent(view, { version: 1, sequence: 3, type: "noteRemoved", id: NOTE_A.id });
     expect(view.entries.size).toBe(0);
     expect(view.sequence).toBe(3);
   });
 
   it("a reconnect snapshot resets revisions so nothing re-flashes", () => {
-    let view = applyNotesEvent(INITIAL_NOTES_VIEW, { sequence: 1, type: "snapshot", notes: [] });
-    view = applyNotesEvent(view, { sequence: 2, type: "noteUpserted", note: NOTE_A });
-    view = applyNotesEvent(view, { sequence: 2, type: "snapshot", notes: [NOTE_A] });
+    let view = applyNotesEvent(INITIAL_NOTES_VIEW, {
+      version: 1,
+      sequence: 1,
+      type: "snapshot",
+      notes: [],
+    });
+    view = applyNotesEvent(view, { version: 1, sequence: 2, type: "noteUpserted", note: NOTE_A });
+    view = applyNotesEvent(view, { version: 1, sequence: 2, type: "snapshot", notes: [NOTE_A] });
     expect(view.entries.get(NOTE_A.id)?.revision).toBe(0);
   });
 });
@@ -109,8 +120,8 @@ const makeScriptedHarness = (events: ReadonlyArray<NotesStreamEvent>) => {
 describe("notes atoms", () => {
   it("folds the subscription into a newest-first list", async () => {
     const harness = makeScriptedHarness([
-      { sequence: 1, type: "snapshot", notes: [NOTE_A] },
-      { sequence: 2, type: "noteUpserted", note: NOTE_B },
+      { version: 1, sequence: 1, type: "snapshot", notes: [NOTE_A] },
+      { version: 1, sequence: 2, type: "noteUpserted", note: NOTE_B },
     ]);
     const atoms = createNotesAtoms(Atom.runtime(harness.layer));
     const registry = AtomRegistry.make();
@@ -131,7 +142,7 @@ describe("notes atoms", () => {
   });
 
   it("sends create calls through the live session", async () => {
-    const harness = makeScriptedHarness([{ sequence: 1, type: "snapshot", notes: [] }]);
+    const harness = makeScriptedHarness([{ version: 1, sequence: 1, type: "snapshot", notes: [] }]);
     const atoms = createNotesAtoms(Atom.runtime(harness.layer));
     const registry = AtomRegistry.make();
 

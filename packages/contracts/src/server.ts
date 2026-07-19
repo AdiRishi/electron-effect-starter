@@ -35,6 +35,7 @@ export const ServerLifecyclePhase = Schema.Literals(["starting", "ready", "drain
 export type ServerLifecyclePhase = typeof ServerLifecyclePhase.Type;
 
 export const ServerLifecycleStreamEvent = Schema.Struct({
+  version: Schema.Literal(1),
   sequence: NonNegativeInt,
   phase: ServerLifecyclePhase,
   at: Schema.DateTimeUtc,

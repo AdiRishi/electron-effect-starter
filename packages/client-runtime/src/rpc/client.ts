@@ -107,25 +107,27 @@ export const subscribe = <TTag extends StreamRpcTag>(
               const method = session.client[tag] as (
                 input: RpcInput<TTag>,
               ) => Stream.Stream<RpcStreamValue<TTag>, RpcStreamFailure<TTag>>;
-              return method(input).pipe(
-                Stream.catchCause((cause) => {
-                  const isTransportFailure =
-                    cause.reasons.length > 0 &&
-                    cause.reasons.every(
-                      (reason) => reason._tag === "Fail" && isRpcClientError(reason.error),
-                    );
-                  if (isTransportFailure) {
-                    // Go quiet; the session ref will emit None then a fresh
-                    // session, which re-attaches this subscription.
-                    return Stream.fromEffect(
-                      Effect.logWarning(
-                        "RPC subscription lost its transport; waiting for the next session.",
-                        { method: tag, cause: Cause.pretty(cause) },
-                      ),
-                    ).pipe(Stream.drain);
-                  }
-                  return Stream.failCause(cause);
-                }),
+              return Stream.suspend(() =>
+                method(input).pipe(
+                  Stream.catchCause((cause) => {
+                    const isTransportFailure =
+                      cause.reasons.length > 0 &&
+                      cause.reasons.every(
+                        (reason) => reason._tag === "Fail" && isRpcClientError(reason.error),
+                      );
+                    if (isTransportFailure) {
+                      // Go quiet; the session ref will emit None then a fresh
+                      // session, which re-attaches this subscription.
+                      return Stream.fromEffect(
+                        Effect.logWarning(
+                          "RPC subscription lost its transport; waiting for the next session.",
+                          { method: tag, cause: Cause.pretty(cause) },
+                        ),
+                      ).pipe(Stream.drain);
+                    }
+                    return Stream.failCause(cause);
+                  }),
+                ),
               );
             },
           }),

@@ -45,6 +45,25 @@ describe("readEnvFile", () => {
     });
   });
 
+  it("handles quoted values with escapes, inline comments, and export prefixes", () => {
+    write(
+      ".env",
+      [
+        'MULTILINE="line1\\nline2"',
+        'HASH="quoted # not a comment"',
+        "INLINE=value # trailing comment",
+        "export EXPORTED=via-export",
+      ].join("\n"),
+    );
+
+    expect(readEnvFile(NodePath.join(dir, ".env"))).toEqual({
+      MULTILINE: "line1\nline2",
+      HASH: "quoted # not a comment",
+      INLINE: "value",
+      EXPORTED: "via-export",
+    });
+  });
+
   it("returns an empty record for a missing file", () => {
     expect(readEnvFile(NodePath.join(dir, "missing.env"))).toEqual({});
   });

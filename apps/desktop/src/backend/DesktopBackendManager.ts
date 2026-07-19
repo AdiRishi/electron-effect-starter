@@ -8,6 +8,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 import * as Ref from "effect/Ref";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
@@ -63,6 +64,42 @@ export class DesktopBackendBootstrapEncodeError extends Schema.TaggedErrorClass<
   override get message(): string {
     return "Failed to encode the backend bootstrap envelope.";
   }
+}
+
+class BackendProcessSpawnError extends Schema.TaggedErrorClass<BackendProcessSpawnError>()(
+  "BackendProcessSpawnError",
+  {
+    executablePath: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Failed to spawn the desktop backend process at ${this.executablePath}.`;
+  }
+}
+
+interface BackendProcessExit {
+  readonly code: Option.Option<number>;
+  readonly reason: string;
+  readonly result: Result.Result<ChildProcessSpawner.ExitCode, PlatformError.PlatformError>;
+}
+
+function describeProcessExit(
+  result: Result.Result<ChildProcessSpawner.ExitCode, PlatformError.PlatformError>,
+): BackendProcessExit {
+  if (Result.isSuccess(result)) {
+    return {
+      code: Option.some(result.success),
+      reason: `code=${result.success}`,
+      result,
+    };
+  }
+
+  return {
+    code: Option.none(),
+    reason: result.failure.message,
+    result,
+  };
 }
 
 interface DesktopBackendReadyCallbacks {
@@ -153,8 +190,8 @@ const runBackendProcess = Effect.fn("desktop.backend.runBackendProcess")(functio
     readonly onReadinessFailure: (error: DesktopBackendReadinessError) => Effect.Effect<void>;
   },
 ): Effect.fn.Return<
-  void,
-  PlatformError.PlatformError | DesktopBackendBootstrapEncodeError,
+  BackendProcessExit,
+  DesktopBackendBootstrapEncodeError | BackendProcessSpawnError,
   | ChildProcessSpawner.ChildProcessSpawner
   | FileSystem.FileSystem
   | HttpClient.HttpClient
@@ -184,7 +221,13 @@ const runBackendProcess = Effect.fn("desktop.backend.runBackendProcess")(functio
     },
   });
 
-  const handle = yield* spawner.spawn(command);
+  const handle = yield* spawner
+    .spawn(command)
+    .pipe(
+      Effect.mapError(
+        (cause) => new BackendProcessSpawnError({ executablePath: config.executablePath, cause }),
+      ),
+    );
   yield* callbacks.onStarted(handle.pid);
 
   if (output._tag === "file") {
@@ -223,8 +266,9 @@ const runBackendProcess = Effect.fn("desktop.backend.runBackendProcess")(functio
   );
 
   // Block on the child's exit. When it resolves the run scope closes and the
-  // finalize path decides whether to restart.
-  yield* handle.exitCode;
+  // finalize path decides whether to restart, with the exit code (or kill
+  // signal) carried in the restart reason.
+  return describeProcessExit(yield* Effect.result(handle.exitCode));
 });
 
 // Builds a backend manager bound to the given readiness callbacks. `layer`
@@ -434,7 +478,7 @@ export const makeManager = (
             Scope.provide(runScope),
             Effect.matchEffect({
               onFailure: (error) => finalizeRun(error.message),
-              onSuccess: () => finalizeRun("exited"),
+              onSuccess: (exit) => finalizeRun(exit.reason),
             }),
             Effect.ensuring(Scope.close(runScope, Exit.void).pipe(Effect.ignore)),
           );
