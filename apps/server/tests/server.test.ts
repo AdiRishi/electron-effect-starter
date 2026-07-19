@@ -226,11 +226,13 @@ describe("websocket gate", () => {
     Effect.gen(function* () {
       const liveEvents = yield* PubSub.unbounded<ServerLifecycleStreamEvent>();
       const snapshotEvent: ServerLifecycleStreamEvent = {
+        version: 1,
         sequence: 1,
         phase: "starting",
         at: DateTime.makeUnsafe("2026-01-01T00:00:00.000Z"),
       };
       const liveEvent: ServerLifecycleStreamEvent = {
+        version: 1,
         sequence: 2,
         phase: "ready",
         at: DateTime.makeUnsafe("2026-01-01T00:00:01.000Z"),

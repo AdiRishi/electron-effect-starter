@@ -44,9 +44,9 @@ const makeScriptedHarness = () => {
   const fakeClient = {
     "server.getConfig": () => Effect.succeed(SERVER_CONFIG),
     "server.subscribeLifecycle": () =>
-      Stream.fromIterable([{ sequence: 1, phase: "ready" as const, at: AT }]).pipe(
-        Stream.concat(Stream.never),
-      ),
+      Stream.fromIterable([
+        { version: 1 as const, sequence: 1, phase: "ready" as const, at: AT },
+      ]).pipe(Stream.concat(Stream.never)),
   } as unknown as WsRpcProtocolClient;
 
   const factory = {

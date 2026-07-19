@@ -53,6 +53,7 @@ export type NoteDeleteInput = typeof NoteDeleteInput.Type;
  * folds them into current state without gaps or duplicates.
  */
 export const NotesSnapshotEvent = Schema.Struct({
+  version: Schema.Literal(1),
   sequence: NonNegativeInt,
   type: Schema.Literal("snapshot"),
   notes: Schema.Array(Note),
@@ -60,6 +61,7 @@ export const NotesSnapshotEvent = Schema.Struct({
 export type NotesSnapshotEvent = typeof NotesSnapshotEvent.Type;
 
 export const NoteUpsertedEvent = Schema.Struct({
+  version: Schema.Literal(1),
   sequence: NonNegativeInt,
   type: Schema.Literal("noteUpserted"),
   note: Note,
@@ -67,6 +69,7 @@ export const NoteUpsertedEvent = Schema.Struct({
 export type NoteUpsertedEvent = typeof NoteUpsertedEvent.Type;
 
 export const NoteRemovedEvent = Schema.Struct({
+  version: Schema.Literal(1),
   sequence: NonNegativeInt,
   type: Schema.Literal("noteRemoved"),
   id: NoteId,
