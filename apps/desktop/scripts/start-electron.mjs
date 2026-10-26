@@ -1,8 +1,8 @@
 import * as NodeChildProcess from "node:child_process";
 
-import { desktopDir, electronEnv, electronPath } from "./electron.mjs";
+import { desktopDir, electronEnv, electronLaunchArgs, electronPath } from "./electron.mjs";
 
-const child = NodeChildProcess.spawn(electronPath, ["."], {
+const child = NodeChildProcess.spawn(electronPath, electronLaunchArgs(["."]), {
   stdio: "inherit",
   cwd: desktopDir,
   env: electronEnv(),

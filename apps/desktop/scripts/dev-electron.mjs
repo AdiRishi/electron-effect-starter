@@ -1,8 +1,9 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { desktopDir, electronEnv, electronPath } from "./electron.mjs";
+import { desktopDir, electronEnv, electronLaunchArgs, electronPath } from "./electron.mjs";
 import { waitForResources } from "./wait-for-resources.mjs";
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL?.trim();
@@ -25,6 +26,11 @@ const watchedDirectories = [
 
 const forcedShutdownTimeoutMs = 1_500;
 const restartDebounceMs = 120;
+const childTreeGracePeriodMs = 1_200;
+const hostPlatform = NodeOS.platform();
+
+// Tags this runner's Electron processes so a later run can find ones a crash left behind.
+const devRootArg = `--app-dev-root=${desktopDir}`;
 
 await waitForResources({
   baseDir: desktopDir,
@@ -40,10 +46,39 @@ let restartQueue = Promise.resolve();
 const expectedExits = new WeakSet();
 const watchers = [];
 
+// Electron's children, including the server it supervises, outlive a SIGKILL of Electron itself.
+function killChildTreeByPid(pid, signal) {
+  if (hostPlatform === "win32" || pid === undefined) return;
+
+  NodeChildProcess.spawnSync("pkill", [`-${signal}`, "-P", String(pid)], { stdio: "ignore" });
+}
+
+function cleanupStaleDevApps() {
+  if (hostPlatform === "win32") return;
+
+  const escapedDesktopDir = desktopDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  NodeChildProcess.spawnSync(
+    "pkill",
+    ["-f", "--", `(^| )--app-dev-root=${escapedDesktopDir}( |$)`],
+    {
+      stdio: "ignore",
+    },
+  );
+}
+
+function killChildTree(signal) {
+  if (hostPlatform === "win32") return;
+
+  NodeChildProcess.spawnSync("pkill", [`-${signal}`, "-P", String(process.pid)], {
+    stdio: "ignore",
+  });
+}
+
 function startApp() {
   if (shuttingDown || currentApp !== null) return;
 
-  const app = NodeChildProcess.spawn(electronPath, ["."], {
+  const app = NodeChildProcess.spawn(electronPath, electronLaunchArgs([devRootArg, "."]), {
     cwd: desktopDir,
     env: electronEnv(),
     stdio: "inherit",
@@ -85,9 +120,13 @@ async function stopApp() {
 
     app.once("exit", finish);
     app.kill("SIGTERM");
+    killChildTreeByPid(app.pid, "TERM");
+    cleanupStaleDevApps();
     setTimeout(() => {
       if (settled) return;
       app.kill("SIGKILL");
+      killChildTreeByPid(app.pid, "KILL");
+      cleanupStaleDevApps();
       finish();
     }, forcedShutdownTimeoutMs).unref();
   });
@@ -117,6 +156,9 @@ async function shutdown(exitCode) {
 
   for (const watcher of watchers) watcher.close();
   await stopApp();
+  killChildTree("TERM");
+  await new Promise((resolve) => setTimeout(resolve, childTreeGracePeriodMs));
+  killChildTree("KILL");
   process.exit(exitCode);
 }
 
@@ -127,6 +169,8 @@ for (const { directory, files } of watchedDirectories) {
     }),
   );
 }
+
+cleanupStaleDevApps();
 
 startApp();
 

@@ -1,12 +1,12 @@
 import * as NodeChildProcess from "node:child_process";
 
-import { desktopDir, electronEnv, electronPath } from "./electron.mjs";
+import { desktopDir, electronEnv, electronLaunchArgs, electronPath } from "./electron.mjs";
 
 // Launches the packaged entry point against the built server and web app, and fails on the
 // errors a broken bundle produces at startup.
 console.log("\nLaunching Electron smoke test...");
 
-const child = NodeChildProcess.spawn(electronPath, ["."], {
+const child = NodeChildProcess.spawn(electronPath, electronLaunchArgs(["."]), {
   cwd: desktopDir,
   stdio: ["ignore", "pipe", "pipe"],
   env: electronEnv({ VITE_DEV_SERVER_URL: "", ELECTRON_ENABLE_LOGGING: "1" }),
