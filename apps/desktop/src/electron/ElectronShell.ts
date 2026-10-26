@@ -40,7 +40,7 @@ const make = ElectronShell.of({
     });
   }),
   copyText: Effect.fn("ElectronShell.copyText")(function (text: string) {
-    return Effect.sync(() => Electron.clipboard.writeText(text));
+    return Effect.promise(() => Electron.clipboard.writeText(text).catch(() => undefined));
   }),
 });
 
