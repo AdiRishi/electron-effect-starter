@@ -109,6 +109,9 @@ export default defineConfig({
     "anti-slop-effect/no-manual-tagged-construction": "error",
     "anti-slop-effect/no-service-constructor-imports": "error",
     "anti-slop-effect/prefer-effect-match": "error",
+
+    "app/no-dom-test-environment": "error",
+    "app/no-unscoped-has": "error",
   },
   overrides: [
     {
@@ -156,6 +159,12 @@ export default defineConfig({
       // React Compiler caches use* functions only if they call a hook.
       files: ["apps/web/src/**/*.{ts,tsx}"],
       rules: { "app/no-hookless-use-function": "error" },
+    },
+
+    {
+      // Copy in shipped code is what users read; test fixtures are not copy.
+      files: ["apps/*/src/**", "packages/*/src/**"],
+      rules: { "app/no-em-dash-copy": "error" },
     },
   ],
 });

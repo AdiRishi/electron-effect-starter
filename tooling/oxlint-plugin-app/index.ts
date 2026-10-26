@@ -18,6 +18,10 @@ import preferEffectFn from "./rules/prefer-effect-fn.ts";
 import requireDisposableRender from "./rules/require-disposable-render.ts";
 import requireSuppressionReason from "./rules/require-suppression-reason.ts";
 
+import noDomTestEnvironment from "./rules/no-dom-test-environment.ts";
+import noEmDashCopy from "./rules/no-em-dash-copy.ts";
+import noUnscopedHas from "./rules/no-unscoped-has.ts";
+
 export default definePlugin({
   meta: {
     name: "app",
@@ -40,5 +44,9 @@ export default definePlugin({
     "prefer-effect-fn": preferEffectFn,
     "require-disposable-render": requireDisposableRender,
     "require-suppression-reason": requireSuppressionReason,
+
+    "no-dom-test-environment": noDomTestEnvironment,
+    "no-em-dash-copy": noEmDashCopy,
+    "no-unscoped-has": noUnscopedHas,
   },
 });
