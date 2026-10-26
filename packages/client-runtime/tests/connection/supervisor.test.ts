@@ -6,6 +6,8 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
+import * as RpcClient from "effect/rpc/RpcClient";
+import * as RpcSerialization from "effect/rpc/RpcSerialization";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
@@ -21,11 +23,24 @@ import * as ConnectionSupervisor from "../../src/connection/supervisor.ts";
 import * as ConnectionTarget from "../../src/connection/target.ts";
 import * as ConnectionWakeups from "../../src/connection/wakeups.ts";
 import * as RpcSession from "../../src/rpc/session.ts";
-import type { WsRpcProtocolClient } from "../../src/rpc/protocol.ts";
+import { makeWsRpcProtocolClient } from "../../src/rpc/protocol.ts";
 
 type ProbeBehavior = "answer" | "hang";
 
 // The WebSocket and the HTTP ticket request are the external seams; everything else is real.
+
+// The supervisor manages a session's lifecycle and never sends a request, so the client's
+// transport never answers.
+const layerInertProtocol = Layer.succeed(
+  RpcClient.Protocol,
+  RpcClient.Protocol.of({
+    run: () => Effect.never,
+    send: () => Effect.void,
+    supportsAck: true,
+    supportsTransferables: false,
+    codecFor: RpcSerialization.json.codecFor,
+  }),
+);
 const makeHarness = Effect.fn("test.makeHarness")(function* (options?: {
   readonly prepareFailures?: ReadonlyArray<ConnectionAttemptError>;
 }) {
@@ -56,8 +71,7 @@ const makeHarness = Effect.fn("test.makeHarness")(function* (options?: {
           yield* Ref.update(sessionsOpened, (count) => count + 1);
           const closed = yield* Deferred.make<never, ConnectionAttemptError>();
           return {
-            // The supervisor never calls the client; the session's lifecycle is what it manages.
-            client: {} as WsRpcProtocolClient,
+            client: yield* makeWsRpcProtocolClient.pipe(Effect.provide(layerInertProtocol)),
             ready: Effect.void,
             probe: Ref.get(probe).pipe(
               Effect.flatMap((behavior) =>
