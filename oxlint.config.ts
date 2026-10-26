@@ -24,6 +24,18 @@ export default defineConfig({
     "release",
     "node_modules",
     "**/routeTree.gen.ts",
+    // Agent tooling, including worktrees agents create inside the repo.
+    ".agent/**",
+    ".agents/**",
+    ".claude/**",
+    ".codex/**",
+    ".continue/**",
+    ".cursor/**",
+    ".gemini/**",
+    ".opencode/**",
+    ".pi/**",
+    ".roo/**",
+    ".windsurf/**",
     // Lint plugins are not linted with themselves.
     "tooling/oxlint-plugin-app/**",
     "tooling/oxlint-plugin-anti-slop/**",

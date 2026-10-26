@@ -12,3 +12,4 @@ release/
 .vitest-*
 __screenshots__/
 .tanstack/
+.claude/worktrees/
