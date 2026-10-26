@@ -11,7 +11,7 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { build, type Configuration } from "electron-builder";
 
-import desktopPackage from "../apps/desktop/package.json" with { type: "json" };
+import desktopPackage from "../../apps/desktop/package.json" with { type: "json" };
 
 const APP_ID = "com.example.electron-effect-starter";
 const ARTIFACT_NAME = "electron-effect-starter";
@@ -87,7 +87,7 @@ const program = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const release = yield* ReleaseConfig;
-  const repoRoot = path.resolve(import.meta.dirname, "..");
+  const repoRoot = path.resolve(import.meta.dirname, "../..");
   const publish = process.argv.includes("--publish");
 
   for (const output of REQUIRED_BUILD_OUTPUTS) {

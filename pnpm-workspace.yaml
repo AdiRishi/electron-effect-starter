@@ -1,8 +1,7 @@
 packages:
   - apps/*
   - packages/*
-  - oxlint-plugin-app
-  - scripts
+  - tooling/*
 
 # Every dependency must have been published for at least a day before it installs.
 minimumReleaseAge: 1440

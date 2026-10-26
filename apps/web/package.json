@@ -25,6 +25,8 @@
   },
   "devDependencies": {
     "@app/shared": "workspace:*",
+    "@app/tsconfig": "workspace:*",
+    "@app/vitest-config": "workspace:*",
     "@effect/vitest": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "@tanstack/router-plugin": "catalog:",

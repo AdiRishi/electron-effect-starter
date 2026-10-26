@@ -11,6 +11,7 @@
     "effect": "catalog:"
   },
   "devDependencies": {
+    "@app/tsconfig": "workspace:*",
     "@types/node": "catalog:",
     "electron-builder": "catalog:"
   }

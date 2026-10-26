@@ -21,6 +21,8 @@
     "effect": "catalog:"
   },
   "devDependencies": {
+    "@app/tsconfig": "workspace:*",
+    "@app/vitest-config": "workspace:*",
     "@effect/vitest": "catalog:",
     "vitest": "catalog:"
   }

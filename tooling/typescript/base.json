@@ -83,9 +83,10 @@
           // Tagged errors already discriminate on _tag; a brand would only add noise.
           "schemaClassMissingBrand": "off"
         },
+        // Override globs resolve from this file's directory, two levels below the repository root.
         "overrides": [
           {
-            "include": ["**/*.test.ts", "**/*.test.tsx"],
+            "include": ["../../**/*.test.ts", "../../**/*.test.tsx"],
             "options": {
               "diagnosticSeverity": {
                 "preferSchemaOverJson": "off",
@@ -95,11 +96,11 @@
           },
           {
             "include": [
-              "**/*.spec.ts",
-              "**/*.spec.tsx",
-              "**/*.testkit.ts",
-              "**/*.testkit.tsx",
-              "**/{test,tests,testkit,testing,fixtures,integration}/**"
+              "../../**/*.spec.ts",
+              "../../**/*.spec.tsx",
+              "../../**/*.testkit.ts",
+              "../../**/*.testkit.tsx",
+              "../../**/{test,tests,testkit,testing,fixtures,integration}/**"
             ],
             "options": { "diagnosticSeverity": { "effectFnOpportunity": "off" } }
           }

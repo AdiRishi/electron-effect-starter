@@ -1,11 +1,10 @@
 {
   "$schema": "https://turborepo.com/schema.json",
   "ui": "stream",
-  "globalDependencies": ["tsconfig.base.json", "vitest.shared.ts"],
   "globalPassThroughEnv": [
     "CI",
     "PLAYWRIGHT_BROWSERS_PATH",
-    // Set by scripts/dev-runner.ts for the dev tasks.
+    // Set by tooling/scripts/dev-runner.ts for the dev tasks.
     "APP_PORT",
     "APP_WEB_PORT",
     "APP_HOME",

@@ -71,7 +71,7 @@ export class DevRunnerTurboExitError extends Schema.TaggedError<DevRunnerTurboEx
 const run = Effect.fn("dev-runner.run")(function* (mode: DevMode) {
   const path = yield* Path.Path;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const repoRoot = path.resolve(import.meta.dirname, "..");
+  const repoRoot = path.resolve(import.meta.dirname, "../..");
   const { serverPort, webPort } = yield* resolvePorts(repoRoot);
   const webUrl = `http://127.0.0.1:${webPort}`;
 

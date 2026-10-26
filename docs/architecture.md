@@ -44,7 +44,7 @@ The server closes a WebSocket when its session expires. The client then re-authe
 
 **Renderer.** The window loads the app from a custom scheme (`electron-effect-starter://app`, or `electron-effect-starter-dev://app` in development, which proxies Vite). The scheme serves a strict CSP. The window is sandboxed, permission requests are denied, and the preload exposes a small IPC bridge whose arguments and results are validated against the schemas in `packages/contracts/src/ipc.ts`.
 
-**Updates.** `electron-updater` checks GitHub Releases when the build embeds a publish target (see `scripts/build-desktop-artifact.ts`).
+**Updates.** `electron-updater` checks GitHub Releases when the build embeds a publish target (see `tooling/scripts/build-desktop-artifact.ts`).
 
 ## Build
 

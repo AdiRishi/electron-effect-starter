@@ -21,6 +21,8 @@
     "electron-updater": "catalog:"
   },
   "devDependencies": {
+    "@app/tsconfig": "workspace:*",
+    "@app/vitest-config": "workspace:*",
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
     "electron": "catalog:",

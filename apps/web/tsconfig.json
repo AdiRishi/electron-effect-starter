@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "@app/tsconfig/base.json",
   "compilerOptions": {
     "module": "Preserve",
     "moduleResolution": "Bundler",
@@ -12,7 +12,7 @@
     "plugins": [
       {
         "name": "@effect/language-service",
-        // Diagnostic severities deep-merge with tsconfig.base.json; list only browser overrides here.
+        // Diagnostic severities deep-merge with @app/tsconfig/base.json; list only browser overrides here.
         "diagnosticSeverity": {
           "globalDate": "off",
           "globalConsole": "off",

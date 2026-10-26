@@ -8,7 +8,7 @@ import {
   DEV_PROXIED_ORIGIN_PRESERVING_PREFIXES,
   DEV_PROXIED_PATH_PREFIXES,
 } from "@app/shared/devProxy";
-import shared from "../../vitest.shared.ts";
+import shared from "@app/vitest-config";
 
 const port = Number(process.env.APP_WEB_PORT ?? 5733);
 const serverPort = process.env.APP_PORT?.trim();

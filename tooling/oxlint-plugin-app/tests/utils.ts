@@ -98,9 +98,9 @@ export const createOxlintRuleHarness = (
     const fixtureDir = yield* fs.makeTempDirectoryScoped({ prefix: "app-oxlint-" });
     const configPath = path.join(fixtureDir, ".oxlintrc.json");
     const sourcePath = path.join(fixtureDir, options.filename ?? "fixture.ts");
-    const repoRoot = path.join(import.meta.dirname, "..", "..");
+    const pluginRoot = path.join(import.meta.dirname, "..");
     const oxlintBin = path.join(path.dirname(oxlintPackageJsonPath), "bin", "oxlint");
-    const pluginPath = path.join(repoRoot, "oxlint-plugin-app", "index.ts");
+    const pluginPath = path.join(pluginRoot, "index.ts");
 
     yield* fs.writeFileString(
       configPath,
@@ -117,7 +117,7 @@ export const createOxlintRuleHarness = (
     // otherwise pick up whatever node is first on PATH.
     const output = yield* spawnAndCollectOutput(
       ChildProcess.make(process.execPath, [oxlintBin, "--config", configPath, sourcePath], {
-        cwd: repoRoot,
+        cwd: pluginRoot,
       }),
     );
 

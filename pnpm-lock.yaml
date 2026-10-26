@@ -314,6 +314,12 @@ importers:
         specifier: 'catalog:'
         version: 6.8.11(supports-color@7.2.0)
     devDependencies:
+      '@app/tsconfig':
+        specifier: workspace:*
+        version: link:../../tooling/typescript
+      '@app/vitest-config':
+        specifier: workspace:*
+        version: link:../../tooling/vitest
       '@effect/vitest':
         specifier: 'catalog:'
         version: 4.0.6(effect@4.0.6)(vitest@5.0.5)
@@ -351,6 +357,12 @@ importers:
         specifier: 4.0.6
         version: 4.0.6
     devDependencies:
+      '@app/tsconfig':
+        specifier: workspace:*
+        version: link:../../tooling/typescript
+      '@app/vitest-config':
+        specifier: workspace:*
+        version: link:../../tooling/vitest
       '@effect/vitest':
         specifier: 'catalog:'
         version: 4.0.6(effect@4.0.6)(vitest@5.0.5)
@@ -403,6 +415,12 @@ importers:
       '@app/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@app/tsconfig':
+        specifier: workspace:*
+        version: link:../../tooling/typescript
+      '@app/vitest-config':
+        specifier: workspace:*
+        version: link:../../tooling/vitest
       '@effect/vitest':
         specifier: 'catalog:'
         version: 4.0.6(effect@4.0.6)(vitest@5.0.5)
@@ -443,7 +461,70 @@ importers:
         specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.5(@types/node@26.6.5)(jiti@2.7.0))
 
-  oxlint-plugin-app:
+  packages/client-runtime:
+    dependencies:
+      '@app/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      effect:
+        specifier: 4.0.6
+        version: 4.0.6
+    devDependencies:
+      '@app/tsconfig':
+        specifier: workspace:*
+        version: link:../../tooling/typescript
+      '@app/vitest-config':
+        specifier: workspace:*
+        version: link:../../tooling/vitest
+      '@effect/vitest':
+        specifier: 'catalog:'
+        version: 4.0.6(effect@4.0.6)(vitest@5.0.5)
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.5(@types/node@26.6.5)(jiti@2.7.0))
+
+  packages/contracts:
+    dependencies:
+      effect:
+        specifier: 4.0.6
+        version: 4.0.6
+    devDependencies:
+      '@app/tsconfig':
+        specifier: workspace:*
+        version: link:../../tooling/typescript
+      '@app/vitest-config':
+        specifier: workspace:*
+        version: link:../../tooling/vitest
+      '@effect/vitest':
+        specifier: 'catalog:'
+        version: 4.0.6(effect@4.0.6)(vitest@5.0.5)
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.5(@types/node@26.6.5)(jiti@2.7.0))
+
+  packages/shared:
+    dependencies:
+      effect:
+        specifier: 4.0.6
+        version: 4.0.6
+    devDependencies:
+      '@app/tsconfig':
+        specifier: workspace:*
+        version: link:../../tooling/typescript
+      '@app/vitest-config':
+        specifier: workspace:*
+        version: link:../../tooling/vitest
+      '@effect/vitest':
+        specifier: 'catalog:'
+        version: 4.0.6(effect@4.0.6)(vitest@5.0.5)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.5
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.5(@types/node@26.6.5)(jiti@2.7.0))
+
+  tooling/oxlint-plugin-app:
     dependencies:
       '@oxlint/plugins':
         specifier: 'catalog:'
@@ -452,6 +533,12 @@ importers:
         specifier: 4.0.6
         version: 4.0.6
     devDependencies:
+      '@app/tsconfig':
+        specifier: workspace:*
+        version: link:../typescript
+      '@app/vitest-config':
+        specifier: workspace:*
+        version: link:../vitest
       '@effect/platform-node':
         specifier: 'catalog:'
         version: 4.0.6(effect@4.0.6)(redis@6.3.0)
@@ -468,56 +555,11 @@ importers:
         specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.5(@types/node@26.6.5)(jiti@2.7.0))
 
-  packages/client-runtime:
-    dependencies:
-      '@app/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      effect:
-        specifier: 4.0.6
-        version: 4.0.6
-    devDependencies:
-      '@effect/vitest':
-        specifier: 'catalog:'
-        version: 4.0.6(effect@4.0.6)(vitest@5.0.5)
-      vitest:
-        specifier: 'catalog:'
-        version: 5.0.5(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.5(@types/node@26.6.5)(jiti@2.7.0))
-
-  packages/contracts:
-    dependencies:
-      effect:
-        specifier: 4.0.6
-        version: 4.0.6
-    devDependencies:
-      '@effect/vitest':
-        specifier: 'catalog:'
-        version: 4.0.6(effect@4.0.6)(vitest@5.0.5)
-      vitest:
-        specifier: 'catalog:'
-        version: 5.0.5(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.5(@types/node@26.6.5)(jiti@2.7.0))
-
-  packages/shared:
-    dependencies:
-      effect:
-        specifier: 4.0.6
-        version: 4.0.6
-    devDependencies:
-      '@effect/vitest':
-        specifier: 'catalog:'
-        version: 4.0.6(effect@4.0.6)(vitest@5.0.5)
-      '@types/node':
-        specifier: 'catalog:'
-        version: 26.6.5
-      vitest:
-        specifier: 'catalog:'
-        version: 5.0.5(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.5(@types/node@26.6.5)(jiti@2.7.0))
-
-  scripts:
+  tooling/scripts:
     dependencies:
       '@app/shared':
         specifier: workspace:*
-        version: link:../packages/shared
+        version: link:../../packages/shared
       '@effect/platform-node':
         specifier: 'catalog:'
         version: 4.0.6(effect@4.0.6)(redis@6.3.0)
@@ -525,12 +567,23 @@ importers:
         specifier: 4.0.6
         version: 4.0.6
     devDependencies:
+      '@app/tsconfig':
+        specifier: workspace:*
+        version: link:../typescript
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.5
       electron-builder:
         specifier: 'catalog:'
         version: 26.18.0(electron-builder-squirrel-windows@26.18.0)(supports-color@7.2.0)
+
+  tooling/typescript: {}
+
+  tooling/vitest:
+    dependencies:
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(vite@8.3.5(@types/node@26.6.5)(jiti@2.7.0))
 
 packages:
 

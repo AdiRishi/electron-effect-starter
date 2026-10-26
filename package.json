@@ -4,10 +4,10 @@
   "type": "module",
   "scripts": {
     "prepare": "effect-tsgo patch",
-    "dev": "node scripts/dev-runner.ts dev",
-    "dev:server": "node scripts/dev-runner.ts dev:server",
-    "dev:web": "node scripts/dev-runner.ts dev:web",
-    "dev:desktop": "node scripts/dev-runner.ts dev:desktop",
+    "dev": "node tooling/scripts/dev-runner.ts dev",
+    "dev:server": "node tooling/scripts/dev-runner.ts dev:server",
+    "dev:web": "node tooling/scripts/dev-runner.ts dev:web",
+    "dev:desktop": "node tooling/scripts/dev-runner.ts dev:desktop",
     "build": "turbo run build",
     "build:desktop": "turbo run build --filter=@app/desktop",
     "start:desktop": "pnpm --filter @app/desktop start",
@@ -18,7 +18,7 @@
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "check": "pnpm typecheck && pnpm lint && pnpm fmt:check",
-    "dist:desktop": "node scripts/build-desktop-artifact.ts",
+    "dist:desktop": "node tooling/scripts/build-desktop-artifact.ts",
     "sync:repos": "git subtree pull --prefix=repos/effect https://github.com/Effect-TS/effect.git main --squash",
     "clean": "rm -rf node_modules .turbo apps/*/node_modules packages/*/node_modules apps/*/dist apps/*/dist-electron release"
   },

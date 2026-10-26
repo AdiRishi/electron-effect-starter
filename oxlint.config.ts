@@ -26,7 +26,7 @@ export default defineConfig({
     "**/routeTree.gen.ts",
   ],
   plugins: ["eslint", "oxc", "react", "unicorn", "typescript"],
-  jsPlugins: ["./oxlint-plugin-app/index.ts"],
+  jsPlugins: ["./tooling/oxlint-plugin-app/index.ts"],
   categories: {
     correctness: "warn",
     suspicious: "warn",
@@ -98,7 +98,7 @@ export default defineConfig({
     },
     {
       // Repo tooling and Electron bootstrap shims run before any Effect runtime exists.
-      files: ["scripts/**", "apps/desktop/scripts/**"],
+      files: ["tooling/scripts/**", "apps/desktop/scripts/**"],
       rules: { "app/no-global-process-runtime": "off" },
     },
     {

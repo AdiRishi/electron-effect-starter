@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "@app/tsconfig/base.json",
   "compilerOptions": {
     "types": ["node"],
     "lib": ["ESNext", "esnext.disposable", "DOM"]

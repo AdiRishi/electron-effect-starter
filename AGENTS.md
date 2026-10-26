@@ -23,10 +23,10 @@ Electron Effect Starter: an Electron shell that supervises a local Effect HTTP a
 
 ## Tests
 
-- Tests live in each package's `tests/`, mirroring `src/`: `src/notes/NotesStore.ts` is tested by `tests/notes/NotesStore.test.ts`. A new package includes `tests/**` in its `tsconfig.json`.
+- Tests live in each package's `tests/`, mirroring `src/`: `src/notes/NotesStore.ts` is tested by `tests/notes/NotesStore.test.ts`. A new package extends `@app/tsconfig/base.json`, merges `@app/vitest-config`, and includes `tests/**` in its `tsconfig.json`.
 - Write tests with `@effect/vitest` and `TestClock`. Tests that open real sockets use `it.layer(layer, { excludeTestServices: true })`.
 - Web component tests are `*.browser.test.tsx` and run in Playwright Chromium.
 
 ## Lint rules
 
-`oxlint-plugin-app/` holds the repo's own oxlint rules, configured in `oxlint.config.ts`. A lint error names the rule; read its file in `oxlint-plugin-app/rules/` for what it protects.
+`tooling/` holds repo tooling: code that runs on the repository and never ships. `tooling/oxlint-plugin-app/` holds the repo's own oxlint rules, configured in `oxlint.config.ts`. A lint error names the rule; read its file in `tooling/oxlint-plugin-app/rules/` for what it protects.
