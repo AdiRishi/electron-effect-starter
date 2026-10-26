@@ -64,15 +64,13 @@ export class InternalError extends Schema.TaggedError<InternalError>()(
   }
 }
 
-export interface AuthenticatedPrincipalShape {
-  readonly sessionId: AuthSessionId;
-  readonly method: ServerAuthSessionMethod;
-  readonly expiresAt: DateTime.Utc;
-}
-
 export class AuthenticatedPrincipal extends Context.Service<
   AuthenticatedPrincipal,
-  AuthenticatedPrincipalShape
+  {
+    readonly sessionId: AuthSessionId;
+    readonly method: ServerAuthSessionMethod;
+    readonly expiresAt: DateTime.Utc;
+  }
 >()("@app/contracts/http/AuthenticatedPrincipal") {}
 
 export class HttpAuthentication extends HttpApiMiddleware.Service<

@@ -26,21 +26,16 @@ const closeServer = (server: NodeNet.Server) => {
   } catch {}
 };
 
-export interface NetServiceShape {
-  readonly canListenOnHost: (port: number, host: string) => Effect.Effect<boolean>;
-
-  readonly isPortAvailableOnLoopback: (port: number) => Effect.Effect<boolean>;
-
-  readonly hasListenerOnHost: (port: number, host: string) => Effect.Effect<boolean>;
-
-  readonly reserveLoopbackPort: (host?: string) => Effect.Effect<number, NetError>;
-
-  readonly findAvailablePort: (preferred: number) => Effect.Effect<number, NetError>;
-}
-
-export class NetService extends Context.Service<NetService, NetServiceShape>()(
-  "@app/shared/Net/NetService",
-) {}
+export class NetService extends Context.Service<
+  NetService,
+  {
+    readonly canListenOnHost: (port: number, host: string) => Effect.Effect<boolean>;
+    readonly isPortAvailableOnLoopback: (port: number) => Effect.Effect<boolean>;
+    readonly hasListenerOnHost: (port: number, host: string) => Effect.Effect<boolean>;
+    readonly reserveLoopbackPort: (host?: string) => Effect.Effect<number, NetError>;
+    readonly findAvailablePort: (preferred: number) => Effect.Effect<number, NetError>;
+  }
+>()("@app/shared/Net/NetService") {}
 
 /** @public */
 export const make = () => {
@@ -173,7 +168,7 @@ export const make = () => {
       }
       return yield* reserveLoopbackPort();
     }),
-  } satisfies NetServiceShape;
+  } satisfies NetService["Service"];
 };
 
 export const layer = Layer.sync(NetService, make);
