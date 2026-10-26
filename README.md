@@ -2,7 +2,7 @@
 
 Start your desktop app on [Effect](https://effect.website) v4 with the hard parts already solved.
 
-A serious desktop app needs more than a window. It needs a local backend that starts, restarts and shuts down cleanly, clients that stay connected, authentication, a secure renderer, and installers that update themselves. Each of these takes weeks to get right. This starter has all of them working together, following the architecture of [T3 Code](https://github.com/pingdotgg/t3code)'s desktop app, so you begin with your own features.
+A serious desktop app needs more than a window. It needs a local backend that starts, restarts and shuts down cleanly, clients that stay connected, authentication, a secure renderer, and installers that update themselves. Each of these takes weeks to get right. This starter has all of them working together, so you begin with your own features.
 
 ## What's solved
 
@@ -42,3 +42,7 @@ grep -rlI --exclude-dir=repos -e electron-effect-starter -e "Electron Effect Sta
 On Linux, use `sed -i` without the empty string.
 
 </details>
+
+## Credits
+
+This starter is heavily inspired by [T3 Code](https://github.com/pingdotgg/t3code). Its architecture comes from T3 Code's desktop app, and its connection supervisor, server supervision, shutdown handling, IPC bridge and session model are ported from T3 Code's source. Thank you to the T3 Code team for building it in the open; this project would not exist without it.
