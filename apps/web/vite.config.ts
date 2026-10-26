@@ -10,7 +10,10 @@ import {
 } from "@app/shared/devProxy";
 import shared from "@app/vitest-config";
 
+import pkg from "./package.json" with { type: "json" };
+
 const port = Number(process.env.APP_WEB_PORT ?? 5733);
+const appVersion = process.env.APP_VERSION?.trim() || pkg.version;
 const serverPort = process.env.APP_PORT?.trim();
 
 // Dev is single-origin: Vite proxies the server's paths, so no server URL is baked into the bundle.
@@ -35,6 +38,7 @@ export default mergeConfig(
       react({ compiler: true }),
       tailwindcss(),
     ],
+    define: { "import.meta.env.APP_VERSION": JSON.stringify(appVersion) },
     resolve: { tsconfigPaths: true },
     server: {
       host: "127.0.0.1",
