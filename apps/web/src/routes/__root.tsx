@@ -3,6 +3,7 @@ import { createRootRoute, Outlet } from "@tanstack/react-router";
 import { AsyncResult } from "effect/reactivity";
 
 import { ConnectionStatus } from "~/components/ConnectionStatus";
+import { RootRouteErrorView, RootRouteNotFoundView } from "~/components/RootRouteViews";
 import { connectionStateAtom, retryConnectionAtom } from "~/connection/atoms";
 
 function RootLayout() {
@@ -24,4 +25,8 @@ function RootLayout() {
   );
 }
 
-export const Route = createRootRoute({ component: RootLayout });
+export const Route = createRootRoute({
+  component: RootLayout,
+  errorComponent: RootRouteErrorView,
+  notFoundComponent: RootRouteNotFoundView,
+});
