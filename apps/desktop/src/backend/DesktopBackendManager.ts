@@ -3,7 +3,7 @@ import {
   SERVER_DESCRIPTOR_PATH,
   SERVER_EXIT_CODE_STATE_DIR_OWNED,
 } from "@app/contracts";
-import { waitForHttpReady } from "@app/shared/httpReadiness";
+import { type HttpReadinessError, waitForHttpReady } from "@app/shared/httpReadiness";
 import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -45,15 +45,6 @@ export interface DesktopBackendStartConfig {
 interface BackendProcessExit {
   readonly code: Option.Option<number>;
   readonly reason: string;
-}
-
-export class BackendReadinessTimeoutError extends Schema.TaggedError<BackendReadinessTimeoutError>()(
-  "BackendReadinessTimeoutError",
-  { httpBaseUrl: Schema.URL, timeoutMs: Schema.Number, cause: Schema.Defect() },
-) {
-  override get message(): string {
-    return `Timed out after ${this.timeoutMs}ms waiting for the server at ${this.httpBaseUrl.href}.`;
-  }
 }
 
 export class BackendProcessError extends Schema.TaggedError<BackendProcessError>()(
@@ -165,7 +156,7 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
     readonly onStarted: (pid: number) => Effect.Effect<void>;
     readonly onExitObserved: Effect.Effect<void>;
     readonly onReady: Effect.Effect<void>;
-    readonly onReadinessFailure: (error: BackendReadinessTimeoutError) => Effect.Effect<void>;
+    readonly onReadinessFailure: (error: HttpReadinessError) => Effect.Effect<void>;
     readonly onOutput: (stream: BackendOutputStream, chunk: Uint8Array) => Effect.Effect<void>;
   },
 ): Effect.fn.Return<
@@ -216,23 +207,16 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
 
   // A slow cold start can outlast one readiness budget; keep probing while the process lives.
   const probeReadiness = waitForHttpReady({
-    baseUrl: config.httpBaseUrl.href,
+    baseUrl: config.httpBaseUrl,
     path: SERVER_DESCRIPTOR_PATH,
-    timeoutMs: Duration.toMillis(callbacks.readinessTimeout),
-    intervalMs: Duration.toMillis(READINESS_INTERVAL),
-    probeTimeoutMs: Duration.toMillis(READINESS_REQUEST_TIMEOUT),
-    makeError: ({ cause }) =>
-      new BackendReadinessTimeoutError({
-        httpBaseUrl: config.httpBaseUrl,
-        timeoutMs: Duration.toMillis(callbacks.readinessTimeout),
-        cause,
-      }),
+    timeout: callbacks.readinessTimeout,
+    interval: READINESS_INTERVAL,
+    probeTimeout: READINESS_REQUEST_TIMEOUT,
   }).pipe(
     Effect.andThen(callbacks.onReady),
     Effect.as(true),
     Effect.catchTags({
-      BackendReadinessTimeoutError: (error) =>
-        callbacks.onReadinessFailure(error).pipe(Effect.as(false)),
+      HttpReadinessError: (error) => callbacks.onReadinessFailure(error).pipe(Effect.as(false)),
     }),
   );
   yield* probeReadiness.pipe(Effect.repeat({ while: (ready) => !ready }), Effect.forkScoped);
