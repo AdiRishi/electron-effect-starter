@@ -11,7 +11,8 @@
     "start": "node scripts/start-electron.mjs",
     "smoke-test": "node scripts/smoke-test.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "verify:preload": "node scripts/verify-preload-bundle.mjs"
   },
   "dependencies": {
     "@app/contracts": "workspace:*",
@@ -25,6 +26,7 @@
     "@app/vitest-config": "workspace:*",
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
+    "acorn": "8.16.0",
     "electron": "catalog:",
     "electron-builder": "catalog:",
     "tsdown": "catalog:",

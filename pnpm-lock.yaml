@@ -326,6 +326,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.5
+      acorn:
+        specifier: 8.16.0
+        version: 8.16.0
       electron:
         specifier: 'catalog:'
         version: 45.0.0(supports-color@7.2.0)
@@ -1882,6 +1885,11 @@ packages:
   abbrev@4.0.0:
     resolution: {integrity: sha512-a1wflyaL0tHtJSmLSOVybYhy22vRih4eduhhrkcjgrWGnRfrZtovJ2FRjxuTtkkj47O/baf0R86QU5OuYpz8fA==}
     engines: {node: ^20.17.0 || >=22.9.0}
+
+  acorn@8.16.0:
+    resolution: {integrity: sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw==}
+    engines: {node: '>=0.4.0'}
+    hasBin: true
 
   agent-base@7.1.4:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
@@ -4650,6 +4658,8 @@ snapshots:
   '@yuku-toolchain/types@0.19.0': {}
 
   abbrev@4.0.0: {}
+
+  acorn@8.16.0: {}
 
   agent-base@7.1.4: {}
 
