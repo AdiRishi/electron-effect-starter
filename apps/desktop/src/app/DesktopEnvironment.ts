@@ -1,3 +1,4 @@
+import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -6,6 +7,27 @@ import * as Path from "effect/Path";
 
 import type { ElectronAppMetadata } from "../electron/ElectronApp.ts";
 import { DesktopConfig } from "./DesktopConfig.ts";
+
+const APP_USER_MODEL_ID = "com.example.electron-effect-starter";
+
+function resolveUserDataPath(input: {
+  readonly appDataDirectory: string;
+  readonly isDevelopment: boolean;
+  readonly productName: string;
+  readonly joinPath: (...segments: ReadonlyArray<string>) => string;
+}): string {
+  return input.joinPath(
+    input.appDataDirectory,
+    input.isDevelopment ? `${input.productName} (Dev)` : input.productName,
+  );
+}
+
+export interface MakeDesktopEnvironmentInput {
+  readonly dirname: string;
+  readonly platform: NodeJS.Platform;
+  readonly productName: string;
+  readonly metadata: ElectronAppMetadata;
+}
 
 /** Paths and modes resolved once at startup from Electron's metadata and the environment. */
 export class DesktopEnvironment extends Context.Service<
@@ -16,6 +38,8 @@ export class DesktopEnvironment extends Context.Service<
     readonly isDevelopment: boolean;
     readonly appVersion: string;
     readonly displayName: string;
+    readonly appUserModelId: string;
+    readonly userDataPath: string;
     readonly stateDir: string;
     readonly serverBaseDir: string;
     readonly logDir: string;
@@ -30,20 +54,21 @@ export class DesktopEnvironment extends Context.Service<
   }
 >()("@app/desktop/app/DesktopEnvironment") {}
 
-export const make = Effect.fn("DesktopEnvironment.make")(function* (input: {
-  readonly dirname: string;
-  readonly platform: NodeJS.Platform;
-  readonly productName: string;
-  readonly metadata: ElectronAppMetadata;
-}) {
+export const make = Effect.fn("DesktopEnvironment.make")(function* (
+  input: MakeDesktopEnvironmentInput,
+): Effect.fn.Return<DesktopEnvironment["Service"], Config.ConfigError, Path.Path> {
   const path = yield* Path.Path;
   const config = yield* DesktopConfig;
   const isDevelopment = Option.isSome(config.devServerUrl);
 
-  // Dev builds keep separate state so they never migrate the installed app's database.
-  const stateDir = isDevelopment
-    ? path.join(input.metadata.userDataPath, "dev")
-    : input.metadata.userDataPath;
+  // Development gets its own userData, so its state, profile and instance lock never touch the
+  // installed app's.
+  const userDataPath = resolveUserDataPath({
+    appDataDirectory: input.metadata.appDataPath,
+    isDevelopment,
+    productName: input.productName,
+    joinPath: path.join,
+  });
 
   // dist-electron sits three levels below the repository root in a source checkout.
   const appRoot = input.metadata.isPackaged
@@ -56,9 +81,11 @@ export const make = Effect.fn("DesktopEnvironment.make")(function* (input: {
     isDevelopment,
     appVersion: input.metadata.appVersion,
     displayName: isDevelopment ? `${input.productName} (Dev)` : input.productName,
-    stateDir,
-    serverBaseDir: path.join(stateDir, "server"),
-    logDir: path.join(stateDir, "logs"),
+    appUserModelId: isDevelopment ? `${APP_USER_MODEL_ID}.dev` : APP_USER_MODEL_ID,
+    userDataPath,
+    stateDir: userDataPath,
+    serverBaseDir: path.join(userDataPath, "server"),
+    logDir: path.join(userDataPath, "logs"),
     appRoot,
     backendEntryPath: path.join(appRoot, "apps/server/dist/bin.mjs"),
     clientAssetsDir: path.join(appRoot, "apps/server/dist/client"),
@@ -70,5 +97,5 @@ export const make = Effect.fn("DesktopEnvironment.make")(function* (input: {
   });
 });
 
-export const layer = (input: Parameters<typeof make>[0]) =>
+export const layer = (input: MakeDesktopEnvironmentInput) =>
   Layer.effect(DesktopEnvironment, make(input));

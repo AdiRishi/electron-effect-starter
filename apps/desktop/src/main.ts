@@ -14,6 +14,7 @@ import * as DesktopLifecycle from "./app/DesktopLifecycle.ts";
 import * as DesktopLogger from "./app/DesktopLogger.ts";
 import * as DesktopShutdown from "./app/DesktopShutdown.ts";
 import * as DesktopState from "./app/DesktopState.ts";
+import * as DesktopUserData from "./app/DesktopUserData.ts";
 import * as DesktopBackend from "./backend/DesktopBackend.ts";
 import * as DesktopServerAuth from "./backend/DesktopServerAuth.ts";
 import * as ElectronApp from "./electron/ElectronApp.ts";
@@ -62,7 +63,9 @@ const layerEnvironment = Layer.unwrap(
   }),
 );
 
+// The userData claim is built before anything that writes into it.
 const layerFoundation = Layer.mergeAll(DesktopState.layer, DesktopShutdown.layer).pipe(
+  Layer.provideMerge(DesktopUserData.layer),
   Layer.provideMerge(layerEnvironment),
 );
 

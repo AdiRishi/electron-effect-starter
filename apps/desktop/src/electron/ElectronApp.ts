@@ -10,7 +10,7 @@ export interface ElectronAppMetadata {
   readonly appVersion: string;
   readonly appPath: string;
   readonly isPackaged: boolean;
-  readonly userDataPath: string;
+  readonly appDataPath: string;
 }
 
 /** The app events this shell listens to, with the arguments Electron passes. */
@@ -42,6 +42,14 @@ export class ElectronApp extends Context.Service<
     readonly requestSingleInstanceLock: Effect.Effect<boolean>;
     readonly quit: Effect.Effect<void>;
     readonly exit: (code: number) => Effect.Effect<void>;
+    readonly setPath: (
+      name: Parameters<Electron.App["setPath"]>[0],
+      path: string,
+    ) => Effect.Effect<void>;
+    readonly setAboutPanelOptions: (
+      options: Electron.AboutPanelOptionsOptions,
+    ) => Effect.Effect<void>;
+    readonly setAppUserModelId: (id: string) => Effect.Effect<void>;
     readonly on: <K extends keyof ElectronAppEvents>(
       eventName: K,
       listener: (...args: ElectronAppEvents[K]) => void,
@@ -57,7 +65,7 @@ const make = ElectronApp.of({
     appVersion: Electron.app.getVersion(),
     appPath: Electron.app.getAppPath(),
     isPackaged: Electron.app.isPackaged,
-    userDataPath: Electron.app.getPath("userData"),
+    appDataPath: Electron.app.getPath("appData"),
   })),
   whenReady: Effect.tryPromise({
     try: () => Electron.app.whenReady(),
@@ -67,6 +75,20 @@ const make = ElectronApp.of({
   quit: Effect.sync(() => Electron.app.quit()),
   exit: Effect.fn("ElectronApp.exit")(function (code: number) {
     return Effect.sync(() => Electron.app.exit(code));
+  }),
+  setPath: Effect.fn("ElectronApp.setPath")(function (
+    name: Parameters<Electron.App["setPath"]>[0],
+    path: string,
+  ) {
+    return Effect.sync(() => Electron.app.setPath(name, path));
+  }),
+  setAboutPanelOptions: Effect.fn("ElectronApp.setAboutPanelOptions")(function (
+    options: Electron.AboutPanelOptionsOptions,
+  ) {
+    return Effect.sync(() => Electron.app.setAboutPanelOptions(options));
+  }),
+  setAppUserModelId: Effect.fn("ElectronApp.setAppUserModelId")(function (id: string) {
+    return Effect.sync(() => Electron.app.setAppUserModelId(id));
   }),
   on: Effect.fn("ElectronApp.on")(function <K extends keyof ElectronAppEvents>(
     eventName: K,

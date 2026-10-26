@@ -112,14 +112,6 @@ const startup = Effect.gen(function* () {
   const menu = yield* DesktopApplicationMenu.DesktopApplicationMenu;
   const updates = yield* DesktopUpdates.DesktopUpdates;
 
-  // A second launch hands focus to this one through "second-instance" and exits.
-  if (!(yield* electronApp.requestSingleInstanceLock)) {
-    yield* logInfo("another instance is running; exiting");
-    yield* electronApp.quit;
-
-    return yield* Effect.interrupt;
-  }
-
   yield* lifecycle.register;
   yield* electronApp.whenReady.pipe(
     Effect.catchCause((cause) => fatalStartupCause("whenReady", cause)),

@@ -1,52 +1,24 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 
-import * as DesktopEnvironment from "../../src/app/DesktopEnvironment.ts";
 import * as DesktopLifecycle from "../../src/app/DesktopLifecycle.ts";
 import * as DesktopShutdown from "../../src/app/DesktopShutdown.ts";
 import * as DesktopState from "../../src/app/DesktopState.ts";
-import * as ElectronApp from "../../src/electron/ElectronApp.ts";
 import * as ElectronWindow from "../../src/electron/ElectronWindow.ts";
 import * as DesktopWindow from "../../src/window/DesktopWindow.ts";
-
-type AppEvents = ElectronApp.ElectronAppEvents;
+import { makeFakeElectronApp } from "../support/electronApp.ts";
+import { layerTestEnvironment } from "../support/environment.ts";
 
 // Electron is the external seam: the fake app records listeners and quit calls.
 const makeHarness = Effect.gen(function* () {
-  const listeners = new Map<keyof AppEvents, (...args: never) => void>();
-
-  const emit = <K extends keyof AppEvents>(eventName: K, ...args: AppEvents[K]) => {
-    // SAFETY: `on` stores each listener under its own event name, so it accepts AppEvents[K].
-    const listener = listeners.get(eventName) as ((...args: AppEvents[K]) => void) | undefined;
-    listener?.(...args);
-  };
-
   const quits = yield* Queue.unbounded<void>();
-
-  const app = ElectronApp.ElectronApp.of({
-    metadata: Effect.succeed({
-      appVersion: "0.0.0",
-      appPath: "/app",
-      isPackaged: false,
-      userDataPath: "/data",
-    }),
-    whenReady: Effect.void,
-    requestSingleInstanceLock: Effect.succeed(true),
-    quit: Queue.offer(quits, undefined).pipe(Effect.asVoid),
-    exit: () => Effect.void,
-    on: (eventName, listener) =>
-      Effect.sync(() => {
-        listeners.set(eventName, listener);
-      }),
-    onBeforeQuitForUpdate: () => Effect.void,
-  });
+  const app = makeFakeElectronApp({ quit: Queue.offer(quits, undefined).pipe(Effect.asVoid) });
 
   const layer = Layer.mergeAll(
-    Layer.succeed(ElectronApp.ElectronApp, app),
+    app.layer,
     Layer.succeed(
       ElectronWindow.ElectronWindow,
       ElectronWindow.ElectronWindow.of({
@@ -66,32 +38,12 @@ const makeHarness = Effect.gen(function* () {
         handleBackendNotReady: Effect.void,
       }),
     ),
-    Layer.succeed(
-      DesktopEnvironment.DesktopEnvironment,
-      DesktopEnvironment.DesktopEnvironment.of({
-        platform: "linux",
-        isPackaged: false,
-        isDevelopment: false,
-        appVersion: "0.0.0",
-        displayName: "Test",
-        stateDir: "/data",
-        serverBaseDir: "/data/server",
-        logDir: "/data/logs",
-        appRoot: "/app",
-        backendEntryPath: "/app/apps/server/dist/bin.mjs",
-        clientAssetsDir: "/app/apps/server/dist/client",
-        preloadPath: "/app/preload.cjs",
-        compileCachePath: "/app/compileCache.cjs",
-        devServerUrl: Option.none(),
-        configuredBackendPort: Option.none(),
-        disableAutoUpdate: true,
-      }),
-    ),
+    layerTestEnvironment(),
     DesktopShutdown.layer,
     DesktopState.layer,
   );
 
-  return { emit, quits, layer };
+  return { emit: app.emit, quits, layer };
 });
 
 const makeQuitEvent = () => {
