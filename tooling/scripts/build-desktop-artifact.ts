@@ -1,8 +1,8 @@
 // Stages the output of `pnpm build` and packages it with electron-builder. `--publish` uploads to
 // GitHub Releases. macOS signing turns on when CSC_LINK and the APPLE_API_* variables are set, and
 // auto-update metadata is embedded only when GITHUB_REPOSITORY (owner/name) is set.
-import * as NodeModule from "node:module";
 
+import * as Asar from "@electron/asar";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Config from "effect/Config";
@@ -143,18 +143,6 @@ function ancestorNodeModulesPaths(startDir: string, separator: string): Readonly
   return paths;
 }
 
-// @electron/asar ships with electron-builder; resolve it through electron-builder's own dependencies.
-const requireFromElectronBuilder = NodeModule.createRequire(
-  import.meta.resolve("electron-builder"),
-);
-
-const requireFromAppBuilder = NodeModule.createRequire(
-  requireFromElectronBuilder.resolve("app-builder-lib/package.json"),
-);
-
-const asar: { readonly extractAll: (archive: string, destination: string) => void } =
-  requireFromAppBuilder("@electron/asar");
-
 const collectOutput = <E>(stream: Stream.Stream<Uint8Array, E>) =>
   stream.pipe(Stream.decodeText(), Stream.mkString);
 
@@ -172,7 +160,7 @@ const verifyPackagedBundleIsSelfContained = Effect.fn("verifyPackagedBundleIsSel
     const probeApp = path.join(probeRoot, "app");
 
     yield* Effect.try({
-      try: () => asar.extractAll(asarPath, probeApp),
+      try: () => Asar.extractAll(asarPath, probeApp),
       catch: (cause) =>
         new BundleNotSelfContainedError({
           exitCode: -1,

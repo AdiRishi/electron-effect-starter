@@ -15,6 +15,7 @@
     "@app/tsconfig": "workspace:*",
     "@app/vitest-config": "workspace:*",
     "@effect/vitest": "catalog:",
+    "@electron/asar": "catalog:",
     "@types/node": "catalog:",
     "electron-builder": "catalog:",
     "vitest": "catalog:"
