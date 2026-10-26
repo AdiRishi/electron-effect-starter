@@ -44,19 +44,6 @@ export class AuthInvalidError extends Schema.TaggedError<AuthInvalidError>()(
   }
 }
 
-export const RequestInvalidReason = Schema.Literals(["invalid_grant"]);
-export type RequestInvalidReason = typeof RequestInvalidReason.Type;
-
-export class RequestInvalidError extends Schema.TaggedError<RequestInvalidError>()(
-  "RequestInvalidError",
-  { reason: RequestInvalidReason },
-  { httpApiStatus: 400 },
-) {
-  override get message(): string {
-    return `The server rejected the request (${this.reason}).`;
-  }
-}
-
 export const InternalErrorReason = Schema.Literals([
   "session_issuance_failed",
   "websocket_ticket_issuance_failed",
@@ -119,7 +106,7 @@ export class AuthHttpApi extends HttpApiGroup.make("auth")
     HttpApiEndpoint.post("token", "/oauth/token", {
       payload: AuthTokenExchangeRequest,
       success: AuthAccessTokenResult,
-      error: [RequestInvalidError, InternalError],
+      error: [AuthInvalidError, InternalError],
     }),
   )
   .add(
