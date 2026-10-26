@@ -21,6 +21,8 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as SqlSchema from "effect/sql/SqlSchema";
 
+import { rpcInitialItems } from "../rpcInitialItems.ts";
+
 type NoteChange = Exclude<NotesStreamEvent, { readonly type: "snapshot" }>;
 
 const NoteRow = Schema.Struct({
@@ -167,7 +169,7 @@ const make = Effect.gen(function* () {
       };
 
       return Stream.concat(
-        Stream.make(initial),
+        rpcInitialItems([initial]),
         Stream.fromSubscription(live).pipe(
           Stream.filter((change) => change.revision > current.revision),
         ),

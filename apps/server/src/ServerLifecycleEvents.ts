@@ -7,6 +7,8 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
+import { rpcInitialItems } from "./rpcInitialItems.ts";
+
 type LifecycleEventInput =
   | Omit<Extract<ServerLifecycleEvent, { type: "welcome" }>, "sequence">
   | Omit<Extract<ServerLifecycleEvent, { type: "ready" }>, "sequence">;
@@ -59,7 +61,7 @@ const make = Effect.gen(function* () {
       );
 
       return Stream.concat(
-        Stream.fromIterable(snapshotEvents),
+        rpcInitialItems(snapshotEvents),
         Stream.fromQueue(liveBuffer).pipe(
           Stream.filter((event) => event.sequence > snapshot.sequence),
         ),
