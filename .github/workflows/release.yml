@@ -1,3 +1,11 @@
+# Pushing a v*.*.* tag builds installers for macOS, Windows and Linux and publishes them to a GitHub
+# release, which installed apps update from.
+#
+# macOS builds are signed and notarized when these repository secrets are set; without them the
+# build is unsigned and macOS auto-update does not work:
+#   CSC_LINK, CSC_KEY_PASSWORD  the Developer ID Application certificate as a base64 .p12, and its password
+#   APPLE_API_KEY               the App Store Connect API key (.p8 contents)
+#   APPLE_API_KEY_ID, APPLE_API_ISSUER
 name: Release
 
 on:
