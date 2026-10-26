@@ -21,6 +21,10 @@ import requireSuppressionReason from "./rules/require-suppression-reason.ts";
 import noDomTestEnvironment from "./rules/no-dom-test-environment.ts";
 import noEmDashCopy from "./rules/no-em-dash-copy.ts";
 import noUnscopedHas from "./rules/no-unscoped-has.ts";
+// React and UI rules.
+import noNativeTitleTooltip from "./rules/no-native-title-tooltip.ts";
+import noOutsetStateIndicators from "./rules/no-outset-state-indicators.ts";
+import reactEffectBudget from "./rules/react-effect-budget.ts";
 
 export default definePlugin({
   meta: {
@@ -48,5 +52,9 @@ export default definePlugin({
     "no-dom-test-environment": noDomTestEnvironment,
     "no-em-dash-copy": noEmDashCopy,
     "no-unscoped-has": noUnscopedHas,
+    // React and UI rules.
+    "no-native-title-tooltip": noNativeTitleTooltip,
+    "no-outset-state-indicators": noOutsetStateIndicators,
+    "react-effect-budget": reactEffectBudget,
   },
 });

@@ -178,5 +178,18 @@ export default defineConfig({
       files: ["apps/*/src/**", "packages/*/src/**"],
       rules: { "app/no-em-dash-copy": "error" },
     },
+    // React and UI rules.
+    {
+      files: ["apps/web/src/**/*.{ts,tsx}"],
+      rules: {
+        "react/capitalized-calls": "error",
+        "app/no-native-title-tooltip": "error",
+        "app/no-outset-state-indicators": "error",
+      },
+    },
+    {
+      files: ["apps/web/src/**", "packages/*/src/**"],
+      rules: { "app/react-effect-budget": "error" },
+    },
   ],
 });
