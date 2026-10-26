@@ -51,7 +51,8 @@ export function SignInRequired({
         <h1 className="font-semibold text-base">Sign in to the local server</h1>
         <p className="mt-2 text-muted-foreground text-sm">
           Open the sign-in link the server printed when it started, or paste its token here. Each
-          token works once and expires after fifteen minutes; restart the server for a new one.
+          token works once and expires soon after the server starts; restart the server for a new
+          one.
         </p>
 
         <form className="mt-6 space-y-4" onSubmit={(event) => void handleSubmit(event)}>
