@@ -32,7 +32,7 @@ function selectRequestCredential(
     return { token: cookieToken, source: "cookie" };
   }
   const header = request.headers.authorization;
-  if (typeof header === "string" && header.startsWith(BEARER_PREFIX)) {
+  if (header?.startsWith(BEARER_PREFIX)) {
     const token = header.slice(BEARER_PREFIX.length).trim();
     if (token.length > 0) return { token, source: "bearer" };
   }

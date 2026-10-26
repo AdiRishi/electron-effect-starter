@@ -23,17 +23,8 @@ const appendCredentialResponseHeaders = HttpEffect.appendPreResponseHandler((_re
   ),
 );
 
-const toAuthInvalid = (
-  error:
-    | ServerAuth.RequestCredentialError
-    | { readonly _tag: "SessionCredentialInvalidError" | "BootstrapCredentialInvalidError" },
-) =>
-  new AuthInvalidError({
-    reason:
-      error._tag === "RequestCredentialError" && error.reason === "missing"
-        ? "missing_credential"
-        : "invalid_credential",
-  });
+const failInvalidCredential = () =>
+  Effect.fail(new AuthInvalidError({ reason: "invalid_credential" }));
 
 export const layerAuthentication = Layer.effect(
   HttpAuthentication,
@@ -44,8 +35,11 @@ export const layerAuthentication = Layer.effect(
         const request = yield* HttpServerRequest.HttpServerRequest;
         const session = yield* auth.authenticateRequest(request).pipe(
           Effect.catchTags({
-            RequestCredentialError: (error) => Effect.fail(toAuthInvalid(error)),
-            SessionCredentialInvalidError: (error) => Effect.fail(toAuthInvalid(error)),
+            RequestCredentialError: (error) =>
+              error.reason === "missing"
+                ? Effect.fail(new AuthInvalidError({ reason: "missing_credential" }))
+                : failInvalidCredential(),
+            SessionCredentialInvalidError: failInvalidCredential,
           }),
         );
         return yield* httpEffect.pipe(Effect.provideService(AuthenticatedPrincipal, session));
@@ -88,7 +82,7 @@ export const layer = HttpApiBuilder.group(
             return result.response;
           },
           Effect.catchTags({
-            BootstrapCredentialInvalidError: (error) => Effect.fail(toAuthInvalid(error)),
+            BootstrapCredentialInvalidError: failInvalidCredential,
             SessionIssueError: () =>
               Effect.fail(new InternalError({ reason: "session_issuance_failed" })),
           }),
@@ -102,7 +96,7 @@ export const layer = HttpApiBuilder.group(
             return yield* auth.exchangeBootstrapCredential(args.payload.subject_token);
           },
           Effect.catchTags({
-            BootstrapCredentialInvalidError: (error) => Effect.fail(toAuthInvalid(error)),
+            BootstrapCredentialInvalidError: failInvalidCredential,
             SessionIssueError: () =>
               Effect.fail(new InternalError({ reason: "session_issuance_failed" })),
           }),

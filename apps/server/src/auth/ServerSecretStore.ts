@@ -50,11 +50,8 @@ const make = Effect.gen(function* () {
   const read = (name: string) =>
     fs.readFile(secretPath(name)).pipe(
       Effect.map((bytes) => Option.some(Uint8Array.from(bytes))),
-      Effect.catch((cause) =>
-        cause.reason._tag === "NotFound"
-          ? Effect.succeedNone
-          : Effect.fail(new SecretStoreError({ secret: name, operation: "read", cause })),
-      ),
+      Effect.catchReason("PlatformError", "NotFound", () => Effect.succeedNone),
+      Effect.mapError((cause) => new SecretStoreError({ secret: name, operation: "read", cause })),
     );
 
   // `link` publishes the fully written temp file under the final name or fails with AlreadyExists,
@@ -80,10 +77,9 @@ const make = Effect.gen(function* () {
       yield* fs.link(tempPath, finalPath);
       return true;
     }).pipe(
-      Effect.catch((cause) =>
-        cause.reason._tag === "AlreadyExists"
-          ? Effect.succeed(false)
-          : Effect.fail(new SecretStoreError({ secret: name, operation: "persist", cause })),
+      Effect.catchReason("PlatformError", "AlreadyExists", () => Effect.succeed(false)),
+      Effect.mapError(
+        (cause) => new SecretStoreError({ secret: name, operation: "persist", cause }),
       ),
       Effect.ensuring(fs.remove(tempPath).pipe(Effect.ignore)),
     );

@@ -12,6 +12,7 @@ import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -113,7 +114,7 @@ const make = Effect.gen(function* () {
 
   const update = Effect.fn("NotesStore.update")(function* (input: NoteUpdateInput) {
     const existing = yield* findById(input.id).pipe(storageError("update"));
-    if (existing._tag === "None") return yield* new NoteNotFoundError({ id: input.id });
+    if (Option.isNone(existing)) return yield* new NoteNotFoundError({ id: input.id });
     const note: Note = {
       ...toNote(existing.value),
       title: input.title,
@@ -133,7 +134,7 @@ const make = Effect.gen(function* () {
 
   const remove = Effect.fn("NotesStore.remove")(function* (id: NoteId) {
     const existing = yield* findById(id).pipe(storageError("delete"));
-    if (existing._tag === "None") return yield* new NoteNotFoundError({ id });
+    if (Option.isNone(existing)) return yield* new NoteNotFoundError({ id });
     yield* deleteById(id).pipe(storageError("delete"));
     yield* publish((next) => ({ type: "removed", revision: next, id }));
   }, lock.withPermit);

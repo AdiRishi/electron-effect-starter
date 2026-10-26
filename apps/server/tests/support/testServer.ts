@@ -4,6 +4,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Predicate from "effect/Predicate";
 import { HttpClient, HttpRouter, HttpServer } from "effect/http";
 import * as RpcClient from "effect/rpc/RpcClient";
 import * as RpcSerialization from "effect/rpc/RpcSerialization";
@@ -27,7 +28,7 @@ export const makeTestServer = Effect.fn("TestServer.make")(function* (options?: 
     ),
   );
   const address = Context.get(context, HttpServer.HttpServer).address;
-  if (address._tag === "UnixPathAddress")
+  if (Predicate.isTagged(address, "UnixPathAddress"))
     return yield* Effect.die("Test server bound a unix socket.");
   return {
     client: Context.get(context, HttpClient.HttpClient),
