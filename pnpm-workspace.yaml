@@ -32,6 +32,8 @@ catalog:
   electron-builder: 26.18.0
   electron-updater: 6.8.11
   lucide-react: 1.61.0
+  # @vitejs/plugin-react 6.1 accepts only the 0.152 line.
+  oxc-transform-react: 0.152.0
   oxfmt: 0.74.0
   oxlint: 1.89.0
   playwright: 1.64.1
@@ -48,3 +50,11 @@ catalog:
 overrides:
   # Two copies of effect split every Context tag and Schema in two.
   effect: "catalog:"
+
+# pnpm 12 links agent skills that dependencies ship into .claude/skills once
+# approved. We curate our own skills, so deny these to keep installs quiet.
+permissions:
+  "@tanstack/react-router":
+    skills: false
+  "@tanstack/router-plugin":
+    skills: false

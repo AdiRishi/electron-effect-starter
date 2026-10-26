@@ -4,8 +4,6 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["tests/**/*.test.{ts,tsx}"],
-    exclude: ["tests/**/*.browser.test.{ts,tsx}", "**/node_modules/**", "**/dist/**"],
     hookTimeout: 60_000,
     testTimeout: 60_000,
     allowOnly: !process.env.CI,
