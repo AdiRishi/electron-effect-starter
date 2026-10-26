@@ -463,7 +463,8 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
 
             if (isCurrentRun) yield* spec.onReady?.(config.value.httpBaseUrl) ?? Effect.void;
           }),
-          onReadinessFailure: (error) => logWarning("server readiness check failed", error),
+          onReadinessFailure: (error) =>
+            logWarning("server readiness check failed", error.message, error),
           onOutput: spec.onOutput ?? (() => Effect.void),
         }).pipe(
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
