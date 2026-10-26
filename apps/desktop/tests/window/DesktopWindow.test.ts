@@ -248,9 +248,11 @@ describe("DesktopWindow", () => {
         yield* desktopWindow.handleBackendReady(backendUrl);
 
         scenario.fake.emitWebContentsOnce("did-finish-load");
+        yield* Effect.yieldNow;
+        assert.deepEqual(scenario.revealed, [scenario.fake.window]);
+
         scenario.fake.emitWindow("ready-to-show");
         yield* Effect.yieldNow;
-
         assert.deepEqual(scenario.revealed, [scenario.fake.window]);
       }).pipe(Effect.provide(scenario.layer));
     }),
