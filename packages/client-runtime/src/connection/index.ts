@@ -7,3 +7,5 @@ export * as ConnectionTarget from "./target.ts";
 export * as ConnectionWakeups from "./wakeups.ts";
 
 export * from "./model.ts";
+
+export * from "./presentation.ts";
