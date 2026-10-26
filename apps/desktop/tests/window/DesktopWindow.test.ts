@@ -13,7 +13,9 @@ import type * as Electron from "electron";
 import * as DesktopEnvironment from "../../src/app/DesktopEnvironment.ts";
 import * as DesktopState from "../../src/app/DesktopState.ts";
 import * as ElectronMenu from "../../src/electron/ElectronMenu.ts";
+import * as ElectronScreen from "../../src/electron/ElectronScreen.ts";
 import * as ElectronShell from "../../src/electron/ElectronShell.ts";
+import * as DesktopAppSettings from "../../src/settings/DesktopAppSettings.ts";
 import * as DesktopWindow from "../../src/window/DesktopWindow.ts";
 import { makeFakeBrowserWindow } from "../support/browserWindow.ts";
 import { layerTestEnvironment } from "../support/environment.ts";
@@ -25,6 +27,8 @@ const makeScenario = Effect.fn("makeScenario")(function* (
   input: {
     readonly environment?: Partial<DesktopEnvironment.DesktopEnvironment["Service"]>;
     readonly onWindowCreate?: Effect.Effect<void>;
+    readonly desktopSettings?: DesktopAppSettings.DesktopSettings;
+    readonly beforeMainWindowBoundsUpdate?: Effect.Effect<void>;
   } = {},
 ) {
   const fake = makeFakeBrowserWindow();
@@ -34,6 +38,8 @@ const makeScenario = Effect.fn("makeScenario")(function* (
   const copiedTexts: string[] = [];
   const popups: ElectronMenu.ElectronMenuTemplateInput[] = [];
   const revealed: Electron.BrowserWindow[] = [];
+  const mainWindowBoundsUpdates: Array<[DesktopAppSettings.DesktopWindowBounds, boolean]> = [];
+  let desktopSettings = input.desktopSettings ?? DesktopAppSettings.DEFAULT_DESKTOP_SETTINGS;
 
   const layer = DesktopWindow.layer.pipe(
     Layer.provideMerge(
@@ -44,6 +50,33 @@ const makeScenario = Effect.fn("makeScenario")(function* (
           ...input.environment,
         }),
         DesktopState.layer,
+        Layer.succeed(
+          DesktopAppSettings.DesktopAppSettings,
+          DesktopAppSettings.DesktopAppSettings.of({
+            get: Effect.sync(() => desktopSettings),
+            load: Effect.sync(() => desktopSettings),
+            setMainWindowBounds: (bounds, isMaximized) =>
+              (input.beforeMainWindowBoundsUpdate ?? Effect.void).pipe(
+                Effect.andThen(
+                  Effect.sync(() => {
+                    mainWindowBoundsUpdates.push([bounds, isMaximized]);
+                    desktopSettings = {
+                      mainWindowBounds: bounds,
+                      mainWindowMaximized: isMaximized,
+                    };
+
+                    return { settings: desktopSettings, changed: true };
+                  }),
+                ),
+              ),
+          }),
+        ),
+        Layer.succeed(
+          ElectronScreen.ElectronScreen,
+          ElectronScreen.ElectronScreen.of({
+            displayBounds: Effect.succeed([{ x: 0, y: 0, width: 1920, height: 1080 }]),
+          }),
+        ),
         layerFakeElectronTheme(),
         layerFakeElectronWindow({
           create: () =>
@@ -87,6 +120,7 @@ const makeScenario = Effect.fn("makeScenario")(function* (
     copiedTexts,
     popups,
     revealed,
+    mainWindowBoundsUpdates,
   };
 });
 
@@ -110,6 +144,139 @@ const contextMenuParams = (
 });
 
 describe("DesktopWindow", () => {
+  it("restores bounds only when the window fits within a connected display", () => {
+    const persistedBounds = { x: 2040, y: 80, width: 1320, height: 880 };
+
+    const displays = [
+      { x: 0, y: 0, width: 1920, height: 1080 },
+      { x: 1920, y: 0, width: 2560, height: 1440 },
+    ];
+
+    assert.deepEqual(
+      DesktopWindow.resolveInitialMainWindowBounds(persistedBounds, displays),
+      persistedBounds,
+    );
+    assert.deepEqual(
+      DesktopWindow.resolveInitialMainWindowBounds(persistedBounds, displays.slice(0, 1)),
+      DesktopAppSettings.DEFAULT_MAIN_WINDOW_SIZE,
+    );
+  });
+
+  it.effect("persists normal bounds and state for a maximized window", () =>
+    Effect.gen(function* () {
+      const scenario = yield* makeScenario();
+      scenario.fake.state.maximized = true;
+      scenario.fake.state.bounds = { x: 0, y: 0, width: 1920, height: 1080 };
+      scenario.fake.state.normalBounds = { x: 220, y: 140, width: 1380, height: 920 };
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.handleBackendReady(backendUrl);
+
+        scenario.fake.emitWindow("close");
+        yield* Effect.yieldNow;
+
+        assert.deepEqual(scenario.mainWindowBoundsUpdates, [
+          [{ x: 220, y: 140, width: 1380, height: 920 }, true],
+        ]);
+        assert.notInclude(scenario.fake.calls, "getBounds");
+      }).pipe(Effect.provide(scenario.layer));
+    }),
+  );
+
+  it.effect("preserves unrestorable bounds until the user changes the window", () =>
+    Effect.gen(function* () {
+      const scenario = yield* makeScenario({
+        desktopSettings: {
+          mainWindowBounds: { x: 2040, y: 80, width: 1320, height: 880 },
+          mainWindowMaximized: false,
+        },
+      });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.handleBackendReady(backendUrl);
+
+        scenario.fake.emitWindow("close");
+        yield* Effect.yieldNow;
+        assert.deepEqual(scenario.mainWindowBoundsUpdates, []);
+
+        scenario.fake.state.bounds = { x: 80, y: 60, width: 1280, height: 840 };
+        scenario.fake.emitWindow("move");
+        yield* TestClock.adjust(500);
+        yield* Effect.yieldNow;
+
+        assert.deepEqual(scenario.mainWindowBoundsUpdates, [
+          [{ x: 80, y: 60, width: 1280, height: 840 }, false],
+        ]);
+      }).pipe(Effect.provide(scenario.layer));
+    }),
+  );
+
+  it.effect("flushes normal bounds when minimized before the debounce completes", () =>
+    Effect.gen(function* () {
+      const scenario = yield* makeScenario();
+      scenario.fake.state.bounds = { x: -32_000, y: -32_000, width: 160, height: 28 };
+      scenario.fake.state.normalBounds = { x: 180, y: 120, width: 1440, height: 960 };
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.handleBackendReady(backendUrl);
+
+        scenario.fake.emitWindow("resize");
+        yield* TestClock.adjust(250);
+        scenario.fake.state.minimized = true;
+
+        yield* desktopWindow.flushMainWindowBounds;
+
+        assert.deepEqual(scenario.mainWindowBoundsUpdates, [
+          [{ x: 180, y: 120, width: 1440, height: 960 }, false],
+        ]);
+        assert.notInclude(scenario.fake.calls, "getBounds");
+      }).pipe(Effect.provide(scenario.layer));
+    }),
+  );
+
+  it.effect("persists the current main window bounds before the window closes", () =>
+    Effect.gen(function* () {
+      const writeStarted = yield* Deferred.make<void>();
+      const allowWrite = yield* Deferred.make<void>();
+      const flushCompleted = yield* Deferred.make<void>();
+
+      const scenario = yield* makeScenario({
+        beforeMainWindowBoundsUpdate: Deferred.succeed(writeStarted, undefined).pipe(
+          Effect.andThen(Deferred.await(allowWrite)),
+        ),
+      });
+
+      scenario.fake.state.bounds = { x: 240, y: 160, width: 1410, height: 930 };
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.handleBackendReady(backendUrl);
+
+        scenario.fake.emitWindow("close");
+        yield* Deferred.await(writeStarted);
+        scenario.fake.destroy();
+
+        const flushFiber = yield* desktopWindow.flushMainWindowBounds.pipe(
+          Effect.andThen(Deferred.succeed(flushCompleted, undefined)),
+          Effect.forkChild({ startImmediately: true }),
+        );
+
+        yield* Effect.yieldNow;
+        assert.isFalse(yield* Deferred.isDone(flushCompleted));
+
+        yield* Deferred.succeed(allowWrite, undefined);
+        yield* Fiber.join(flushFiber);
+        assert.isTrue(yield* Deferred.isDone(flushCompleted));
+        assert.deepEqual(scenario.mainWindowBoundsUpdates, [
+          [{ x: 240, y: 160, width: 1410, height: 930 }, false],
+        ]);
+      }).pipe(Effect.provide(scenario.layer));
+    }),
+  );
+
   it.effect("opens safe off-origin renderer navigations in the system browser", () =>
     Effect.gen(function* () {
       const scenario = yield* makeScenario();

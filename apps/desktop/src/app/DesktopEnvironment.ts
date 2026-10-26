@@ -43,6 +43,7 @@ export class DesktopEnvironment extends Context.Service<
     readonly stateDir: string;
     readonly serverBaseDir: string;
     readonly logDir: string;
+    readonly desktopSettingsPath: string;
     readonly appRoot: string;
     readonly resourcesPath: string;
     readonly backendEntryPath: string;
@@ -89,6 +90,7 @@ export const make = Effect.fn("DesktopEnvironment.make")(function* (
     stateDir: userDataPath,
     serverBaseDir: path.join(userDataPath, "server"),
     logDir: path.join(userDataPath, "logs"),
+    desktopSettingsPath: path.join(userDataPath, "desktop-settings.json"),
     appRoot,
     resourcesPath: input.metadata.resourcesPath,
     backendEntryPath: path.join(appRoot, "apps/server/dist/bin.mjs"),

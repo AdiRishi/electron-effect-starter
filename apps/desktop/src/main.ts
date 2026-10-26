@@ -21,11 +21,13 @@ import * as ElectronApp from "./electron/ElectronApp.ts";
 import * as ElectronDialog from "./electron/ElectronDialog.ts";
 import * as ElectronMenu from "./electron/ElectronMenu.ts";
 import * as ElectronProtocol from "./electron/ElectronProtocol.ts";
+import * as ElectronScreen from "./electron/ElectronScreen.ts";
 import * as ElectronShell from "./electron/ElectronShell.ts";
 import * as ElectronTheme from "./electron/ElectronTheme.ts";
 import * as ElectronUpdater from "./electron/ElectronUpdater.ts";
 import * as ElectronWindow from "./electron/ElectronWindow.ts";
 import * as DesktopIpc from "./ipc/DesktopIpc.ts";
+import * as DesktopAppSettings from "./settings/DesktopAppSettings.ts";
 import * as DesktopUpdates from "./updates/DesktopUpdates.ts";
 import * as DesktopApplicationMenu from "./window/DesktopApplicationMenu.ts";
 import * as DesktopWindow from "./window/DesktopWindow.ts";
@@ -45,6 +47,7 @@ const layerElectron = Layer.mergeAll(
   ElectronDialog.layer,
   ElectronMenu.layer,
   ElectronProtocol.layer,
+  ElectronScreen.layer,
   ElectronShell.layer,
   ElectronTheme.layer,
   ElectronUpdater.layer,
@@ -66,10 +69,11 @@ const layerEnvironment = Layer.unwrap(
 );
 
 // The userData claim is built before anything that writes into it.
-const layerFoundation = Layer.mergeAll(DesktopState.layer, DesktopShutdown.layer).pipe(
-  Layer.provideMerge(DesktopUserData.layer),
-  Layer.provideMerge(layerEnvironment),
-);
+const layerFoundation = Layer.mergeAll(
+  DesktopState.layer,
+  DesktopShutdown.layer,
+  DesktopAppSettings.layer,
+).pipe(Layer.provideMerge(DesktopUserData.layer), Layer.provideMerge(layerEnvironment));
 
 const layerBackend = DesktopServerAuth.layer.pipe(
   Layer.provideMerge(DesktopBackend.layer),

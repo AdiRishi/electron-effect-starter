@@ -15,6 +15,7 @@ export const layerFakeDesktopWindow = (
       activate: Effect.void,
       handleBackendReady: () => Effect.void,
       handleBackendNotReady: Effect.void,
+      flushMainWindowBounds: Effect.void,
       syncAppearance: Effect.void,
       ...overrides,
     }),

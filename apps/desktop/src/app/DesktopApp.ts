@@ -14,6 +14,7 @@ import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import * as ElectronProtocol from "../electron/ElectronProtocol.ts";
 import { installDesktopIpcHandlers } from "../ipc/DesktopIpcHandlers.ts";
+import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopApplicationMenu from "../window/DesktopApplicationMenu.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
@@ -91,7 +92,9 @@ const bootstrap = Effect.gen(function* () {
   const state = yield* DesktopState.DesktopState;
   const protocol = yield* ElectronProtocol.ElectronProtocol;
   const backend = yield* DesktopBackend.DesktopBackend;
+  const settings = yield* DesktopAppSettings.DesktopAppSettings;
 
+  yield* settings.load;
   yield* protocol.registerDesktopProtocol({
     scheme: ElectronProtocol.getDesktopScheme(environment.isDevelopment),
     ...(Option.isSome(environment.devServerUrl)

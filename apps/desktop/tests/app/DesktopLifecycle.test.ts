@@ -37,6 +37,7 @@ const layerLifecycle = (input: {
   readonly platform?: NodeJS.Platform;
   readonly destroyAll?: Effect.Effect<void>;
   readonly activate?: Effect.Effect<void>;
+  readonly flushMainWindowBounds?: Effect.Effect<void>;
   readonly shutdown?: Layer.Layer<DesktopShutdown.DesktopShutdown>;
 }) => {
   const app = makeFakeElectronApp(input.app);
@@ -47,7 +48,12 @@ const layerLifecycle = (input: {
         app.layer,
         layerFakeElectronTheme(),
         layerFakeElectronWindow(input.destroyAll ? { destroyAll: input.destroyAll } : {}),
-        layerFakeDesktopWindow(input.activate ? { activate: input.activate } : {}),
+        layerFakeDesktopWindow({
+          ...(input.activate ? { activate: input.activate } : {}),
+          ...(input.flushMainWindowBounds
+            ? { flushMainWindowBounds: input.flushMainWindowBounds }
+            : {}),
+        }),
         layerTestEnvironment({ platform: input.platform ?? "darwin" }),
         input.shutdown ?? DesktopShutdown.layer,
         DesktopState.layer,
@@ -158,6 +164,9 @@ describe("DesktopLifecycle", () => {
         destroyAll: Effect.sync(() => {
           events.push("destroy");
         }),
+        flushMainWindowBounds: Effect.sync(() => {
+          events.push("flush");
+        }),
         shutdown: layerShutdown,
       });
 
@@ -170,8 +179,8 @@ describe("DesktopLifecycle", () => {
         yield* Deferred.succeed(allowShutdown, undefined);
         yield* Deferred.await(quitRequested);
 
-        assert.deepEqual(eventsBeforeCleanup, ["destroy", "request"]);
-        assert.deepEqual(events, ["destroy", "request", "quit"]);
+        assert.deepEqual(eventsBeforeCleanup, ["flush", "destroy", "request"]);
+        assert.deepEqual(events, ["flush", "destroy", "request", "quit"]);
       }).pipe(Effect.provide(layer), Effect.scoped);
     }),
   );

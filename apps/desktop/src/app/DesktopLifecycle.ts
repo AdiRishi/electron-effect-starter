@@ -42,8 +42,13 @@ interface QuitState {
 // start of a normal quit cannot cut the server's stop short and orphan it.
 const SHUTDOWN_STALL_THRESHOLD = Duration.seconds(10);
 
-const requestShutdownAndWait = Effect.gen(function* () {
+const requestShutdownAndWait = Effect.fn("DesktopLifecycle.requestShutdownAndWait")(function* (
+  afterBoundsFlush: Effect.Effect<void> = Effect.void,
+) {
   const shutdown = yield* DesktopShutdown.DesktopShutdown;
+  const desktopWindow = yield* DesktopWindow.DesktopWindow;
+  yield* desktopWindow.flushMainWindowBounds;
+  yield* afterBoundsFlush;
   yield* shutdown.request;
   yield* shutdown.awaitComplete;
 });
@@ -109,12 +114,13 @@ const make = DesktopLifecycle.of({
           yield* startWaitingForShutdown(quit);
           yield* Ref.set(state.quitting, true);
           yield* logInfo("before-quit received");
-          yield* electronWindow.destroyAll.pipe(
-            Effect.catchCause((cause) =>
-              logError("failed to destroy windows before shutdown", cause),
+          yield* requestShutdownAndWait(
+            electronWindow.destroyAll.pipe(
+              Effect.catchCause((cause) =>
+                logError("failed to destroy windows before shutdown", cause),
+              ),
             ),
           );
-          yield* requestShutdownAndWait;
         }),
       ).finally(() => {
         quit.phase = "allowed";
@@ -134,7 +140,7 @@ const make = DesktopLifecycle.of({
           if (yield* Ref.getAndSet(state.quitting, true)) return;
           yield* startWaitingForShutdown(quit);
           yield* logInfo("process signal received", { signal });
-          yield* requestShutdownAndWait;
+          yield* requestShutdownAndWait();
           quit.phase = "allowed";
           yield* electronApp.quit;
         }),

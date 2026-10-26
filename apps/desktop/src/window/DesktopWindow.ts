@@ -12,11 +12,14 @@ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopLogger from "../app/DesktopLogger.ts";
 import * as DesktopState from "../app/DesktopState.ts";
 import * as ElectronMenu from "../electron/ElectronMenu.ts";
+import * as ElectronScreen from "../electron/ElectronScreen.ts";
 import { getDesktopUrl } from "../electron/ElectronProtocol.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
+import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 
+const MAIN_WINDOW_BOUNDS_PERSIST_DEBOUNCE_MS = 500;
 const DEVELOPMENT_LOAD_RETRY_DELAYS_MS = [100, 250, 500, 1_000, 2_000] as const;
 
 // Chromium net errors a restarting Vite server produces: aborted, refused, reset, timed out.
@@ -29,6 +32,46 @@ const { logInfo, logWarning } = DesktopLogger.forComponent("desktop-window");
 
 function getWindowBackgroundColor(shouldUseDarkColors: boolean): string {
   return shouldUseDarkColors ? "#09090b" : "#ffffff";
+}
+
+type DisplayBounds = Pick<Electron.Rectangle, "x" | "y" | "width" | "height">;
+
+function windowFitsWithinDisplay(
+  windowBounds: DesktopAppSettings.DesktopWindowBounds,
+  displayBounds: DisplayBounds,
+): boolean {
+  return (
+    windowBounds.x >= displayBounds.x &&
+    windowBounds.y >= displayBounds.y &&
+    windowBounds.x + windowBounds.width <= displayBounds.x + displayBounds.width &&
+    windowBounds.y + windowBounds.height <= displayBounds.y + displayBounds.height
+  );
+}
+
+function windowBoundsEqual(
+  left: DesktopAppSettings.DesktopWindowBounds,
+  right: DesktopAppSettings.DesktopWindowBounds,
+): boolean {
+  return (
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height
+  );
+}
+
+export function resolveInitialMainWindowBounds(
+  persistedBounds: DesktopAppSettings.DesktopWindowBounds | null,
+  displays: readonly DisplayBounds[],
+): DesktopAppSettings.DesktopWindowBounds | typeof DesktopAppSettings.DEFAULT_MAIN_WINDOW_SIZE {
+  if (
+    persistedBounds !== null &&
+    displays.some((display) => windowFitsWithinDisplay(persistedBounds, display))
+  ) {
+    return persistedBounds;
+  }
+
+  return DesktopAppSettings.DEFAULT_MAIN_WINDOW_SIZE;
 }
 
 function isSameOriginRendererNavigation(input: {
@@ -123,6 +166,8 @@ export class DesktopWindow extends Context.Service<
     readonly activate: Effect.Effect<void>;
     readonly handleBackendReady: (httpBaseUrl: URL) => Effect.Effect<void>;
     readonly handleBackendNotReady: Effect.Effect<void>;
+    /** Saves the main window's bounds now instead of after the debounce; quitting calls it. */
+    readonly flushMainWindowBounds: Effect.Effect<void>;
     /** Repaints every window's background after the system switches light and dark mode. */
     readonly syncAppearance: Effect.Effect<void>;
   }
@@ -131,12 +176,15 @@ export class DesktopWindow extends Context.Service<
 const make = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const desktopState = yield* DesktopState.DesktopState;
+  const desktopSettings = yield* DesktopAppSettings.DesktopAppSettings;
   const electronMenu = yield* ElectronMenu.ElectronMenu;
+  const electronScreen = yield* ElectronScreen.ElectronScreen;
   const electronShell = yield* ElectronShell.ElectronShell;
   const electronTheme = yield* ElectronTheme.ElectronTheme;
   const electronWindow = yield* ElectronWindow.ElectronWindow;
   const runFork = Effect.runForkWith(yield* Effect.context<never>());
   const applicationUrl = getDesktopUrl(environment.isDevelopment);
+  let flushMainWindowBounds: Effect.Effect<void> = Effect.void;
 
   const openExternally = (url: string) => {
     if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
@@ -147,12 +195,28 @@ const make = Effect.gen(function* () {
   const createMain = Effect.gen(function* () {
     if (yield* Ref.get(desktopState.quitting)) return;
     const shouldUseDarkColors = yield* electronTheme.shouldUseDarkColors;
+    const persistedSettings = yield* desktopSettings.get;
+    const persistedBounds = persistedSettings.mainWindowBounds;
+
+    const displayBounds = yield* electronScreen.displayBounds.pipe(
+      Effect.catchCause((cause) =>
+        logWarning("failed to read connected displays; using defaults", cause).pipe(
+          Effect.as<ReadonlyArray<Electron.Rectangle>>([]),
+        ),
+      ),
+    );
+
+    const initialBounds = resolveInitialMainWindowBounds(persistedBounds, displayBounds);
+    const restoredPersistedBounds = persistedBounds !== null && initialBounds === persistedBounds;
+
+    if (persistedBounds !== null && !restoredPersistedBounds) {
+      yield* logWarning("saved main window bounds could not be restored; using defaults");
+    }
 
     const window = yield* electronWindow.create({
-      width: 1100,
-      height: 760,
-      minWidth: 640,
-      minHeight: 480,
+      ...initialBounds,
+      minWidth: DesktopAppSettings.MIN_MAIN_WINDOW_SIZE.width,
+      minHeight: DesktopAppSettings.MIN_MAIN_WINDOW_SIZE.height,
       show: false,
       title: environment.displayName,
       backgroundColor: getWindowBackgroundColor(shouldUseDarkColors),
@@ -175,6 +239,101 @@ const make = Effect.gen(function* () {
     }
 
     yield* electronWindow.setMain(window);
+
+    let boundsPersistFiber: Fiber.Fiber<void> | undefined;
+    let pendingBoundsPersistFiber: Fiber.Fiber<void> | undefined;
+    // Bounds that could not be restored stay saved until the user moves or resizes the window.
+    let boundsPersistenceEnabled = persistedBounds === null || restoredPersistedBounds;
+
+    const readPersistableBounds = (): DesktopAppSettings.DesktopWindowBounds | null => {
+      if (window.isDestroyed()) return null;
+
+      const bounds =
+        window.isFullScreen() || window.isMaximized() || window.isMinimized()
+          ? window.getNormalBounds()
+          : window.getBounds();
+
+      return DesktopAppSettings.normalizeMainWindowBounds({
+        x: Math.round(bounds.x),
+        y: Math.round(bounds.y),
+        width: Math.round(bounds.width),
+        height: Math.round(bounds.height),
+      });
+    };
+
+    const fallbackWindowBounds = boundsPersistenceEnabled ? null : readPersistableBounds();
+    const fallbackWindowMaximized = persistedSettings.mainWindowMaximized;
+
+    const persistCurrentBounds = (): Fiber.Fiber<void> | undefined => {
+      if (!boundsPersistenceEnabled) return pendingBoundsPersistFiber;
+      const bounds = readPersistableBounds();
+
+      if (bounds === null) return pendingBoundsPersistFiber;
+
+      pendingBoundsPersistFiber = runFork(
+        desktopSettings.setMainWindowBounds(bounds, window.isMaximized()).pipe(
+          Effect.asVoid,
+          Effect.catchTags({
+            DesktopSettingsWriteError: (error) =>
+              logWarning("failed to persist main window bounds", error),
+          }),
+        ),
+      );
+
+      return pendingBoundsPersistFiber;
+    };
+
+    const clearBoundsPersist = () => {
+      if (boundsPersistFiber === undefined) return;
+      const fiber = boundsPersistFiber;
+      boundsPersistFiber = undefined;
+      runFork(Fiber.interrupt(fiber));
+    };
+
+    const scheduleBoundsPersist = () => {
+      if (!boundsPersistenceEnabled) {
+        const currentBounds = readPersistableBounds();
+
+        if (
+          currentBounds === null ||
+          (fallbackWindowBounds !== null &&
+            windowBoundsEqual(currentBounds, fallbackWindowBounds) &&
+            window.isMaximized() === fallbackWindowMaximized)
+        ) {
+          return;
+        }
+      }
+
+      boundsPersistenceEnabled = true;
+      clearBoundsPersist();
+
+      boundsPersistFiber = runFork(
+        Effect.sleep(MAIN_WINDOW_BOUNDS_PERSIST_DEBOUNCE_MS).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              boundsPersistFiber = undefined;
+              void persistCurrentBounds();
+            }),
+          ),
+        ),
+      );
+    };
+
+    const flushBoundsPersist = Effect.sync(() => {
+      clearBoundsPersist();
+
+      return persistCurrentBounds();
+    }).pipe(Effect.flatMap((fiber) => (fiber === undefined ? Effect.void : Fiber.join(fiber))));
+
+    flushMainWindowBounds = flushBoundsPersist;
+
+    window.on("resize", scheduleBoundsPersist);
+    window.on("move", scheduleBoundsPersist);
+    window.on("maximize", scheduleBoundsPersist);
+    window.on("unmaximize", scheduleBoundsPersist);
+    window.on("close", () => {
+      runFork(flushBoundsPersist);
+    });
 
     window.webContents.on("context-menu", (event, params) => {
       event.preventDefault();
@@ -333,10 +492,13 @@ const make = Effect.gen(function* () {
 
     bindFirstRevealTrigger(revealSubscribers, () => {
       if (!window.isDestroyed()) window.webContents.setBackgroundThrottling(true);
+
+      if (persistedSettings.mainWindowMaximized) window.maximize();
       runFork(electronWindow.reveal(window));
     });
     window.on("closed", () => {
       clearDevelopmentLoadRetry();
+      clearBoundsPersist();
       runFork(electronWindow.clearMain(window));
     });
 
@@ -379,6 +541,9 @@ const make = Effect.gen(function* () {
       }),
     ),
     handleBackendNotReady: Ref.set(desktopState.backendReady, false),
+    flushMainWindowBounds: Effect.suspend(() => flushMainWindowBounds).pipe(
+      Effect.withSpan("DesktopWindow.flushMainWindowBounds"),
+    ),
     syncAppearance: Effect.gen(function* () {
       const backgroundColor = getWindowBackgroundColor(yield* electronTheme.shouldUseDarkColors);
       yield* electronWindow.syncAllAppearance((window) =>

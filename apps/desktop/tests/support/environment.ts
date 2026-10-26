@@ -17,6 +17,7 @@ export const testEnvironment = (
     stateDir: "/data",
     serverBaseDir: "/data/server",
     logDir: "/data/logs",
+    desktopSettingsPath: "/data/desktop-settings.json",
     appRoot: "/app",
     resourcesPath: "/app/resources",
     backendEntryPath: "/app/apps/server/dist/bin.mjs",

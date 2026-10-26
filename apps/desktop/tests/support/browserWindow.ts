@@ -9,6 +9,15 @@ export function makeFakeBrowserWindow() {
   const webContentsOnceListeners = new Map<string, Listener>();
   const calls: string[] = [];
   let destroyed = false;
+
+  const state = {
+    bounds: { x: 0, y: 0, width: 1100, height: 760 },
+    normalBounds: { x: 0, y: 0, width: 1100, height: 760 },
+    fullScreen: false,
+    maximized: false,
+    minimized: false,
+  };
+
   let url = "electron-effect-starter-dev://app/";
 
   const record =
@@ -35,6 +44,20 @@ export function makeFakeBrowserWindow() {
     id: 1,
     webContents,
     isDestroyed: () => destroyed,
+    getBounds: () => {
+      calls.push("getBounds");
+
+      return state.bounds;
+    },
+    getNormalBounds: () => {
+      calls.push("getNormalBounds");
+
+      return state.normalBounds;
+    },
+    isFullScreen: () => state.fullScreen,
+    isMaximized: () => state.maximized,
+    isMinimized: () => state.minimized,
+    maximize: record("maximize"),
     loadURL: (loadedUrl: string) => {
       calls.push(`loadURL:${loadedUrl}`);
 
@@ -67,6 +90,7 @@ export function makeFakeBrowserWindow() {
     // oxlint-disable-next-line anti-slop/no-chained-type-assertions -- The fake implements only the members DesktopWindow calls.
     window: fake as unknown as Electron.BrowserWindow,
     calls,
+    state,
     destroy: () => {
       destroyed = true;
     },
