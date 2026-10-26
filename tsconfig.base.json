@@ -79,7 +79,9 @@
           "globalTimersInEffect": "error",
           "globalFetch": "error",
           "globalFetchInEffect": "error",
-          "schemaNumber": "off"
+          "schemaNumber": "off",
+          // Tagged errors already discriminate on _tag; a brand would only add noise.
+          "schemaClassMissingBrand": "off"
         },
         "overrides": [
           {

@@ -1,0 +1,35 @@
+{
+  "name": "@app/shared",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./devProxy": {
+      "types": "./src/devProxy.ts",
+      "import": "./src/devProxy.ts"
+    },
+    "./HostProcess": {
+      "types": "./src/HostProcess.ts",
+      "import": "./src/HostProcess.ts"
+    },
+    "./httpReadiness": {
+      "types": "./src/httpReadiness.ts",
+      "import": "./src/httpReadiness.ts"
+    },
+    "./Net": {
+      "types": "./src/Net.ts",
+      "import": "./src/Net.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
+  }
+}
