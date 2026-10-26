@@ -15,6 +15,7 @@ const defaultInput = {
     appPath: "/repo/apps/desktop",
     isPackaged: false,
     appDataPath: "/Users/alice/Library/Application Support",
+    resourcesPath: "/repo/node_modules/electron/dist/Electron.app/Contents/Resources",
   },
 } satisfies DesktopEnvironment.MakeDesktopEnvironmentInput;
 

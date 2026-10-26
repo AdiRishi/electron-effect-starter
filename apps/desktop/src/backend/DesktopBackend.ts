@@ -43,7 +43,10 @@ export class DesktopBackend extends Context.Service<
   DesktopBackend,
   {
     readonly start: (port: number) => Effect.Effect<void>;
+    /** Starts the server again on the port it last started with. */
+    readonly restart: Effect.Effect<void>;
     readonly stop: (options?: { readonly timeout?: Duration.Duration }) => Effect.Effect<void>;
+    readonly snapshot: Effect.Effect<DesktopBackendManager.DesktopBackendSnapshot>;
     readonly bootstrapToken: string;
     readonly rendererBootstrap: Effect.Effect<DesktopServerBootstrap | null>;
   }
@@ -134,7 +137,9 @@ const make = Effect.gen(function* () {
       yield* Ref.set(port, Option.some(selectedPort));
       yield* instance.start;
     }),
+    restart: instance.start,
     stop: instance.stop,
+    snapshot: instance.snapshot,
     bootstrapToken,
     rendererBootstrap,
   });

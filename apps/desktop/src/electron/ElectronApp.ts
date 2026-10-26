@@ -11,6 +11,7 @@ export interface ElectronAppMetadata {
   readonly appPath: string;
   readonly isPackaged: boolean;
   readonly appDataPath: string;
+  readonly resourcesPath: string;
 }
 
 /** The app events this shell listens to, with the arguments Electron passes. */
@@ -66,6 +67,7 @@ const make = ElectronApp.of({
     appPath: Electron.app.getAppPath(),
     isPackaged: Electron.app.isPackaged,
     appDataPath: Electron.app.getPath("appData"),
+    resourcesPath: process.resourcesPath,
   })),
   whenReady: Effect.tryPromise({
     try: () => Electron.app.whenReady(),

@@ -44,12 +44,15 @@ export class DesktopEnvironment extends Context.Service<
     readonly serverBaseDir: string;
     readonly logDir: string;
     readonly appRoot: string;
+    readonly resourcesPath: string;
     readonly backendEntryPath: string;
     readonly clientAssetsDir: string;
     readonly preloadPath: string;
     readonly compileCachePath: string;
+    readonly appUpdateYmlPath: string;
     readonly devServerUrl: Option.Option<URL>;
     readonly configuredBackendPort: Option.Option<number>;
+    readonly appImagePath: Option.Option<string>;
     readonly disableAutoUpdate: boolean;
   }
 >()("@app/desktop/app/DesktopEnvironment") {}
@@ -87,12 +90,17 @@ export const make = Effect.fn("DesktopEnvironment.make")(function* (
     serverBaseDir: path.join(userDataPath, "server"),
     logDir: path.join(userDataPath, "logs"),
     appRoot,
+    resourcesPath: input.metadata.resourcesPath,
     backendEntryPath: path.join(appRoot, "apps/server/dist/bin.mjs"),
     clientAssetsDir: path.join(appRoot, "apps/server/dist/client"),
     preloadPath: path.join(input.dirname, "preload.cjs"),
     compileCachePath: path.join(input.dirname, "compileCache.cjs"),
+    appUpdateYmlPath: input.metadata.isPackaged
+      ? path.join(input.metadata.resourcesPath, "app-update.yml")
+      : path.join(input.metadata.appPath, "dev-app-update.yml"),
     devServerUrl: config.devServerUrl,
     configuredBackendPort: config.configuredBackendPort,
+    appImagePath: config.appImagePath,
     disableAutoUpdate: config.disableAutoUpdate,
   });
 });

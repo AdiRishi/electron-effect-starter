@@ -23,6 +23,15 @@ export class ElectronUpdaterCheckError extends Schema.TaggedError<ElectronUpdate
   }
 }
 
+export class ElectronUpdaterQuitAndInstallError extends Schema.TaggedError<ElectronUpdaterQuitAndInstallError>()(
+  "ElectronUpdaterQuitAndInstallError",
+  { isSilent: Schema.Boolean, isForceRunAfter: Schema.Boolean, cause: Schema.Defect() },
+) {
+  override get message(): string {
+    return `Failed to quit and install the update (silent: ${this.isSilent}, force run after: ${this.isForceRunAfter}).`;
+  }
+}
+
 export class ElectronUpdater extends Context.Service<
   ElectronUpdater,
   {
@@ -31,7 +40,10 @@ export class ElectronUpdater extends Context.Service<
       readonly autoInstallOnAppQuit: boolean;
     }) => Effect.Effect<void>;
     readonly checkForUpdates: Effect.Effect<void, ElectronUpdaterCheckError>;
-    readonly quitAndInstall: Effect.Effect<void>;
+    readonly quitAndInstall: (options: {
+      readonly isSilent: boolean;
+      readonly isForceRunAfter: boolean;
+    }) => Effect.Effect<void, ElectronUpdaterQuitAndInstallError>;
     readonly on: <K extends keyof ElectronUpdaterEvents>(
       eventName: K,
       listener: (...args: ElectronUpdaterEvents[K]) => void,
@@ -53,7 +65,19 @@ const make = ElectronUpdater.of({
     try: () => autoUpdater.checkForUpdates(),
     catch: (cause) => new ElectronUpdaterCheckError({ cause }),
   }).pipe(Effect.asVoid),
-  quitAndInstall: Effect.sync(() => autoUpdater.quitAndInstall()),
+  quitAndInstall: Effect.fn("ElectronUpdater.quitAndInstall")(function ({
+    isSilent,
+    isForceRunAfter,
+  }: {
+    readonly isSilent: boolean;
+    readonly isForceRunAfter: boolean;
+  }) {
+    return Effect.try({
+      try: () => autoUpdater.quitAndInstall(isSilent, isForceRunAfter),
+      catch: (cause) =>
+        new ElectronUpdaterQuitAndInstallError({ isSilent, isForceRunAfter, cause }),
+    });
+  }),
   on: Effect.fn("ElectronUpdater.on")(function <K extends keyof ElectronUpdaterEvents>(
     eventName: K,
     listener: (...args: ElectronUpdaterEvents[K]) => void,
