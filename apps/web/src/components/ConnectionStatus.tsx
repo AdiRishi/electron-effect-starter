@@ -1,26 +1,17 @@
-import type { SupervisorConnectionState } from "@app/client-runtime/connection";
+import {
+  connectionStatusText,
+  connectionStatusTitle,
+  presentConnectionState,
+  type SupervisorConnectionState,
+} from "@app/client-runtime/connection";
 import { RefreshCwIcon } from "lucide-react";
 
+import {
+  ConnectionStatusDot,
+  connectionPhaseDotClassName,
+  connectionPhasePingClassName,
+} from "~/components/ConnectionStatusDot";
 import { Button } from "~/components/ui/button";
-import { cn } from "~/lib/utils";
-
-const PHASE_LABELS: Record<SupervisorConnectionState["phase"], string> = {
-  available: "Disconnected",
-  offline: "Offline",
-  connecting: "Connecting",
-  backoff: "Reconnecting",
-  connected: "Connected",
-  blocked: "Sign-in required",
-};
-
-const PHASE_DOT_CLASSES: Record<SupervisorConnectionState["phase"], string> = {
-  available: "bg-warning",
-  offline: "bg-warning",
-  connecting: "bg-warning",
-  backoff: "bg-warning",
-  connected: "bg-success",
-  blocked: "bg-destructive",
-};
 
 export function ConnectionStatus({
   state,
@@ -29,12 +20,17 @@ export function ConnectionStatus({
   readonly state: SupervisorConnectionState;
   readonly onRetry: () => void;
 }) {
+  const connection = presentConnectionState(state);
   const canRetry = state.phase === "backoff" || state.phase === "blocked";
 
   return (
     <div className="flex items-center gap-2 text-muted-foreground text-xs" role="status">
-      <span aria-hidden className={cn("size-2 rounded-full", PHASE_DOT_CLASSES[state.phase])} />
-      <span title={state.lastFailure?.message}>{PHASE_LABELS[state.phase]}</span>
+      <ConnectionStatusDot
+        dotClassName={connectionPhaseDotClassName(connection.phase)}
+        pingClassName={connectionPhasePingClassName(connection.phase)}
+        tooltipText={connection.error === null ? null : connectionStatusText(connection)}
+      />
+      <span>{connectionStatusTitle(connection)}</span>
       {canRetry ? (
         <Button size="icon-sm" variant="ghost" aria-label="Retry now" onClick={onRetry}>
           <RefreshCwIcon />
