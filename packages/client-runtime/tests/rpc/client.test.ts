@@ -6,6 +6,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
@@ -153,18 +154,29 @@ describe("followSession", () => {
       });
 
       const { activeSession, retryCount, supervisor } = yield* makeHarness();
+      const warned = yield* Deferred.make<void>();
+
+      const warnings = Logger.make<unknown, void>((options) => {
+        if (options.logLevel === "Warn") Deferred.doneUnsafe(warned, Effect.void);
+      });
 
       const subscriptionFiber = yield* followNotes().pipe(
         Stream.runDrain,
         Effect.provideService(ConnectionSupervisor.ConnectionSupervisor, supervisor),
+        Effect.provide(Logger.layer([warnings])),
         Effect.forkChild,
       );
 
       yield* SubscriptionRef.set(activeSession, Option.some(session(firstClient)));
 
-      while (subscriptions.length < 1) {
-        yield* Queue.take(subscriptionChanges);
-      }
+      // The failure is fully handled once its warning is logged, and the stream is still running.
+      const firstOutcome = yield* Effect.raceFirst(
+        Deferred.await(warned).pipe(Effect.as("warned")),
+        Fiber.await(subscriptionFiber).pipe(Effect.as("ended")),
+      );
+
+      expect(firstOutcome).toBe("warned");
+      expect(subscriptions).toEqual(["first"]);
 
       yield* SubscriptionRef.set(activeSession, Option.none());
       yield* SubscriptionRef.set(activeSession, Option.some(session(secondClient)));
