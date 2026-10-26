@@ -21,7 +21,7 @@ const layerSetup = Layer.effectDiscard(
     yield* sql`PRAGMA checkpoint_fullfsync = ON;`;
     // PASSIVE checkpoints retain peak WAL size until the last connection closes.
     yield* sql.unsafe(`PRAGMA journal_size_limit = ${WAL_SIZE_LIMIT_BYTES};`);
-    yield* runMigrations;
+    yield* runMigrations();
   }),
 );
 
