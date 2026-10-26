@@ -1,7 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type * as Option from "effect/Option";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
 import type { ElectronAppMetadata } from "../electron/ElectronApp.ts";
@@ -38,7 +38,7 @@ export const make = Effect.fn("DesktopEnvironment.make")(function* (input: {
 }) {
   const path = yield* Path.Path;
   const config = yield* DesktopConfig;
-  const isDevelopment = config.devServerUrl._tag === "Some";
+  const isDevelopment = Option.isSome(config.devServerUrl);
   // Dev builds keep separate state so they never migrate the installed app's database.
   const stateDir = isDevelopment
     ? path.join(input.metadata.userDataPath, "dev")

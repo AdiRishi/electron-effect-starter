@@ -14,7 +14,7 @@ import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
-import { ChildProcessSpawner } from "effect/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import * as DesktopBackendManager from "../../src/backend/DesktopBackendManager.ts";
 
@@ -103,8 +103,9 @@ describe("DesktopBackendManager", () => {
         const instance = yield* makeInstance({
           spawn: (command) =>
             Effect.gen(function* () {
-              const fd3 =
-                command._tag === "StandardCommand" ? command.options.additionalFds?.fd3 : undefined;
+              const fd3 = ChildProcess.isStandardCommand(command)
+                ? command.options.additionalFds?.fd3
+                : undefined;
               if (fd3?.type === "input" && fd3.stream) {
                 yield* Queue.offer(
                   bootstrapLines,

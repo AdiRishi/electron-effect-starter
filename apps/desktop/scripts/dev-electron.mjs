@@ -108,7 +108,7 @@ async function shutdown(exitCode) {
 for (const { directory, files } of watchedDirectories) {
   watchers.push(
     NodeFS.watch(NodePath.join(desktopDir, directory), { persistent: true }, (_event, filename) => {
-      if (typeof filename === "string" && files.has(filename)) scheduleRestart();
+      if (filename !== null && files.has(filename)) scheduleRestart();
     }),
   );
 }

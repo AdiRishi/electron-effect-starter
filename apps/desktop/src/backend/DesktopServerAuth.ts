@@ -9,6 +9,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
@@ -63,7 +64,7 @@ const make = Effect.gen(function* () {
       })
       .pipe(
         Effect.retry({
-          while: (error) => error._tag === "HttpClientError",
+          while: Predicate.isTagged("HttpClientError"),
           schedule: Schedule.spaced(TRANSIENT_RETRY_INTERVAL),
         }),
         Effect.timeout(TRANSIENT_RETRY_TIMEOUT),

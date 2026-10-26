@@ -14,7 +14,7 @@ export interface ElectronAppMetadata {
 }
 
 /** The app events this shell listens to, with the arguments Electron passes. */
-interface ElectronAppEvents {
+export interface ElectronAppEvents {
   readonly "before-quit": readonly [event: Electron.Event];
   readonly activate: readonly [];
   readonly "window-all-closed": readonly [];

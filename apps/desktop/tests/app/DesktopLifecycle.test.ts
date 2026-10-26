@@ -13,9 +13,16 @@ import * as ElectronApp from "../../src/electron/ElectronApp.ts";
 import * as ElectronWindow from "../../src/electron/ElectronWindow.ts";
 import * as DesktopWindow from "../../src/window/DesktopWindow.ts";
 
+type AppEvents = ElectronApp.ElectronAppEvents;
+
 // Electron is the external seam: the fake app records listeners and quit calls.
 const makeHarness = Effect.gen(function* () {
-  const listeners = new Map<string, (...args: ReadonlyArray<unknown>) => void>();
+  const listeners = new Map<keyof AppEvents, (...args: never) => void>();
+  const emit = <K extends keyof AppEvents>(eventName: K, ...args: AppEvents[K]) => {
+    // SAFETY: `on` stores each listener under its own event name, so it accepts AppEvents[K].
+    const listener = listeners.get(eventName) as ((...args: AppEvents[K]) => void) | undefined;
+    listener?.(...args);
+  };
   const quits = yield* Queue.unbounded<void>();
   const app = ElectronApp.ElectronApp.of({
     metadata: Effect.succeed({
@@ -30,7 +37,7 @@ const makeHarness = Effect.gen(function* () {
     exit: () => Effect.void,
     on: (eventName, listener) =>
       Effect.sync(() => {
-        listeners.set(eventName, (...args) => Reflect.apply(listener, undefined, args));
+        listeners.set(eventName, listener);
       }),
     onBeforeQuitForUpdate: () => Effect.void,
   });
@@ -79,13 +86,18 @@ const makeHarness = Effect.gen(function* () {
     DesktopShutdown.layer,
     DesktopState.layer,
   );
-  return { listeners, quits, layer };
+  return { emit, quits, layer };
 });
 
 const makeQuitEvent = () => {
   let prevented = false;
   return {
-    event: { preventDefault: () => void (prevented = true) },
+    event: {
+      preventDefault: () => void (prevented = true),
+      get defaultPrevented() {
+        return prevented;
+      },
+    },
     wasPrevented: () => prevented,
   };
 };
@@ -101,7 +113,7 @@ describe("DesktopLifecycle", () => {
         const state = yield* DesktopState.DesktopState;
 
         const first = makeQuitEvent();
-        harness.listeners.get("before-quit")?.(first.event);
+        harness.emit("before-quit", first.event);
         assert.isTrue(first.wasPrevented());
         yield* shutdown.awaitRequest;
         assert.isTrue(yield* Ref.get(state.quitting));
@@ -111,7 +123,7 @@ describe("DesktopLifecycle", () => {
         yield* Queue.take(harness.quits);
 
         const second = makeQuitEvent();
-        harness.listeners.get("before-quit")?.(second.event);
+        harness.emit("before-quit", second.event);
         assert.isFalse(second.wasPrevented());
       }).pipe(Effect.provide(Layer.merge(DesktopLifecycle.layer, harness.layer)), Effect.scoped);
     }),
