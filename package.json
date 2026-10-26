@@ -1,0 +1,46 @@
+{
+  "name": "electron-effect-starter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare": "effect-tsgo patch",
+    "dev": "node scripts/dev-runner.ts dev",
+    "dev:server": "node scripts/dev-runner.ts dev:server",
+    "dev:web": "node scripts/dev-runner.ts dev:web",
+    "dev:desktop": "node scripts/dev-runner.ts dev:desktop",
+    "build": "turbo run build",
+    "build:desktop": "turbo run build --filter=@app/desktop",
+    "start:desktop": "pnpm --filter @app/desktop start",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "lint": "oxlint --disable-nested-config --report-unused-disable-directives",
+    "lint:fix": "oxlint --fix --disable-nested-config --report-unused-disable-directives",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "check": "pnpm typecheck && pnpm lint && pnpm fmt:check",
+    "dist:desktop": "node scripts/build-desktop-artifact.ts",
+    "rename": "node scripts/rename-project.ts",
+    "sync:repos": "node scripts/sync-reference-repos.ts",
+    "clean": "rm -rf node_modules .turbo apps/*/node_modules packages/*/node_modules apps/*/dist apps/*/dist-electron"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "catalog:",
+    "@types/node": "catalog:",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "26.12.1",
+      "onFail": "download"
+    }
+  },
+  "engines": {
+    "node": "26.12.1"
+  },
+  "packageManager": "pnpm@12.15.0"
+}

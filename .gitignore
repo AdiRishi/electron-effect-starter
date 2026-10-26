@@ -1,0 +1,14 @@
+node_modules/
+.turbo/
+dist/
+dist-electron/
+release/
+*.tsbuildinfo
+*.log
+.DS_Store
+.env
+.env.local
+.data/
+.vitest-*
+__screenshots__/
+.tanstack/

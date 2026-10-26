@@ -1,0 +1,50 @@
+packages:
+  - apps/*
+  - packages/*
+  - oxlint-plugin-app
+  - scripts
+
+# Every dependency must have been published for at least a day before it installs.
+minimumReleaseAge: 1440
+
+allowBuilds:
+  electron: true
+
+catalog:
+  "@base-ui/react": 1.9.0
+  "@effect/atom-react": 4.0.6
+  "@effect/platform-node": 4.0.6
+  "@effect/sql-sqlite-node": 4.0.6
+  "@effect/tsgo": 0.57.0
+  "@effect/vitest": 4.0.6
+  "@oxlint/plugins": 1.89.0
+  "@tailwindcss/vite": 4.3.3
+  "@tanstack/react-router": 1.170.46
+  "@tanstack/router-plugin": 1.168.48
+  "@types/node": 26.6.5
+  "@types/react": 19.3.0
+  "@types/react-dom": 19.3.0
+  "@vitejs/plugin-react": 6.1.2
+  "@vitest/browser-playwright": 5.0.5
+  class-variance-authority: 0.7.1
+  effect: 4.0.6
+  electron: 45.0.0
+  electron-builder: 26.18.0
+  electron-updater: 6.8.11
+  lucide-react: 1.61.0
+  oxfmt: 0.74.0
+  oxlint: 1.89.0
+  playwright: 1.64.1
+  react: 19.3.1
+  react-dom: 19.3.1
+  tailwind-merge: 3.7.0
+  tailwindcss: 4.3.3
+  tsdown: 0.23.2
+  turbo: 2.11.10
+  typescript: 7.0.2
+  vite: 8.3.5
+  vitest: 5.0.5
+
+overrides:
+  # Two copies of effect split every Context tag and Schema in two.
+  effect: "catalog:"

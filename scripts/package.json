@@ -1,0 +1,8 @@
+{
+  "name": "@app/scripts",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}
