@@ -5,6 +5,8 @@ import {
   HttpAuthentication,
   InternalError,
   SESSION_COOKIE_NAME,
+  type AuthInvalidReason,
+  type InternalErrorReason,
 } from "@app/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -16,15 +18,24 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 
 import * as ServerAuth from "./ServerAuth.ts";
 
+const CREDENTIAL_RESPONSE_HEADERS = {
+  "cache-control": "no-store",
+  pragma: "no-cache",
+} as const;
+
 // Credentials must never be cached by the browser or an intermediary.
 const appendCredentialResponseHeaders = HttpEffect.appendPreResponseHandler((_request, response) =>
-  Effect.succeed(
-    HttpServerResponse.setHeaders(response, { "Cache-Control": "no-store", Pragma: "no-cache" }),
-  ),
+  Effect.succeed(HttpServerResponse.setHeaders(response, CREDENTIAL_RESPONSE_HEADERS)),
 );
 
-const failInvalidCredential = () =>
-  Effect.fail(new AuthInvalidError({ reason: "invalid_credential" }));
+export const failAuthInvalid = (reason: AuthInvalidReason) =>
+  Effect.fail(new AuthInvalidError({ reason }));
+
+export const failInternal = (reason: InternalErrorReason) =>
+  Effect.fail(new InternalError({ reason }));
+
+const failCredential = (error: ServerAuth.ServerAuthCredentialError) =>
+  failAuthInvalid(ServerAuth.serverAuthCredentialReason(error));
 
 export const layerAuthentication = Layer.effect(
   HttpAuthentication,
@@ -36,13 +47,10 @@ export const layerAuthentication = Layer.effect(
         const request = yield* HttpServerRequest.HttpServerRequest;
 
         const session = yield* auth.authenticateRequest(request).pipe(
-          Effect.catchTags({
-            RequestCredentialError: (error) =>
-              error.reason === "missing"
-                ? Effect.fail(new AuthInvalidError({ reason: "missing_credential" }))
-                : failInvalidCredential(),
-            SessionCredentialInvalidError: failInvalidCredential,
-          }),
+          Effect.catchIf(ServerAuth.isServerAuthCredentialError, failCredential),
+          Effect.catchIf(ServerAuth.isServerAuthInternalError, () =>
+            failInternal("internal_error"),
+          ),
         );
 
         return yield* httpEffect.pipe(Effect.provideService(AuthenticatedPrincipal, session));
@@ -59,18 +67,33 @@ export const layer = HttpApiBuilder.group(
     return handlers
       .handle(
         "session",
-        Effect.fn("http.auth.session")(function* () {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          yield* appendCredentialResponseHeaders;
+        Effect.fn("http.auth.session")(
+          function* () {
+            const request = yield* HttpServerRequest.HttpServerRequest;
+            yield* appendCredentialResponseHeaders;
 
-          return yield* auth.getSessionState(request);
-        }),
+            return yield* auth.getSessionState(request);
+          },
+          Effect.catchIf(ServerAuth.isServerAuthInternalError, () =>
+            failInternal("internal_error"),
+          ),
+        ),
       )
       .handle(
         "browserSession",
         Effect.fn("http.auth.browserSession")(
           function* (args) {
-            const result = yield* auth.createBrowserSession(args.payload.credential);
+            const request = yield* HttpServerRequest.HttpServerRequest;
+
+            const previousCredential = ServerAuth.selectRequestCredential(
+              request,
+              SESSION_COOKIE_NAME,
+            );
+
+            const result = yield* auth.createBrowserSession(
+              args.payload.credential,
+              previousCredential?.source === "cookie" ? previousCredential.token : undefined,
+            );
 
             const cookies = yield* Effect.fromResult(
               Cookies.set(Cookies.empty, SESSION_COOKIE_NAME, result.sessionToken, {
@@ -79,7 +102,7 @@ export const layer = HttpApiBuilder.group(
                 path: "/",
                 sameSite: "lax",
               }),
-            ).pipe(Effect.mapError(() => new InternalError({ reason: "session_issuance_failed" })));
+            ).pipe(Effect.catch(() => failInternal("session_issuance_failed")));
 
             yield* HttpEffect.appendPreResponseHandler((_request, response) =>
               Effect.succeed(HttpServerResponse.mergeCookies(response, cookies)),
@@ -89,11 +112,11 @@ export const layer = HttpApiBuilder.group(
             return result.response;
           },
           Effect.catchTags({
-            UnknownBootstrapCredentialError: failInvalidCredential,
-            ExpiredBootstrapCredentialError: failInvalidCredential,
-            SessionIssueError: () =>
-              Effect.fail(new InternalError({ reason: "session_issuance_failed" })),
+            ServerAuthInvalidCredentialError: () => failAuthInvalid("invalid_credential"),
           }),
+          Effect.catchIf(ServerAuth.isServerAuthInternalError, () =>
+            failInternal("session_issuance_failed"),
+          ),
         ),
       )
       .handle(
@@ -105,11 +128,11 @@ export const layer = HttpApiBuilder.group(
             return yield* auth.exchangeBootstrapCredential(args.payload.subject_token);
           },
           Effect.catchTags({
-            UnknownBootstrapCredentialError: failInvalidCredential,
-            ExpiredBootstrapCredentialError: failInvalidCredential,
-            SessionIssueError: () =>
-              Effect.fail(new InternalError({ reason: "session_issuance_failed" })),
+            ServerAuthInvalidCredentialError: () => failAuthInvalid("invalid_credential"),
           }),
+          Effect.catchIf(ServerAuth.isServerAuthInternalError, () =>
+            failInternal("session_issuance_failed"),
+          ),
         ),
       )
       .handle(
@@ -121,10 +144,9 @@ export const layer = HttpApiBuilder.group(
 
             return yield* auth.issueWebSocketTicket(session);
           },
-          Effect.catchTags({
-            SessionIssueError: () =>
-              Effect.fail(new InternalError({ reason: "websocket_ticket_issuance_failed" })),
-          }),
+          Effect.catchIf(ServerAuth.isServerAuthInternalError, () =>
+            failInternal("websocket_ticket_issuance_failed"),
+          ),
         ),
       );
   }),

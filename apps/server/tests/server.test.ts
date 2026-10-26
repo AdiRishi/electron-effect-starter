@@ -8,7 +8,10 @@ import {
 } from "@app/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
@@ -104,6 +107,52 @@ describe("server", () => {
           snapshot?.type === "snapshot" ? snapshot.notes.map((note) => note.id) : [],
           [created.id],
         );
+      }),
+    );
+
+    it.effect("closes a renderer's socket when a later desktop launch replaces its session", () =>
+      Effect.gen(function* () {
+        const { client, baseUrl } = yield* makeTestServer({ desktopBootstrapToken: DESKTOP_TOKEN });
+
+        const exchange = client
+          .execute(
+            HttpClientRequest.post("/oauth/token").pipe(
+              HttpClientRequest.bodyUrlParams({
+                grant_type: AuthTokenExchangeGrantType,
+                subject_token: DESKTOP_TOKEN,
+                subject_token_type: AuthBootstrapTokenType,
+                requested_token_type: AuthAccessTokenType,
+              }),
+            ),
+          )
+          .pipe(Effect.flatMap(decodeAccessToken));
+
+        const requestTicket = (accessToken: string) =>
+          client.execute(
+            HttpClientRequest.post("/api/auth/websocket-ticket").pipe(
+              HttpClientRequest.bearerToken(accessToken),
+            ),
+          );
+
+        const first = yield* exchange;
+
+        const { ticket } = yield* requestTicket(first.access_token).pipe(
+          Effect.flatMap(decodeTicket),
+        );
+
+        const rpc = yield* connectRpc(baseUrl, ticket);
+        const subscribed = yield* Deferred.make<void>();
+
+        const subscription = yield* rpc["notes.subscribe"]({}).pipe(
+          Stream.runForEach(() => Deferred.succeed(subscribed, undefined)),
+          Effect.forkScoped,
+        );
+
+        yield* Deferred.await(subscribed);
+        yield* exchange;
+
+        assert.isTrue(Exit.isFailure(yield* Fiber.await(subscription)));
+        assert.strictEqual((yield* requestTicket(first.access_token)).status, 401);
       }),
     );
 

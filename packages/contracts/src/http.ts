@@ -46,6 +46,7 @@ export class AuthInvalidError extends Schema.TaggedError<AuthInvalidError>()(
 }
 
 export const InternalErrorReason = Schema.Literals([
+  "internal_error",
   "session_issuance_failed",
   "websocket_ticket_issuance_failed",
 ]);
@@ -93,6 +94,7 @@ export class AuthHttpApi extends HttpApiGroup.make("auth")
     HttpApiEndpoint.get("session", "/api/auth/session", {
       headers: OptionalBearerHeaders,
       success: AuthSessionState,
+      error: [InternalError],
     }),
   )
   .add(

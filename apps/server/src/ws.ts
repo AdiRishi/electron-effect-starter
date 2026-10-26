@@ -1,5 +1,4 @@
-import { AuthInvalidError, WS_METHODS, WS_PATH, WsRpcGroup } from "@app/contracts";
-import * as DateTime from "effect/DateTime";
+import { WS_METHODS, WS_PATH, WsRpcGroup } from "@app/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import {
@@ -11,7 +10,9 @@ import {
 import * as RpcSerialization from "effect/rpc/RpcSerialization";
 import * as RpcServer from "effect/rpc/RpcServer";
 
+import { failAuthInvalid, failInternal } from "./auth/http.ts";
 import * as ServerAuth from "./auth/ServerAuth.ts";
+import * as SessionStore from "./auth/SessionStore.ts";
 import * as NotesStore from "./notes/NotesStore.ts";
 import * as ServerLifecycleEvents from "./ServerLifecycleEvents.ts";
 
@@ -44,18 +45,13 @@ export const layer = HttpRouter.add(
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
     const auth = yield* ServerAuth.ServerAuth;
+    const sessions = yield* SessionStore.SessionStore;
 
     const session = yield* auth.authenticateWebSocketUpgrade(request).pipe(
-      Effect.catchTags({
-        RequestCredentialError: (error) =>
-          Effect.fail(
-            new AuthInvalidError({
-              reason: error.reason === "missing" ? "missing_credential" : "invalid_credential",
-            }),
-          ),
-        SessionCredentialInvalidError: () =>
-          Effect.fail(new AuthInvalidError({ reason: "invalid_credential" })),
-      }),
+      Effect.catchIf(ServerAuth.isServerAuthCredentialError, (error) =>
+        failAuthInvalid(ServerAuth.serverAuthCredentialReason(error)),
+      ),
+      Effect.catchIf(ServerAuth.isServerAuthInternalError, () => failInternal("internal_error")),
     );
 
     const httpEffect = yield* Effect.gen(function* () {
@@ -68,18 +64,21 @@ export const layer = HttpRouter.add(
       return httpEffect;
     }).pipe(Effect.provide(layerHandlers.pipe(Layer.provideMerge(RpcSerialization.layerJson))));
 
-    // A socket must not outlive the session that opened it; the client reconnects and reauthenticates.
-    const sessionRemaining = DateTime.distance(yield* DateTime.now, session.expiresAt);
-
-    return yield* httpEffect.pipe(
-      Effect.timeoutOrElse({
-        duration: sessionRemaining,
-        orElse: () => Effect.succeed(HttpServerResponse.empty()),
-      }),
+    // A socket must not outlive its session: revocation, replacement and expiry all close it, and
+    // the client reconnects and reauthenticates.
+    return yield* Effect.raceFirst(
+      httpEffect,
+      sessions.awaitInvalidation(session.sessionId).pipe(
+        Effect.as(HttpServerResponse.empty()),
+        Effect.catchTags({
+          SessionCredentialVerificationError: () => failInternal("internal_error"),
+        }),
+      ),
     );
   }).pipe(
     Effect.catchTags({
       AuthInvalidError: HttpServerRespondable.toResponse,
+      InternalError: HttpServerRespondable.toResponse,
     }),
   ),
 );

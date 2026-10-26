@@ -3,12 +3,16 @@ import * as Migrator from "effect/sql/Migrator";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import Migration0001 from "./migrations/0001_Notes.ts";
+import Migration0002 from "./migrations/0002_AuthSessions.ts";
 
 /**
  * Append new migrations; never edit or reorder a released one. The migrator skips every id up to
  * the highest one it has recorded.
  */
-const migrationEntries = [[1, "Notes", Migration0001]] as const;
+const migrationEntries = [
+  [1, "Notes", Migration0001],
+  [2, "AuthSessions", Migration0002],
+] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
 
