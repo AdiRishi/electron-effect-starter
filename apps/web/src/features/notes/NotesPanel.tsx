@@ -1,5 +1,6 @@
 import type { Note } from "@app/contracts";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import * as Exit from "effect/Exit";
 import { AsyncResult, type Atom } from "effect/reactivity";
 import { PencilIcon, Trash2Icon } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -77,8 +78,9 @@ function NoteCard({ note }: { readonly note: Note }) {
           onCancel={() => setEditing(false)}
           onSubmit={async (value) => {
             const exit = await updateNote({ id: note.id, ...value });
-            if (exit._tag === "Success") setEditing(false);
-            return exit._tag === "Success";
+            const saved = Exit.isSuccess(exit);
+            if (saved) setEditing(false);
+            return saved;
           }}
         />
       </li>
@@ -143,7 +145,7 @@ export function NotesPanel() {
       <NoteEditor
         initial={{ title: "", body: "" }}
         submitLabel="Add note"
-        onSubmit={async (value) => (await createNote(value))._tag === "Success"}
+        onSubmit={async (value) => Exit.isSuccess(await createNote(value))}
       />
       <NotesList notes={notes} />
     </section>

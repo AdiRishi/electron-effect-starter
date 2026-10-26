@@ -13,6 +13,15 @@ const PHASE_LABELS: Record<SupervisorConnectionState["phase"], string> = {
   blocked: "Sign-in required",
 };
 
+const PHASE_DOT_CLASSES: Record<SupervisorConnectionState["phase"], string> = {
+  available: "bg-warning",
+  offline: "bg-warning",
+  connecting: "bg-warning",
+  backoff: "bg-warning",
+  connected: "bg-success",
+  blocked: "bg-destructive",
+};
+
 export function ConnectionStatus({
   state,
   onRetry,
@@ -23,17 +32,7 @@ export function ConnectionStatus({
   const canRetry = state.phase === "backoff" || state.phase === "blocked";
   return (
     <div className="flex items-center gap-2 text-muted-foreground text-xs" role="status">
-      <span
-        aria-hidden
-        className={cn(
-          "size-2 rounded-full",
-          state.phase === "connected"
-            ? "bg-success"
-            : state.phase === "blocked"
-              ? "bg-destructive"
-              : "bg-warning",
-        )}
-      />
+      <span aria-hidden className={cn("size-2 rounded-full", PHASE_DOT_CLASSES[state.phase])} />
       <span title={state.lastFailure?.message}>{PHASE_LABELS[state.phase]}</span>
       {canRetry ? (
         <Button size="icon-sm" variant="ghost" aria-label="Retry now" onClick={onRetry}>

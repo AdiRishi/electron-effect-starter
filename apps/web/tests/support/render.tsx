@@ -115,20 +115,3 @@ export function fakeTimers(config?: Parameters<typeof vi.useFakeTimers>[0]): Dis
   vi.useFakeTimers(config);
   return { [Symbol.dispose]: () => void vi.useRealTimers() };
 }
-
-/** Replaces one global for one test and restores exactly that global on dispose. */
-export function stubGlobal(name: string, value: unknown): Disposable {
-  const original = Object.getOwnPropertyDescriptor(globalThis, name);
-  Object.defineProperty(globalThis, name, {
-    value,
-    configurable: true,
-    enumerable: true,
-    writable: true,
-  });
-  return {
-    [Symbol.dispose]() {
-      if (original) Object.defineProperty(globalThis, name, original);
-      else Reflect.deleteProperty(globalThis, name);
-    },
-  };
-}
