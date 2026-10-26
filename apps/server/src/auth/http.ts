@@ -4,7 +4,6 @@ import {
   AuthInvalidError,
   HttpAuthentication,
   InternalError,
-  SESSION_COOKIE_NAME,
   type AuthInvalidReason,
   type InternalErrorReason,
 } from "@app/contracts";
@@ -17,6 +16,7 @@ import { HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 
 import * as ServerAuth from "./ServerAuth.ts";
+import * as SessionStore from "./SessionStore.ts";
 
 const CREDENTIAL_RESPONSE_HEADERS = {
   "cache-control": "no-store",
@@ -63,6 +63,7 @@ export const layer = HttpApiBuilder.group(
   "auth",
   Effect.fnUntraced(function* (handlers) {
     const auth = yield* ServerAuth.ServerAuth;
+    const sessions = yield* SessionStore.SessionStore;
 
     return handlers
       .handle(
@@ -87,7 +88,7 @@ export const layer = HttpApiBuilder.group(
 
             const previousCredential = ServerAuth.selectRequestCredential(
               request,
-              SESSION_COOKIE_NAME,
+              sessions.cookieName,
             );
 
             const result = yield* auth.createBrowserSession(
@@ -96,7 +97,7 @@ export const layer = HttpApiBuilder.group(
             );
 
             const cookies = yield* Effect.fromResult(
-              Cookies.set(Cookies.empty, SESSION_COOKIE_NAME, result.sessionToken, {
+              Cookies.set(Cookies.empty, sessions.cookieName, result.sessionToken, {
                 expires: DateTime.toDate(result.response.expiresAt),
                 httpOnly: true,
                 path: "/",

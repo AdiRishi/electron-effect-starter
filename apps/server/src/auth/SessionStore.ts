@@ -11,11 +11,13 @@ import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
+import * as ServerConfig from "../config.ts";
 import * as AuthSessions from "../persistence/AuthSessions.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 import {
   base64UrlDecodeUtf8,
   base64UrlEncode,
+  resolveSessionCookieName,
   signPayload,
   timingSafeEqualBase64Url,
 } from "./utils.ts";
@@ -296,6 +298,8 @@ export type SessionCredentialError = typeof SessionCredentialError.Type;
 export class SessionStore extends Context.Service<
   SessionStore,
   {
+    /** This server's session cookie; see `resolveSessionCookieName`. */
+    readonly cookieName: string;
     readonly issue: (input?: {
       readonly subject?: string;
       readonly method?: ServerAuthSessionMethod;
@@ -365,10 +369,19 @@ function splitToken(token: string): readonly [string, string] | undefined {
 
 const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
+  const serverConfig = yield* ServerConfig.ServerConfig;
   const secretStore = yield* ServerSecretStore.ServerSecretStore;
   const authSessions = yield* AuthSessions.AuthSessionRepository;
   const signingSecret = yield* secretStore.getOrCreateRandom(SIGNING_SECRET_NAME, 32);
   const removedSessions = yield* PubSub.unbounded<AuthSessionId>();
+
+  const cookieName = resolveSessionCookieName({
+    mode: serverConfig.mode,
+    port: serverConfig.port,
+    host: serverConfig.host,
+    instanceKey: serverConfig.stateDir,
+    development: serverConfig.devUrl !== undefined,
+  });
 
   const emitRemoved = (sessionId: AuthSessionId) =>
     PubSub.publish(removedSessions, sessionId).pipe(Effect.asVoid);
@@ -689,6 +702,7 @@ const make = Effect.gen(function* () {
   });
 
   return SessionStore.of({
+    cookieName,
     issue,
     verify,
     issueWebSocketToken,

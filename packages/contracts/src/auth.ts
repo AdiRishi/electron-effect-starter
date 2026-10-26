@@ -10,8 +10,6 @@ export const ServerAuthSessionMethod = Schema.Literals([
 
 export type ServerAuthSessionMethod = typeof ServerAuthSessionMethod.Type;
 
-export const SESSION_COOKIE_NAME = "app_session";
-
 export const AuthTokenExchangeGrantType =
   "urn:ietf:params:oauth:grant-type:token-exchange" as const;
 

@@ -1,6 +1,5 @@
 import {
   AuthAccessTokenType,
-  SESSION_COOKIE_NAME,
   WS_TICKET_QUERY_PARAM,
   type AuthAccessTokenResult,
   type AuthBrowserSessionResult,
@@ -247,7 +246,6 @@ const make = Effect.gen(function* () {
   const bootstrapCredentials = yield* BootstrapCredentials.BootstrapCredentials;
   const sessions = yield* SessionStore.SessionStore;
   const config = yield* ServerConfig.ServerConfig;
-  const cookieName = SESSION_COOKIE_NAME;
 
   const authenticateToken = (
     token: string,
@@ -269,7 +267,7 @@ const make = Effect.gen(function* () {
   const trustedBrowserOrigins = new Set<string>(config.devUrl ? [config.devUrl.origin] : []);
 
   const authenticateRequest: ServerAuth["Service"]["authenticateRequest"] = (request) => {
-    const credential = selectRequestCredential(request, cookieName);
+    const credential = selectRequestCredential(request, sessions.cookieName);
 
     if (!credential?.token) {
       return Effect.fail(new ServerAuthMissingCredentialError({}));

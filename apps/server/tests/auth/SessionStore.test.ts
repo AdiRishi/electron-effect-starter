@@ -26,6 +26,21 @@ const layer = layerStore.pipe(
   Layer.provideMerge(NodeServices.layer),
 );
 
+const layerWithConfig = (overrides: Partial<ServerConfig.ServerConfig["Service"]>) =>
+  layerStore.pipe(
+    Layer.provideMerge(
+      Layer.effect(
+        ServerConfig.ServerConfig,
+        Effect.gen(function* () {
+          const config = yield* ServerConfig.ServerConfig;
+
+          return { ...config, ...overrides } satisfies ServerConfig.ServerConfig["Service"];
+        }),
+      ).pipe(Layer.provide(ServerConfig.layerTest())),
+    ),
+    Layer.provideMerge(NodeServices.layer),
+  );
+
 const failureTag = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A, E>) =>
   effect.pipe(
     Effect.flip,
@@ -33,6 +48,20 @@ const failureTag = <A, E extends { readonly _tag: string }>(effect: Effect.Effec
   );
 
 describe("SessionStore", () => {
+  it.effect("keeps desktop cookies port-scoped on the port a second instance lands on", () =>
+    Effect.gen(function* () {
+      const sessions = yield* SessionStore.SessionStore;
+      assert.strictEqual(sessions.cookieName, "app_session_3774");
+    }).pipe(Effect.provide(layerWithConfig({ mode: "desktop", port: 3774 }))),
+  );
+
+  it.effect("scopes loopback web cookies to the port and the state directory", () =>
+    Effect.gen(function* () {
+      const sessions = yield* SessionStore.SessionStore;
+      assert.match(sessions.cookieName, /^app_session_3773_[a-f0-9]{12}$/);
+    }).pipe(Effect.provide(layerWithConfig({ mode: "web", host: "127.0.0.1", port: 3773 }))),
+  );
+
   it.effect("verifies the sessions it issues", () =>
     Effect.gen(function* () {
       const sessions = yield* SessionStore.SessionStore;
