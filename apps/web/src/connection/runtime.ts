@@ -17,6 +17,7 @@ import * as Socket from "effect/socket/Socket";
 
 import { desktopBridge } from "../env";
 import { currentServerTarget } from "../server/current";
+import { networkPathChanges } from "./networkPath";
 
 const currentNetworkStatus = (): NetworkStatus => (navigator.onLine ? "online" : "offline");
 
@@ -42,21 +43,28 @@ const layerConnectivity = Connectivity.layer({
 });
 
 const layerWakeups = ConnectionWakeups.layer({
-  changes: Stream.callback<ConnectionWakeups.ConnectionWakeup>((queue) =>
-    Effect.acquireRelease(
-      Effect.sync(() => {
-        const listener = () => {
-          if (document.visibilityState === "visible") {
-            Queue.offerUnsafe(queue, "application-active");
-          }
-        };
+  changes: Stream.mergeAll(
+    [
+      Stream.callback<"application-active">((queue) =>
+        Effect.acquireRelease(
+          Effect.sync(() => {
+            const listener = () => {
+              if (document.visibilityState === "visible") {
+                Queue.offerUnsafe(queue, "application-active");
+              }
+            };
 
-        document.addEventListener("visibilitychange", listener);
+            document.addEventListener("visibilitychange", listener);
 
-        return listener;
-      }),
-      (listener) => Effect.sync(() => document.removeEventListener("visibilitychange", listener)),
-    ),
+            return listener;
+          }),
+          (listener) =>
+            Effect.sync(() => document.removeEventListener("visibilitychange", listener)),
+        ),
+      ),
+      networkPathChanges(),
+    ],
+    { concurrency: "unbounded" },
   ),
 });
 
