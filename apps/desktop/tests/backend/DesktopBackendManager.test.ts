@@ -3,6 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -39,12 +40,13 @@ const baseConfig: DesktopBackendManager.DesktopBackendStartConfig = {
 // The child process and the HTTP readiness probe are the external seams.
 function makeProcess(options: {
   readonly exitCode: Effect.Effect<ChildProcessSpawner.ExitCode, PlatformError.PlatformError>;
+  readonly stdout?: Stream.Stream<Uint8Array, PlatformError.PlatformError>;
 }): ChildProcessSpawner.ChildProcessHandle {
   return ChildProcessSpawner.makeHandle({
     pid: ChildProcessSpawner.ProcessId(123),
-    stdout: Stream.empty,
+    stdout: options.stdout ?? Stream.empty,
     stderr: Stream.empty,
-    all: Stream.empty,
+    all: options.stdout ?? Stream.empty,
     exitCode: options.exitCode,
     isRunning: Effect.succeed(false),
     kill: () => Effect.void,
@@ -221,6 +223,103 @@ describe("DesktopBackendManager", () => {
         assert.isTrue(Option.isNone(snapshot.activePid));
         yield* TestClock.adjust(Duration.minutes(1));
         assert.strictEqual(startCount, 1);
+      }),
+    ),
+  );
+
+  it.effect("restarts when start is requested during stop teardown", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const starts = yield* Queue.unbounded<number>();
+        const teardownStarted = yield* Deferred.make<void>();
+        const finishTeardown = yield* Deferred.make<void>();
+        let startCount = 0;
+
+        const instance = yield* makeInstance({
+          httpStatus: "never",
+          spawn: () =>
+            Effect.gen(function* () {
+              const closed = yield* Deferred.make<void>();
+              startCount += 1;
+              yield* Queue.offer(starts, startCount);
+
+              yield* Effect.addFinalizer(() =>
+                startCount === 1
+                  ? Deferred.succeed(teardownStarted, undefined).pipe(
+                      Effect.andThen(Deferred.await(finishTeardown)),
+                      Effect.andThen(Deferred.succeed(closed, undefined)),
+                    )
+                  : Deferred.succeed(closed, undefined),
+              );
+
+              return makeProcess({
+                exitCode: Deferred.await(closed).pipe(Effect.as(ChildProcessSpawner.ExitCode(0))),
+              });
+            }),
+        });
+
+        yield* instance.start;
+        assert.strictEqual(yield* Queue.take(starts), 1);
+
+        const stopFiber = yield* instance.stop().pipe(Effect.forkChild);
+        yield* Deferred.await(teardownStarted);
+        yield* instance.start;
+        assert.isTrue((yield* instance.snapshot).desiredRunning);
+
+        yield* Deferred.succeed(finishTeardown, undefined);
+        yield* Fiber.join(stopFiber);
+        yield* TestClock.adjust(Duration.millis(500));
+
+        assert.strictEqual(yield* Queue.take(starts), 2);
+        const restarted = yield* instance.snapshot;
+        assert.isTrue(restarted.desiredRunning);
+        assert.deepStrictEqual(restarted.activePid, Option.some(123));
+      }),
+    ),
+  );
+
+  it.effect("reports child exit before waiting for trailing output to drain", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const exitObserved = yield* Deferred.make<void>();
+        const finishOutputDrain = yield* Deferred.make<void>();
+
+        const runFiber = yield* DesktopBackendManager.runBackendProcess(baseConfig, {
+          readinessTimeout: Duration.seconds(1),
+          onStarted: () => Effect.void,
+          onExitObserved: Deferred.succeed(exitObserved, undefined).pipe(Effect.asVoid),
+          onReady: Effect.void,
+          onReadinessFailure: () => Effect.void,
+          onOutput: () => Effect.void,
+        }).pipe(
+          Effect.provide(
+            Layer.merge(
+              Layer.succeed(
+                ChildProcessSpawner.ChildProcessSpawner,
+                ChildProcessSpawner.make(() =>
+                  Effect.succeed(
+                    makeProcess({
+                      stdout: Stream.fromEffect(
+                        Deferred.await(finishOutputDrain).pipe(
+                          Effect.as(new TextEncoder().encode("trailing output\n")),
+                        ),
+                      ),
+                      exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(1)),
+                    }),
+                  ),
+                ),
+              ),
+              layerHttpClient("never"),
+            ),
+          ),
+          Effect.forkChild,
+        );
+
+        yield* Deferred.await(exitObserved);
+        assert.isUndefined(runFiber.pollUnsafe());
+
+        yield* Deferred.succeed(finishOutputDrain, undefined);
+        assert.deepStrictEqual((yield* Fiber.join(runFiber)).code, Option.some(1));
       }),
     ),
   );
