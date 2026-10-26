@@ -109,7 +109,7 @@ function NoteCard({ note }: { readonly note: Note }) {
         </Button>
         <Button
           size="icon-sm"
-          variant="destructive"
+          variant="ghost-destructive"
           aria-label="Delete note"
           onClick={() => void deleteNote(note.id)}
         >

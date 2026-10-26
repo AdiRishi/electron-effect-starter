@@ -70,6 +70,8 @@ export default mergeConfig(
               "@base-ui/react/merge-props",
               "@base-ui/react/use-render",
               "@base-ui/react/input",
+              "@base-ui/react/field",
+              "@base-ui/react/tooltip",
               "class-variance-authority",
               "tailwind-merge",
               "lucide-react",

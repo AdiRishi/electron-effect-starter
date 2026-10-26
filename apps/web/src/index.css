@@ -18,8 +18,16 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-error: var(--error);
+  --color-error-foreground: var(--error-foreground);
+  --color-error-surface: var(--error-surface);
+  --color-info: var(--info);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-surface: var(--warning-surface);
+  --color-placeholder: var(--placeholder);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -27,10 +35,25 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  /* Duty-cycled: a burst, then a long invisible hold, in discrete frames. */
+  --animate-status-ping: status-ping 2s infinite;
+  @keyframes status-ping {
+    0% {
+      opacity: 0.9;
+      scale: 0.75;
+      animation-timing-function: steps(8);
+    }
+    40%,
+    100% {
+      opacity: 0;
+      scale: 2;
+    }
+  }
 }
 
 :root {
   --radius: 0.625rem;
+  --control-radius: 0.5rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.141 0.005 285.823);
   --card: oklch(1 0 0);
@@ -48,6 +71,15 @@
   --destructive: oklch(0.577 0.245 27.325);
   --success: oklch(0.627 0.17 149.214);
   --warning: oklch(0.769 0.188 70.08);
+  --warning-foreground: var(--color-amber-700);
+  --warning-surface: color-mix(in srgb, var(--warning) 8%, transparent);
+  --error: var(--destructive);
+  --error-foreground: var(--color-red-700);
+  --error-surface: color-mix(in srgb, var(--error) 8%, transparent);
+  --destructive-foreground: var(--error-foreground);
+  --info: var(--color-blue-500);
+  --placeholder: var(--muted-foreground);
+  --contrast-muted-foreground: var(--muted-foreground);
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
   --ring: oklch(0.705 0.015 286.067);
@@ -71,9 +103,22 @@
   --destructive: oklch(0.704 0.191 22.216);
   --success: oklch(0.723 0.219 149.579);
   --warning: oklch(0.828 0.189 84.429);
+  --warning-foreground: var(--color-amber-400);
+  --warning-surface: color-mix(in srgb, var(--warning) 16%, transparent);
+  --error-foreground: var(--color-red-400);
+  --error-surface: color-mix(in srgb, var(--error) 16%, transparent);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.552 0.016 285.938);
+}
+
+/* The theme hook sets this while it swaps light and dark, so colours change in one frame. */
+.no-transitions,
+.no-transitions *,
+.no-transitions *::before,
+.no-transitions *::after {
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
 }
 
 @layer base {
