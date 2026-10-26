@@ -24,9 +24,14 @@ You need [pnpm](https://pnpm.io). It installs the right Node version for you.
 ```bash
 npx degit AdiRishi/electron-effect-starter my-app
 cd my-app
+rm -rf repos/effect
+git init && git add -A && git commit -m "Start from electron-effect-starter"
+git subtree add --prefix=repos/effect https://github.com/Effect-TS/effect.git main --squash
 pnpm install
 pnpm dev:desktop
 ```
+
+`degit` copies the vendored Effect source in `repos/effect` without its git history, so the steps above add it back as a git subtree. That keeps `pnpm sync:repos` working for pulling in newer Effect source.
 
 To run it in a browser instead, use `pnpm dev` and open the sign-in link the server prints.
 
