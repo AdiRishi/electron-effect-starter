@@ -1,4 +1,4 @@
-export function showBootError(error: unknown): void {
+export function showBootError(cause: unknown): void {
   const root = document.getElementById("root");
 
   if (!root) return;
@@ -8,7 +8,7 @@ export function showBootError(error: unknown): void {
   heading.textContent = "The app failed to start.";
   heading.style.cssText = "margin: 0 0 8px; font-size: 15px;";
   const detail = document.createElement("pre");
-  detail.textContent = error instanceof Error ? (error.stack ?? error.message) : String(error);
+  detail.textContent = cause instanceof Error ? (cause.stack ?? cause.message) : String(cause);
   detail.style.cssText = "white-space: pre-wrap; opacity: 0.7;";
   container.append(heading, detail);
   root.replaceChildren(container);

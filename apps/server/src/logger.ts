@@ -21,6 +21,8 @@ const consolePretty = (): Logger.Logger<unknown, void> => {
   );
 };
 
+// Log message parts are arbitrary values; only Causes inside plain objects are rewritten.
+/* oxlint-disable anti-slop/no-unknown-parameters, anti-slop/no-unknown-returns, anti-slop/no-runtime-typeof -- Inspects untyped log arguments. */
 function prettyCauseFields(value: unknown): unknown {
   if (typeof value !== "object" || value === null) return value;
   const prototype: unknown = Object.getPrototypeOf(value);
@@ -42,6 +44,7 @@ function prettyCauseFields(value: unknown): unknown {
 
   return changed ? Object.create(prototype, descriptors) : value;
 }
+/* oxlint-enable anti-slop/no-unknown-parameters, anti-slop/no-unknown-returns, anti-slop/no-runtime-typeof */
 
 export const layer = Layer.unwrap(
   Effect.gen(function* () {

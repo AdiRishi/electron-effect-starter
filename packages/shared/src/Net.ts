@@ -145,6 +145,7 @@ export const make = () => {
 
       probe.listen(0, host, () => {
         const address = probe.address();
+        // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Node returns a pipe name, AddressInfo or null.
         const port = typeof address === "object" && address !== null ? address.port : 0;
         probe.close(() => {
           if (port > 0) {

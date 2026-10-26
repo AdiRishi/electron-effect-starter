@@ -228,6 +228,7 @@ describe("DesktopBackendManager", () => {
   it.effect("reports a signal exit without an exit code", () =>
     Effect.gen(function* () {
       const exitCause = PlatformError.systemError({
+        // oxlint-disable-next-line anti-slop-effect/no-manual-tagged-construction -- systemError takes the reason tag as input.
         _tag: "Unknown",
         module: "ChildProcess",
         method: "exitCode",

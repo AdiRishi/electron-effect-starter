@@ -3,19 +3,16 @@
 import type * as NodeHttp from "node:http";
 import type * as NodeStream from "node:stream";
 
-export function guardHttpResponseWriteErrors<T extends NodeHttp.Server>(
-  server: T,
-  onError?: (error: unknown) => void,
-): T {
+// A client that disconnects mid-write makes the response or socket emit "error". Without a
+// listener, Node rethrows it and takes the whole server down.
+const ignoreWriteError = () => undefined;
+
+export function guardHttpResponseWriteErrors<T extends NodeHttp.Server>(server: T): T {
   server.on("request", (_request, response) => {
-    response.on("error", (error) => {
-      onError?.(error);
-    });
+    response.on("error", ignoreWriteError);
   });
   server.on("upgrade", (_request, socket) => {
-    socket.on("error", (error) => {
-      onError?.(error);
-    });
+    socket.on("error", ignoreWriteError);
   });
 
   return server;

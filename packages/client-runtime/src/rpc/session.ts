@@ -12,6 +12,7 @@ import * as RpcSerialization from "effect/rpc/RpcSerialization";
 import * as Socket from "effect/socket/Socket";
 
 import { type ConnectionAttemptError, ConnectionTransientError } from "../connection/model.ts";
+// oxlint-disable-next-line anti-slop-effect/no-service-constructor-imports -- RpcClient.make builds one client per socket, inside the session's scope.
 import { makeWsRpcProtocolClient, PING_TIMEOUT, type WsRpcProtocolClient } from "./protocol.ts";
 
 const SOCKET_OPEN_TIMEOUT = "15 seconds";

@@ -12,9 +12,12 @@ export interface DesktopIpcSyncEvent {
   returnValue: unknown;
 }
 
+// Electron hands IPC arguments over untyped; makeIpcMethod decodes them with each method's schema.
 export type DesktopIpcHandleListener = (
   event: DesktopIpcInvokeEvent,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Electron delivers the argument untyped.
   raw: unknown,
+  // oxlint-disable-next-line anti-slop/no-unknown-returns -- Electron sends the reply back untyped.
 ) => unknown | Promise<unknown>;
 
 export type DesktopIpcSyncListener = (event: DesktopIpcSyncEvent) => void;
@@ -61,6 +64,7 @@ export type DesktopIpcError = typeof DesktopIpcError.Type;
 
 export interface DesktopIpcMethod<E, R> {
   readonly channel: string;
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- The handler decodes the raw IPC argument itself.
   readonly handler: (raw: unknown, event?: DesktopIpcInvokeEvent) => Effect.Effect<unknown, E, R>;
 }
 

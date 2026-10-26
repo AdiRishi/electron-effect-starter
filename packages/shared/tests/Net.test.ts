@@ -16,6 +16,7 @@ const closeServer = (server: NodeNet.Server) =>
 const getPort = (server: NodeNet.Server): number => {
   const address = server.address();
 
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- Node returns a pipe name, AddressInfo or null.
   return typeof address === "object" && address !== null ? address.port : 0;
 };
 

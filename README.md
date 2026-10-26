@@ -45,19 +45,20 @@ The dev runner picks a free port pair derived from the checkout path, so several
 
 ## Layout
 
-| Path                        | Contents                                                            |
-| --------------------------- | ------------------------------------------------------------------- |
-| `apps/server`               | Effect HTTP and WebSocket RPC server.                               |
-| `apps/web`                  | React app.                                                          |
-| `apps/desktop`              | Electron shell.                                                     |
-| `packages/contracts`        | Schemas for the RPC, HTTP, IPC and bootstrap contracts.             |
-| `packages/client-runtime`   | Connection supervisor and typed RPC client.                         |
-| `packages/shared`           | Runtime helpers shared by the apps.                                 |
-| `tooling/oxlint-plugin-app` | The repository's own lint rules.                                    |
-| `tooling/scripts`           | Dev runner and desktop packaging.                                   |
-| `tooling/typescript`        | Shared `tsconfig` that every package extends.                       |
-| `tooling/vitest`            | Shared Vitest config that every package merges.                     |
-| `repos/effect`              | The Effect repository, vendored as reference for people and agents. |
+| Path                              | Contents                                                                 |
+| --------------------------------- | ------------------------------------------------------------------------ |
+| `apps/server`                     | Effect HTTP and WebSocket RPC server.                                    |
+| `apps/web`                        | React app.                                                               |
+| `apps/desktop`                    | Electron shell.                                                          |
+| `packages/contracts`              | Schemas for the RPC, HTTP, IPC and bootstrap contracts.                  |
+| `packages/client-runtime`         | Connection supervisor and typed RPC client.                              |
+| `packages/shared`                 | Runtime helpers shared by the apps.                                      |
+| `tooling/oxlint-plugin-app`       | The repository's own lint rules.                                         |
+| `tooling/oxlint-plugin-anti-slop` | [anti-slop](https://github.com/dmmulroy/anti-slop) lint rules, vendored. |
+| `tooling/scripts`                 | Dev runner and desktop packaging.                                        |
+| `tooling/typescript`              | Shared `tsconfig` that every package extends.                            |
+| `tooling/vitest`                  | Shared Vitest config that every package merges.                          |
+| `repos/effect`                    | The Effect repository, vendored as reference for people and agents.      |
 
 `docs/architecture.md` describes the process model, auth, reconnection and shutdown.
 

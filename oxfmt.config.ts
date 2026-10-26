@@ -10,6 +10,7 @@ export default defineConfig({
     "pnpm-lock.yaml",
     "*.tsbuildinfo",
     "**/routeTree.gen.ts",
+    "tooling/oxlint-plugin-anti-slop/**",
   ],
   sortPackageJson: {},
 });

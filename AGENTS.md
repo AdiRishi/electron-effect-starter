@@ -29,4 +29,6 @@ Electron Effect Starter: an Electron shell that supervises a local Effect HTTP a
 
 ## Lint rules
 
-`tooling/` holds repo tooling: code that runs on the repository and never ships. `tooling/oxlint-plugin-app/` holds the repo's own oxlint rules, configured in `oxlint.config.ts`. A lint error names the rule; read its file in `tooling/oxlint-plugin-app/rules/` for what it protects.
+`tooling/` holds repo tooling: code that runs on the repository and never ships. Two oxlint plugins are configured in `oxlint.config.ts`: the repo's own rules in `tooling/oxlint-plugin-app/`, and anti-slop in `tooling/oxlint-plugin-anti-slop/`, vendored from upstream with its source recorded in `UPSTREAM.md`. A lint error names the rule; read its file in the plugin's `rules/` directory for what it protects.
+
+Fix the code a rule points at, not the symptom. Where the code sits at a real boundary (an untyped Electron, Node or log value), suppress the rule on that line with a reason: `// oxlint-disable-next-line <rule> -- <reason>`.

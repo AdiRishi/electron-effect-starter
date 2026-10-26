@@ -19,6 +19,8 @@ const bridge: DesktopBridge = {
 
 // The main process encodes the result with its schema; this guards the renderer against a
 // channel that answered before the server started.
+// The sandboxed preload does not bundle Effect Schema, so it checks the reply's shape by hand.
+/* oxlint-disable anti-slop/no-runtime-typeof -- Narrows an untyped IPC reply. */
 function isServerBootstrap(value: unknown): value is DesktopServerBootstrap {
   return (
     typeof value === "object" &&
@@ -29,5 +31,6 @@ function isServerBootstrap(value: unknown): value is DesktopServerBootstrap {
     typeof value.wsBaseUrl === "string"
   );
 }
+/* oxlint-enable anti-slop/no-runtime-typeof */
 
 contextBridge.exposeInMainWorld("desktopBridge", bridge);

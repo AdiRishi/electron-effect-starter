@@ -1,0 +1,8 @@
+{
+  "name": "@app/oxlint-plugin-anti-slop",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@oxlint/plugins": "catalog:"
+  }
+}
