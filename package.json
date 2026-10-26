@@ -19,9 +19,8 @@
     "fmt:check": "oxfmt --check",
     "check": "pnpm typecheck && pnpm lint && pnpm fmt:check",
     "dist:desktop": "node scripts/build-desktop-artifact.ts",
-    "rename": "node scripts/rename-project.ts",
-    "sync:repos": "node scripts/sync-reference-repos.ts",
-    "clean": "rm -rf node_modules .turbo apps/*/node_modules packages/*/node_modules apps/*/dist apps/*/dist-electron"
+    "sync:repos": "git subtree pull --prefix=repos/effect https://github.com/Effect-TS/effect.git main --squash",
+    "clean": "rm -rf node_modules .turbo apps/*/node_modules packages/*/node_modules apps/*/dist apps/*/dist-electron release"
   },
   "devDependencies": {
     "@effect/tsgo": "catalog:",
