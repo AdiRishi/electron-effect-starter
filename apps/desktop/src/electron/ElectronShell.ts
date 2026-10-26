@@ -22,6 +22,7 @@ export class ElectronShell extends Context.Service<
   ElectronShell,
   {
     readonly openExternal: (rawUrl: string) => Effect.Effect<boolean>;
+    readonly copyText: (text: string) => Effect.Effect<void>;
   }
 >()("@app/desktop/electron/ElectronShell") {}
 
@@ -37,6 +38,9 @@ const make = ElectronShell.of({
           ),
         ),
     });
+  }),
+  copyText: Effect.fn("ElectronShell.copyText")(function (text: string) {
+    return Effect.sync(() => Electron.clipboard.writeText(text));
   }),
 });
 
