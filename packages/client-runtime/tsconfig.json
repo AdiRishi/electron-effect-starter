@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "esnext.disposable", "DOM"]
+  },
+  "include": ["src", "tests", "vitest.config.ts"]
+}
