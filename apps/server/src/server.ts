@@ -55,7 +55,7 @@ export const layerServices = Layer.mergeAll(
   layerAuth,
   NotesStore.layer,
   ServerLifecycleEvents.layer,
-).pipe(Layer.provide(Sqlite.layerConfig));
+).pipe(Layer.provideMerge(Sqlite.layerConfig));
 
 export const layerRoutes = Layer.mergeAll(
   HttpApiBuilder.layer(AppHttpApi).pipe(
@@ -74,7 +74,9 @@ const layerServer = Layer.unwrap(
     yield* acquireServerOwnership(config.stateDir);
 
     return Startup.layer.pipe(
-      Layer.provideMerge(HttpRouter.serve(layerRoutes, { disableLogger: true })),
+      Layer.provideMerge(
+        HttpRouter.serve(layerRoutes, { disableLogger: !config.logWebSocketEvents }),
+      ),
       Layer.provideMerge(layerServices),
       Layer.provideMerge(layerHttpServer),
     );

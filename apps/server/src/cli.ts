@@ -37,6 +37,13 @@ const flags = {
     Flag.withDescription("Vite dev server URL to redirect page loads to (VITE_DEV_SERVER_URL)."),
     Flag.optional,
   ),
+  logWebSocketEvents: Flag.Boolean("log-websocket-events").pipe(
+    Flag.withDescription(
+      "Log every HTTP request and WebSocket upgrade (APP_LOG_WS_EVENTS). On by default with --dev-url.",
+    ),
+    Flag.withAlias("log-ws-events"),
+    Flag.optional,
+  ),
   bootstrapFd: Flag.Int("bootstrap-fd").pipe(
     Flag.withDescription("Read the desktop bootstrap envelope from this file descriptor."),
     Flag.optional,
@@ -53,6 +60,7 @@ const EnvConfig = Config.all({
   baseDir: Config.String("APP_HOME").pipe(Config.option),
   devUrl: Config.URL("VITE_DEV_SERVER_URL").pipe(Config.option),
   bootstrapFd: Config.Int("APP_BOOTSTRAP_FD").pipe(Config.option),
+  logWebSocketEvents: Config.Boolean("APP_LOG_WS_EVENTS").pipe(Config.option),
 });
 
 const expandHomePath = Effect.fn("cli.expandHomePath")(function* (input: string) {
@@ -123,6 +131,10 @@ export const resolveServerConfig = Effect.fn("cli.resolveServerConfig")(function
     baseDir,
     staticDir: devUrl === undefined ? yield* ServerConfig.resolveStaticDir() : undefined,
     devUrl,
+    logWebSocketEvents: Option.getOrElse(
+      Option.firstSomeOf([serverFlags.logWebSocketEvents, env.logWebSocketEvents]),
+      () => devUrl !== undefined,
+    ),
     desktopBootstrapToken: bootstrap?.desktopBootstrapToken,
   });
 });

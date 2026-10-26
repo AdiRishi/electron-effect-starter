@@ -254,6 +254,13 @@ const make = Effect.gen(function* () {
     ServerAuthInvalidCredentialError | ServerAuthInternalError
   > =>
     sessions.verify(token).pipe(
+      Effect.tapError((cause) =>
+        SessionStore.isSessionCredentialInvalidError(cause)
+          ? Effect.logWarning("Rejected authenticated session credential.").pipe(
+              Effect.annotateLogs({ reason: cause.message }),
+            )
+          : Effect.void,
+      ),
       mapSessionVerificationErrors,
       Effect.map((session) => ({
         sessionId: session.sessionId,

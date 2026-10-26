@@ -10,6 +10,7 @@ import * as RpcClient from "effect/rpc/RpcClient";
 import * as RpcSerialization from "effect/rpc/RpcSerialization";
 import * as Schedule from "effect/Schedule";
 import * as Socket from "effect/socket/Socket";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../../src/config.ts";
 import * as Server from "../../src/server.ts";
@@ -35,6 +36,7 @@ export const makeTestServer = Effect.fn("TestServer.make")(function* (options?: 
 
   return {
     client: Context.get(context, HttpClient.HttpClient),
+    sql: Context.get(context, SqlClient.SqlClient),
     // The test server listens on the wildcard address, which a client cannot dial.
     baseUrl: `http://127.0.0.1:${address.port}`,
   };

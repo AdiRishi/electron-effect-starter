@@ -51,7 +51,9 @@ export const layer = HttpRouter.add(
       Effect.catchIf(ServerAuth.isServerAuthCredentialError, (error) =>
         failAuthInvalid(ServerAuth.serverAuthCredentialReason(error)),
       ),
-      Effect.catchIf(ServerAuth.isServerAuthInternalError, () => failInternal("internal_error")),
+      Effect.catchIf(ServerAuth.isServerAuthInternalError, (error) =>
+        failInternal("internal_error", error),
+      ),
     );
 
     const httpEffect = yield* Effect.gen(function* () {
@@ -71,7 +73,7 @@ export const layer = HttpRouter.add(
       sessions.awaitInvalidation(session.sessionId).pipe(
         Effect.as(HttpServerResponse.empty()),
         Effect.catchTags({
-          SessionCredentialVerificationError: () => failInternal("internal_error"),
+          SessionCredentialVerificationError: (error) => failInternal("internal_error", error),
         }),
       ),
     );

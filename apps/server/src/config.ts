@@ -30,6 +30,8 @@ export class ServerConfig extends Context.Service<
     readonly baseDir: string;
     readonly staticDir: string | undefined;
     readonly devUrl: URL | undefined;
+    /** Log every HTTP request and WebSocket upgrade; on by default behind the Vite dev server. */
+    readonly logWebSocketEvents: boolean;
     readonly desktopBootstrapToken: string | undefined;
   }
 >()("@app/server/config/ServerConfig") {}
@@ -102,6 +104,7 @@ export const layerTest = (options?: {
         baseDir,
         staticDir: options?.staticDir,
         devUrl: undefined,
+        logWebSocketEvents: false,
         desktopBootstrapToken: options?.desktopBootstrapToken,
       });
     }),
