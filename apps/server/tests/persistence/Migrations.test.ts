@@ -7,24 +7,19 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { runMigrations } from "../../src/persistence/Migrations.ts";
 
-const captureWarnings = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+/** The `divergent` annotation of each warning the effect logs. */
+const captureDivergenceWarnings = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
-    const warnings: Array<{
-      readonly message: unknown;
-      readonly annotations: Readonly<Record<string, unknown>>;
-    }> = [];
+    const divergent: Array<unknown> = [];
 
     const logger = Logger.make((options) => {
       if (options.logLevel !== "Warn") return;
-      warnings.push({
-        message: options.message,
-        annotations: options.fiber.getRef(References.CurrentLogAnnotations),
-      });
+      divergent.push(options.fiber.getRef(References.CurrentLogAnnotations)["divergent"]);
     });
 
     yield* effect.pipe(Effect.provide(Logger.layer([logger])));
 
-    return warnings;
+    return divergent;
   });
 
 describe("runMigrations", () => {
@@ -35,12 +30,8 @@ describe("runMigrations", () => {
       yield* sql`UPDATE effect_sql_migrations SET name = 'SiteLocalMigration' WHERE migration_id = 1`;
       yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (99, 'NewerMigration')`;
 
-      const warnings = yield* captureWarnings(runMigrations());
-
-      assert.strictEqual(warnings.length, 1);
-      assert.deepStrictEqual(warnings[0]?.annotations["divergent"], [
-        "1:SiteLocalMigration (this build: Notes)",
-        "99:NewerMigration (unknown to this build)",
+      assert.deepStrictEqual(yield* captureDivergenceWarnings(runMigrations()), [
+        ["1:SiteLocalMigration (this build: Notes)", "99:NewerMigration (unknown to this build)"],
       ]);
     }).pipe(Effect.provide(SqliteClient.layer({ filename: ":memory:" }))),
   );
@@ -48,7 +39,7 @@ describe("runMigrations", () => {
   it.effect("stays quiet when the recorded history matches this build", () =>
     Effect.gen(function* () {
       yield* runMigrations();
-      assert.deepStrictEqual(yield* captureWarnings(runMigrations()), []);
+      assert.deepStrictEqual(yield* captureDivergenceWarnings(runMigrations()), []);
     }).pipe(Effect.provide(SqliteClient.layer({ filename: ":memory:" }))),
   );
 });
