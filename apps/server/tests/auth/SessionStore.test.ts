@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
@@ -8,10 +9,12 @@ import * as ServerSecretStore from "../../src/auth/ServerSecretStore.ts";
 import * as SessionStore from "../../src/auth/SessionStore.ts";
 import * as ServerConfig from "../../src/config.ts";
 
-const layer = SessionStore.layer.pipe(
-  Layer.provide(ServerSecretStore.layer),
-  Layer.provide(ServerConfig.layerTest()),
-  Layer.provide(NodeServices.layer),
+const layerStore = SessionStore.layer.pipe(Layer.provide(ServerSecretStore.layer));
+
+// The config stays visible so a test can start a second store on the same state directory.
+const layer = Layer.fresh(layerStore).pipe(
+  Layer.provideMerge(ServerConfig.layerTest()),
+  Layer.provideMerge(NodeServices.layer),
 );
 
 const invalidReason = <A>(effect: Effect.Effect<A, SessionStore.SessionCredentialInvalidError>) =>
@@ -78,6 +81,38 @@ describe("SessionStore", () => {
         );
         yield* TestClock.adjust("6 minutes");
         assert.strictEqual(yield* invalidReason(sessions.verifyWebSocketTicket(ticket)), "expired");
+      }),
+    );
+
+    it.effect("rejects a WebSocket ticket once its session expires", () =>
+      Effect.gen(function* () {
+        const sessions = yield* SessionStore.SessionStore;
+        const issued = yield* sessions.issue({ method: "bearer-access-token" });
+
+        // A minute before the 30-day session ends.
+        yield* TestClock.adjust("43199 minutes");
+        const { ticket } = yield* sessions.issueWebSocketTicket(issued);
+
+        yield* sessions.verifyWebSocketTicket(ticket);
+        // The session ends a minute later, well inside the ticket's five minutes.
+        yield* TestClock.adjust("2 minutes");
+        assert.strictEqual(yield* invalidReason(sessions.verifyWebSocketTicket(ticket)), "expired");
+      }),
+    );
+
+    it.effect("keeps issued sessions valid after the server restarts", () =>
+      Effect.gen(function* () {
+        const issued = yield* (yield* SessionStore.SessionStore).issue({
+          method: "browser-session-cookie",
+        });
+
+        const restarted = Context.get(
+          yield* Layer.build(Layer.fresh(layerStore)),
+          SessionStore.SessionStore,
+        );
+
+        const verified = yield* restarted.verify(issued.token);
+        assert.strictEqual(verified.sessionId, issued.sessionId);
       }),
     );
 
