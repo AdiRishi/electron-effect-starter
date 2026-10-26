@@ -1,168 +1,201 @@
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
-import * as Scope from "effect/Scope";
+import type * as Scope from "effect/Scope";
+
 import type * as Electron from "electron";
 
 import * as ElectronApp from "../electron/ElectronApp.ts";
+import * as ElectronTheme from "../electron/ElectronTheme.ts";
+import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
-import { makeComponentLogger } from "./DesktopObservability.ts";
+import * as DesktopLogger from "./DesktopLogger.ts";
 import * as DesktopShutdown from "./DesktopShutdown.ts";
 import * as DesktopState from "./DesktopState.ts";
 
-export type DesktopLifecycleRuntimeServices =
+type LifecycleServices =
   | DesktopEnvironment.DesktopEnvironment
   | DesktopShutdown.DesktopShutdown
   | DesktopState.DesktopState
   | DesktopWindow.DesktopWindow
-  | ElectronApp.ElectronApp;
+  | ElectronApp.ElectronApp
+  | ElectronTheme.ElectronTheme
+  | ElectronWindow.ElectronWindow;
 
 export class DesktopLifecycle extends Context.Service<
   DesktopLifecycle,
-  {
-    readonly register: Effect.Effect<void, never, Scope.Scope | DesktopLifecycleRuntimeServices>;
-  }
+  { readonly register: Effect.Effect<void, never, Scope.Scope | LifecycleServices> }
 >()("@app/desktop/app/DesktopLifecycle") {}
 
-const { logInfo: logLifecycleInfo } = makeComponentLogger("desktop-lifecycle");
+const { logInfo, logError } = DesktopLogger.forComponent("desktop-lifecycle");
 
-function addScopedListener<Args extends ReadonlyArray<unknown>>(
-  target: unknown,
-  eventName: string,
-  listener: (...args: Args) => void,
-): Effect.Effect<void, never, Scope.Scope> {
-  const eventTarget = target as {
-    on: (eventName: string, listener: (...args: Array<unknown>) => void) => unknown;
-    removeListener: (eventName: string, listener: (...args: Array<unknown>) => void) => unknown;
-  };
-  const untypedListener = listener as unknown as (...args: Array<unknown>) => void;
-  return Effect.acquireRelease(
-    Effect.sync(() => {
-      eventTarget.on(eventName, untypedListener);
-    }),
-    () =>
-      Effect.sync(() => {
-        eventTarget.removeListener(eventName, untypedListener);
-      }),
-  ).pipe(Effect.asVoid);
+interface QuitState {
+  phase: "running" | "waiting" | "allowed";
+  waitingSinceNanos: bigint;
 }
 
-const requestDesktopShutdownAndWait = Effect.fn("desktop.lifecycle.requestShutdownAndWait")(
-  function* (): Effect.fn.Return<void, never, DesktopShutdown.DesktopShutdown> {
-    const shutdown = yield* DesktopShutdown.DesktopShutdown;
-    yield* shutdown.request;
-    yield* shutdown.awaitComplete;
-  },
-);
+// Longer than the server's stop budget (SIGTERM, 5s grace, SIGKILL), so a double Cmd-Q at the
+// start of a normal quit cannot cut the server's stop short and orphan it.
+const SHUTDOWN_STALL_THRESHOLD = Duration.seconds(10);
 
-function handleBeforeQuit(
-  event: Electron.Event,
-  runEffect: <A, E>(effect: Effect.Effect<A, E, DesktopLifecycleRuntimeServices>) => Promise<A>,
-  allowQuit: () => boolean,
-  markQuitAllowed: () => void,
-): void {
-  if (allowQuit()) {
-    void runEffect(
-      Effect.gen(function* () {
-        const state = yield* DesktopState.DesktopState;
-        yield* Ref.set(state.quitting, true);
-        yield* logLifecycleInfo("before-quit received");
-      }).pipe(Effect.withSpan("desktop.lifecycle.beforeQuit")),
-    );
+const requestShutdownAndWait = Effect.fn("DesktopLifecycle.requestShutdownAndWait")(function* (
+  afterBoundsFlush: Effect.Effect<void> = Effect.void,
+) {
+  const shutdown = yield* DesktopShutdown.DesktopShutdown;
+  const desktopWindow = yield* DesktopWindow.DesktopWindow;
+  yield* desktopWindow.flushMainWindowBounds;
+  yield* afterBoundsFlush;
+  yield* shutdown.request;
+  yield* shutdown.awaitComplete;
+});
+
+const startWaitingForShutdown = Effect.fn("DesktopLifecycle.startWaitingForShutdown")(function* (
+  quit: QuitState,
+) {
+  quit.phase = "waiting";
+  quit.waitingSinceNanos = yield* Clock.monotonicTimeNanos;
+});
+
+// While a quit waits on shutdown, a repeated Quit or SIGTERM is the user's only way out of a
+// stalled shutdown short of SIGKILL.
+const exitIfShutdownStalled = Effect.fn("DesktopLifecycle.exitIfShutdownStalled")(function* (
+  quit: QuitState,
+  source: string,
+) {
+  const pendingMs = Number(
+    ((yield* Clock.monotonicTimeNanos) - quit.waitingSinceNanos) / 1_000_000n,
+  );
+
+  if (pendingMs < Duration.toMillis(SHUTDOWN_STALL_THRESHOLD)) {
+    yield* logInfo("quit already in progress", { source, pendingMs });
+
     return;
   }
 
-  event.preventDefault();
-  void runEffect(
-    Effect.gen(function* () {
-      const state = yield* DesktopState.DesktopState;
-      yield* Ref.set(state.quitting, true);
-      yield* logLifecycleInfo("before-quit received");
-      yield* requestDesktopShutdownAndWait();
-    }).pipe(Effect.withSpan("desktop.lifecycle.beforeQuit")),
-  ).finally(() => {
-    markQuitAllowed();
-    void runEffect(
-      Effect.gen(function* () {
-        const electronApp = yield* ElectronApp.ElectronApp;
-        yield* electronApp.quit;
-      }).pipe(Effect.withSpan("desktop.lifecycle.quitAfterShutdown")),
-    );
-  });
-}
+  yield* logError("shutdown stalled; exiting without it", { source, pendingMs });
+  const electronApp = yield* ElectronApp.ElectronApp;
+  yield* electronApp.exit(0);
+});
 
-function quitFromSignal(
-  signal: "SIGINT" | "SIGTERM",
-  runEffect: <A, E>(effect: Effect.Effect<A, E, DesktopLifecycleRuntimeServices>) => Promise<A>,
-): void {
-  void runEffect(
-    Effect.gen(function* () {
-      yield* Effect.annotateCurrentSpan({ signal });
-      const electronApp = yield* ElectronApp.ElectronApp;
-      const state = yield* DesktopState.DesktopState;
-      const wasQuitting = yield* Ref.getAndSet(state.quitting, true);
-      if (wasQuitting) return;
-      yield* logLifecycleInfo("process signal received", { signal });
-      yield* requestDesktopShutdownAndWait();
-      yield* electronApp.quit;
-    }).pipe(Effect.withSpan("desktop.lifecycle.processSignal")),
-  );
-}
-
-export const make = DesktopLifecycle.of({
+const make = DesktopLifecycle.of({
   register: Effect.gen(function* () {
-    const electronApp = yield* ElectronApp.ElectronApp;
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
-    const window = yield* DesktopWindow.DesktopWindow;
-    const context = yield* Effect.context<DesktopLifecycleRuntimeServices>();
-    const runEffect = Effect.runPromiseWith(context);
+    const electronApp = yield* ElectronApp.ElectronApp;
+    const electronWindow = yield* ElectronWindow.ElectronWindow;
+    const electronTheme = yield* ElectronTheme.ElectronTheme;
+    const desktopWindow = yield* DesktopWindow.DesktopWindow;
+    const state = yield* DesktopState.DesktopState;
+    const context = yield* Effect.context<LifecycleServices>();
+    const runPromise = Effect.runPromiseWith(context);
+    const quit: QuitState = { phase: "running", waitingSinceNanos: 0n };
 
-    if (!(yield* electronApp.requestSingleInstanceLock)) {
-      yield* logLifecycleInfo("another instance holds the lock; quitting");
-      yield* electronApp.quit;
-      return yield* Effect.interrupt;
-    }
-    yield* electronApp.on("second-instance", () => {
-      void runEffect(window.activate.pipe(Effect.ignore({ log: true })));
+    const handleBeforeQuit = (event: Electron.Event) => {
+      if (quit.phase === "allowed") {
+        void runPromise(Ref.set(state.quitting, true));
+
+        return;
+      }
+
+      // Hold the quit until the server has stopped, then quit again for real.
+      event.preventDefault();
+
+      if (quit.phase === "waiting") {
+        void runPromise(exitIfShutdownStalled(quit, "before-quit"));
+
+        return;
+      }
+
+      void runPromise(
+        Effect.gen(function* () {
+          yield* startWaitingForShutdown(quit);
+          yield* Ref.set(state.quitting, true);
+          yield* logInfo("before-quit received");
+          yield* requestShutdownAndWait(
+            electronWindow.destroyAll.pipe(
+              Effect.catchCause((cause) =>
+                logError("failed to destroy windows before shutdown", cause),
+              ),
+            ),
+          );
+        }),
+      ).finally(() => {
+        quit.phase = "allowed";
+        void runPromise(electronApp.quit);
+      });
+    };
+
+    const quitFromSignal = (signal: "SIGINT" | "SIGTERM") => {
+      if (quit.phase === "waiting") {
+        void runPromise(exitIfShutdownStalled(quit, signal));
+
+        return;
+      }
+
+      void runPromise(
+        Effect.gen(function* () {
+          if (yield* Ref.getAndSet(state.quitting, true)) return;
+          yield* startWaitingForShutdown(quit);
+          yield* logInfo("process signal received", { signal });
+          yield* requestShutdownAndWait();
+          quit.phase = "allowed";
+          yield* electronApp.quit;
+        }),
+      );
+    };
+
+    yield* electronTheme.onUpdated(() => {
+      void runPromise(desktopWindow.syncAppearance);
     });
-
-    let quitAllowed = false;
-    yield* electronApp.on("before-quit", (event: Electron.Event) => {
-      handleBeforeQuit(
-        event,
-        runEffect,
-        () => quitAllowed,
-        () => {
-          quitAllowed = true;
-        },
+    yield* electronApp.onBeforeQuitForUpdate(() => {
+      // The updater owns the rest of the quit, install and relaunch; cancelling the following
+      // before-quit would break it. Windows are destroyed inline because the quit proceeds as
+      // soon as this listener returns.
+      quit.phase = "allowed";
+      Effect.runSyncWith(context)(
+        electronWindow.destroyAll.pipe(
+          Effect.andThen(logInfo("allowing updater-controlled quit")),
+          Effect.catchCause((cause) =>
+            logError("failed to destroy windows before updater quit", cause),
+          ),
+        ),
       );
     });
+    yield* electronApp.on("before-quit", handleBeforeQuit);
     yield* electronApp.on("activate", () => {
-      void runEffect(window.activate.pipe(Effect.withSpan("desktop.lifecycle.activate")));
+      void runPromise(
+        Effect.gen(function* () {
+          if (yield* Ref.get(state.quitting)) return;
+          yield* desktopWindow.activate;
+        }),
+      );
+    });
+    yield* electronApp.on("second-instance", () => {
+      void runPromise(desktopWindow.activate);
     });
     yield* electronApp.on("window-all-closed", () => {
-      void runEffect(
+      void runPromise(
         Effect.gen(function* () {
-          const app = yield* ElectronApp.ElectronApp;
-          const state = yield* DesktopState.DesktopState;
           if (environment.platform !== "darwin" && !(yield* Ref.get(state.quitting))) {
-            yield* app.quit;
+            yield* electronApp.quit;
           }
-        }).pipe(Effect.withSpan("desktop.lifecycle.windowAllClosed")),
+        }),
       );
     });
 
     if (environment.platform !== "win32") {
-      yield* addScopedListener(process, "SIGINT", () => {
-        quitFromSignal("SIGINT", runEffect);
-      });
-      yield* addScopedListener(process, "SIGTERM", () => {
-        quitFromSignal("SIGTERM", runEffect);
-      });
+      for (const signal of ["SIGINT", "SIGTERM"] as const) {
+        const listener = () => quitFromSignal(signal);
+        yield* Effect.acquireRelease(
+          Effect.sync(() => process.on(signal, listener)),
+          () => Effect.sync(() => process.removeListener(signal, listener)),
+        );
+      }
     }
-  }).pipe(Effect.withSpan("desktop.lifecycle.register")),
+  }).pipe(Effect.withSpan("DesktopLifecycle.register")),
 });
 
 export const layer = Layer.succeed(DesktopLifecycle, make);

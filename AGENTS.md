@@ -1,42 +1,27 @@
 # AGENTS.md
 
-## Task Completion Requirements
+This is a starter for Effect v4 desktop apps: an Electron shell supervises a local Effect server, and one React build runs in the shell and in a browser. It uses pnpm workspaces and Turborepo.
 
-- `pnpm check` and `pnpm test` must pass before considering tasks completed.
+## Verify a change
 
-## Project Snapshot
+- `pnpm check` (typecheck, lint and format) and `pnpm test` pass.
+- A change to the desktop shell or to a build config also needs `pnpm build` and `pnpm --filter @app/desktop smoke-test`.
+- To see the app, run `pnpm dev` and open the sign-in URL the server prints. `pnpm dev:desktop` runs the desktop shell.
 
-Electron Effect Starter is a starter for Effect v4 desktop apps: an Electron shell supervising a local Effect server (HTTP + WebSocket RPC), with one React web build that runs in the shell and in a plain browser.
+## Effect
 
-## Core Priorities
+Read `repos/effect/LLMS.md` before writing Effect code. Treat `repos/effect/` as the source of truth for idiomatic usage, tests and API design, and prefer its patterns over guesses or web search. `repos/` holds vendored reference repositories: read them, but never edit or import from them. `pnpm sync:repos` updates them.
 
-1. Performance first.
-2. Reliability first.
-3. Keep behavior predictable under load and during failures (session restarts, reconnects, partial streams).
+## Conventions the code doesn't show
 
-If a tradeoff is required, choose correctness and robustness over short-term convenience.
+- Tests live in each package's `tests/` directory, mirroring `src/`. A new package includes `tests/**` in its `tsconfig.json`, or its tests stop typechecking.
+- A test that opens a real socket uses `it.layer(layer, { excludeTestServices: true })`. Under the default test clock, network timeouts never fire and the test hangs.
+- A lint error names its rule, and the rule's file under `tooling/oxlint-plugin-*/rules/` says what it protects. Fix the code it points at. Suppress a rule only at a real boundary, such as an untyped Electron, Node or log value, on that line and with a reason: `// oxlint-disable-next-line <rule> -- <reason>`.
 
-## Maintainability
+## Design notes
 
-Long term maintainability is a core priority. If you add new functionality, first check if there is shared logic that can be extracted to a separate module. Duplicate logic across multiple files is a code smell and should be avoided. Don't be afraid to change existing code. Don't take shortcuts by just adding local logic to solve a problem.
+Read the notes for an area before changing it:
 
-## Tests
-
-Unit tests live in each package's `tests/` directory, mirroring the source tree: the test for `src/state/connection.ts` is `tests/state/connection.test.ts`. Never colocate `.test.ts` files under `src/`. When adding a package, include `tests/**` in its `tsconfig.json` or the tests silently stop typechecking (see `docs/adr/0007`).
-
-## Package Roles
-
-- `apps/desktop`: Electron shell. Spawns and supervises the local server, owns windows/menus/updates, and exposes a schema-validated IPC bridge to the renderer.
-- `apps/server`: Effect HTTP + WebSocket RPC server. Serves the built web app, handles the bearer-auth exchange, and publishes lifecycle events.
-- `apps/web`: React/Vite UI. Connects to the server over WebSocket RPC; the same build runs in the shell and in a plain browser.
-- `packages/contracts`: effect/Schema contracts for the WS RPC surface, the IPC bridge, and the auth/bootstrap types. Keep this package schema-only — no runtime logic.
-- `packages/shared`: Runtime utilities consumed by multiple apps. Explicit subpath exports (e.g. `@app/shared/Net`) — no barrel index.
-- `packages/client-runtime`: Client transport: the connection supervisor and typed RPC client. Subpath exports only (`/connection`, `/rpc`, `/authorization`).
-- `scripts`: Repo tooling — dev runner, desktop packaging, reference-repo sync.
-- `oxlint-plugin-app`: Custom oxlint rules (Node namespace imports, HostProcess injection, hoisted Schema compilers, @effect/vitest in tests). Wired via `jsPlugins` in `.oxlintrc.json`.
-
-## Vendored Repositories
-
-`.repos/` holds read-only vendored reference repos. See `.repos/AGENTS.md` for more details.
-
-- When writing Effect code, read `.repos/effect/LLMS.md` first and inspect `.repos/effect/` for examples of idiomatic usage, tests, module structure, and API design.
+- [`apps/server/AGENTS.md`](apps/server/AGENTS.md): state ownership, subscriptions and auth.
+- [`apps/desktop/AGENTS.md`](apps/desktop/AGENTS.md): server supervision, shutdown and renderer security.
+- [`packages/client-runtime/AGENTS.md`](packages/client-runtime/AGENTS.md): reconnection.

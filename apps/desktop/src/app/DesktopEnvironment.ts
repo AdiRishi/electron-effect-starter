@@ -5,186 +5,107 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
-import type { DesktopAppInfo } from "@app/contracts";
+import type { ElectronAppMetadata } from "../electron/ElectronApp.ts";
+import { DesktopConfig } from "./DesktopConfig.ts";
 
-import type { DesktopSettings } from "../settings/DesktopAppSettings.ts";
-import { DEFAULT_DESKTOP_SETTINGS } from "../settings/DesktopAppSettings.ts";
+const APP_USER_MODEL_ID = "com.example.electron-effect-starter";
 
-// All the derived, environment-dependent facts the rest of the shell reads:
-// paths, dev-vs-prod, branding, and where the server entry lives. It is built
-// once in `main.ts` from injected Electron metadata + host process values, so
-// every consumer sees the same resolved values and nothing downstream touches
-// `process`/`__dirname` directly.
-
-const APP_BASE_NAME = "Electron Effect Starter";
-const DEFAULT_BACKEND_PORT = 13773;
-
-export interface MakeDesktopEnvironmentInput {
-  /** `__dirname` of the built main.cjs (dist-electron). */
-  readonly dirname: string;
-  readonly homeDirectory: string;
-  readonly platform: NodeJS.Platform;
-  readonly appVersion: string;
-  readonly appPath: string;
-  readonly isPackaged: boolean;
-  readonly resourcesPath: string;
-  /** `APPDATA`, if set (Windows roaming config root). */
-  readonly appDataDirectory: Option.Option<string>;
-  /** `XDG_CONFIG_HOME`, if set (Linux config root). */
-  readonly xdgConfigHome: Option.Option<string>;
-  /** `APP_SERVER_ENTRY` override, if set. */
-  readonly serverEntryOverride: Option.Option<string>;
-  /** `APP_SERVER_PORT`, if set. */
-  readonly configuredBackendPort: Option.Option<number>;
-  /** `APP_DEV_WEB_URL` dev-server URL, if set (renderer served here in dev). */
-  readonly devServerUrl: Option.Option<URL>;
+function resolveUserDataPath(input: {
+  readonly appDataDirectory: string;
+  readonly isDevelopment: boolean;
+  readonly productName: string;
+  readonly joinPath: (...segments: ReadonlyArray<string>) => string;
+}): string {
+  return input.joinPath(
+    input.appDataDirectory,
+    input.isDevelopment ? `${input.productName} (Dev)` : input.productName,
+  );
 }
 
+export interface MakeDesktopEnvironmentInput {
+  readonly dirname: string;
+  readonly platform: NodeJS.Platform;
+  readonly productName: string;
+  readonly metadata: ElectronAppMetadata;
+}
+
+/** Paths and modes resolved once at startup from Electron's metadata and the environment. */
 export class DesktopEnvironment extends Context.Service<
   DesktopEnvironment,
   {
-    readonly path: Path.Path;
-    readonly platform: DesktopAppInfo["platform"];
+    readonly platform: NodeJS.Platform;
     readonly isPackaged: boolean;
     readonly isDevelopment: boolean;
     readonly appVersion: string;
-    readonly appPath: string;
-    readonly resourcesPath: string;
-    readonly homeDirectory: string;
-    /**
-     * Base app-data dir under the platform's config root (AppData/Roaming,
-     * Library/Application Support, XDG config) — settings + logs live under
-     * here, and the spawned server child is pointed at it via APP_DATA_DIR.
-     */
-    readonly baseDir: string;
-    readonly desktopSettingsPath: string;
-    readonly logDir: string;
-    readonly preloadPath: string;
-    /** Absolute path to the server entry to spawn. */
-    readonly backendEntryPath: string;
-    /** cwd for the spawned server child. */
-    readonly backendCwd: string;
-    readonly defaultBackendPort: number;
-    readonly configuredBackendPort: Option.Option<number>;
-    readonly devServerUrl: Option.Option<URL>;
-    /** Static identity handed to the renderer at boot. */
-    readonly appInfo: DesktopAppInfo;
     readonly displayName: string;
-    readonly defaultDesktopSettings: DesktopSettings;
+    readonly appUserModelId: string;
+    readonly userDataPath: string;
+    readonly stateDir: string;
+    readonly serverBaseDir: string;
+    readonly logDir: string;
+    readonly desktopSettingsPath: string;
+    readonly appRoot: string;
+    readonly resourcesPath: string;
+    readonly backendEntryPath: string;
+    readonly clientAssetsDir: string;
+    readonly preloadPath: string;
+    readonly compileCachePath: string;
+    readonly appUpdateYmlPath: string;
+    readonly devServerUrl: Option.Option<URL>;
+    readonly configuredBackendPort: Option.Option<number>;
+    readonly appImagePath: Option.Option<string>;
+    readonly disableAutoUpdate: boolean;
   }
 >()("@app/desktop/app/DesktopEnvironment") {}
 
-function normalizePlatform(platform: NodeJS.Platform): DesktopAppInfo["platform"] {
-  if (platform === "win32") return "win32";
-  if (platform === "darwin") return "darwin";
-  return "linux";
-}
-
-// The Path service is taken explicitly so this builder stays pure and
-// testable — the `layer` below wires the real `Path.Path` in.
-export function makeWith(
+export const make = Effect.fn("DesktopEnvironment.make")(function* (
   input: MakeDesktopEnvironmentInput,
-  path: Path.Path,
-): DesktopEnvironment["Service"] {
-  const platform = normalizePlatform(input.platform);
-  const isDevelopment = Option.isSome(input.devServerUrl);
-  const displayName = isDevelopment ? `${APP_BASE_NAME} (Dev)` : APP_BASE_NAME;
+): Effect.fn.Return<DesktopEnvironment["Service"], Config.ConfigError, Path.Path> {
+  const path = yield* Path.Path;
+  const config = yield* DesktopConfig;
+  const isDevelopment = Option.isSome(config.devServerUrl);
 
-  const appDataDirectory =
-    platform === "win32"
-      ? Option.getOrElse(input.appDataDirectory, () =>
-          path.join(input.homeDirectory, "AppData", "Roaming"),
-        )
-      : platform === "darwin"
-        ? path.join(input.homeDirectory, "Library", "Application Support")
-        : Option.getOrElse(input.xdgConfigHome, () => path.join(input.homeDirectory, ".config"));
-  const baseDir = path.join(appDataDirectory, "electron-effect-starter");
-  const logDir = path.join(baseDir, "logs");
-  const desktopSettingsPath = path.join(baseDir, "desktop-settings.json");
-  const preloadPath = path.join(input.dirname, "preload.cjs");
-
-  // Resolve the server entry to spawn. Priority:
-  //   1. APP_SERVER_ENTRY override (used by the dev runner).
-  //   2. Packaged: the bundled server under Electron's app path.
-  //   3. Dev default: the server's built dist relative to this monorepo.
-  // The dev runner points APP_SERVER_ENTRY at the server's src/bin.ts (run via
-  // tsx) or its built dist/bin.mjs, so most local setups exercise branch (1).
-  const backendEntryPath = Option.match(input.serverEntryOverride, {
-    onSome: (override) => override,
-    onNone: () =>
-      input.isPackaged
-        ? path.join(input.appPath, "apps/server/dist/bin.mjs")
-        : path.resolve(input.dirname, "..", "..", "server", "dist", "bin.mjs"),
+  // Development gets its own userData, so its state, profile and instance lock never touch the
+  // installed app's.
+  const userDataPath = resolveUserDataPath({
+    appDataDirectory: input.metadata.appDataPath,
+    isDevelopment,
+    productName: input.productName,
+    joinPath: path.join,
   });
-  const backendCwd = input.isPackaged ? input.homeDirectory : path.dirname(backendEntryPath);
 
-  const appInfo: DesktopAppInfo = {
-    name: displayName,
-    version: input.appVersion,
-    platform,
-    isPackaged: input.isPackaged,
-  };
+  // dist-electron sits three levels below the repository root in a source checkout.
+  const appRoot = input.metadata.isPackaged
+    ? input.metadata.appPath
+    : path.resolve(input.dirname, "../../..");
 
   return DesktopEnvironment.of({
-    path,
-    platform,
-    isPackaged: input.isPackaged,
+    platform: input.platform,
+    isPackaged: input.metadata.isPackaged,
     isDevelopment,
-    appVersion: input.appVersion,
-    appPath: input.appPath,
-    resourcesPath: input.resourcesPath,
-    homeDirectory: input.homeDirectory,
-    baseDir,
-    desktopSettingsPath,
-    logDir,
-    preloadPath,
-    backendEntryPath,
-    backendCwd,
-    defaultBackendPort: DEFAULT_BACKEND_PORT,
-    configuredBackendPort: input.configuredBackendPort,
-    devServerUrl: input.devServerUrl,
-    appInfo,
-    displayName,
-    defaultDesktopSettings: DEFAULT_DESKTOP_SETTINGS,
+    appVersion: input.metadata.appVersion,
+    displayName: isDevelopment ? `${input.productName} (Dev)` : input.productName,
+    appUserModelId: isDevelopment ? `${APP_USER_MODEL_ID}.dev` : APP_USER_MODEL_ID,
+    userDataPath,
+    stateDir: userDataPath,
+    serverBaseDir: path.join(userDataPath, "server"),
+    logDir: path.join(userDataPath, "logs"),
+    desktopSettingsPath: path.join(userDataPath, "desktop-settings.json"),
+    appRoot,
+    resourcesPath: input.metadata.resourcesPath,
+    backendEntryPath: path.join(appRoot, "apps/server/dist/bin.mjs"),
+    clientAssetsDir: path.join(appRoot, "apps/server/dist/client"),
+    preloadPath: path.join(input.dirname, "preload.cjs"),
+    compileCachePath: path.join(input.dirname, "compileCache.cjs"),
+    appUpdateYmlPath: input.metadata.isPackaged
+      ? path.join(input.metadata.resourcesPath, "app-update.yml")
+      : path.join(input.metadata.appPath, "dev-app-update.yml"),
+    devServerUrl: config.devServerUrl,
+    configuredBackendPort: config.configuredBackendPort,
+    appImagePath: config.appImagePath,
+    disableAutoUpdate: config.disableAutoUpdate,
   });
-}
+});
 
-// Reads the `APP_SERVER_ENTRY` / `APP_SERVER_PORT` / `APP_DEV_WEB_URL` env
-// config (via Effect's Config, so it's overridable in tests) and builds it.
-export function layer(
-  metadata: Pick<
-    MakeDesktopEnvironmentInput,
-    | "dirname"
-    | "homeDirectory"
-    | "platform"
-    | "appVersion"
-    | "appPath"
-    | "isPackaged"
-    | "resourcesPath"
-  >,
-): Layer.Layer<DesktopEnvironment> {
-  return Layer.effect(
-    DesktopEnvironment,
-    Effect.gen(function* () {
-      const path = yield* Path.Path;
-      const appDataDirectory = yield* Config.string("APPDATA").pipe(Config.option);
-      const xdgConfigHome = yield* Config.string("XDG_CONFIG_HOME").pipe(Config.option);
-      const serverEntryOverride = yield* Config.string("APP_SERVER_ENTRY").pipe(Config.option);
-      const configuredBackendPort = yield* Config.port("APP_SERVER_PORT").pipe(Config.option);
-      const devServerUrl = yield* Config.url("APP_DEV_WEB_URL").pipe(Config.option);
-      return makeWith(
-        {
-          ...metadata,
-          appDataDirectory,
-          xdgConfigHome,
-          serverEntryOverride,
-          configuredBackendPort,
-          devServerUrl,
-        },
-        path,
-      );
-      // A malformed env value (e.g. a non-URL APP_DEV_WEB_URL) is a startup
-      // misconfiguration; die rather than thread ConfigError through the graph.
-    }).pipe(Effect.orDie),
-  ).pipe(Layer.provide(Path.layer));
-}
+export const layer = (input: MakeDesktopEnvironmentInput) =>
+  Layer.effect(DesktopEnvironment, make(input));

@@ -1,0 +1,23 @@
+{
+  "name": "@app/scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@app/shared": "workspace:*",
+    "@effect/platform-node": "catalog:",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@app/tsconfig": "workspace:*",
+    "@app/vitest-config": "workspace:*",
+    "@effect/vitest": "catalog:",
+    "@electron/asar": "catalog:",
+    "@types/node": "catalog:",
+    "electron-builder": "catalog:",
+    "vitest": "catalog:"
+  }
+}

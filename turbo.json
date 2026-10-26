@@ -1,0 +1,51 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "ui": "stream",
+  "globalPassThroughEnv": [
+    "CI",
+    "PLAYWRIGHT_BROWSERS_PATH",
+    // Set by tooling/scripts/dev-runner.ts for the dev tasks.
+    "APP_PORT",
+    "APP_WEB_PORT",
+    "APP_HOME",
+    "APP_DESKTOP_DEV",
+    "VITE_DEV_SERVER_URL"
+  ],
+  "tasks": {
+    // Workspace packages ship raw TypeScript, so a dependency's source is part of a dependent's
+    // input. This no-op task carries that edge without building anything.
+    "transit": {
+      "dependsOn": ["^transit"]
+    },
+    "typecheck": {
+      "dependsOn": ["transit"],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["transit"],
+      "outputs": []
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "dist-electron/**"]
+    },
+    "@app/server#build": {
+      "dependsOn": ["^build", "@app/web#build"],
+      "outputs": ["dist/**"]
+    },
+    "@app/desktop#build": {
+      "dependsOn": ["^build", "@app/server#build"],
+      "outputs": ["dist-electron/**"]
+    },
+    "dev": {
+      "persistent": true,
+      "cache": false
+    },
+    "@app/desktop#dev": {
+      // The shell spawns the built server, so desktop dev builds it once before starting.
+      "dependsOn": ["@app/server#build"],
+      "persistent": true,
+      "cache": false
+    }
+  }
+}

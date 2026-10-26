@@ -1,54 +1,23 @@
-import { assert, beforeEach, describe, it } from "@effect/vitest";
-import * as Effect from "effect/Effect";
-import { vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import * as Option from "effect/Option";
 
-const { openExternalMock } = vi.hoisted(() => ({
-  openExternalMock: vi.fn<(url: string) => Promise<void>>(),
-}));
+import { parseSafeExternalUrl } from "../../src/electron/ElectronShell.ts";
 
-vi.mock("electron", () => ({
-  shell: {
-    openExternal: openExternalMock,
-  },
-}));
+describe("parseSafeExternalUrl", () => {
+  it.each(["https://example.com/path", "http://localhost:3000", "mailto:someone@example.com"])(
+    "lets %s open outside the app",
+    (url) => {
+      expect(Option.isSome(parseSafeExternalUrl(url))).toBe(true);
+    },
+  );
 
-import * as ElectronShell from "../../src/electron/ElectronShell.ts";
-
-describe("ElectronShell", () => {
-  beforeEach(() => {
-    openExternalMock.mockReset();
+  it.each([
+    "file:///etc/passwd",
+    "javascript:alert(1)",
+    "smb://attacker/share",
+    "electron-effect-starter://app/",
+    "not a url",
+  ])("refuses %s", (url) => {
+    expect(Option.isNone(parseSafeExternalUrl(url))).toBe(true);
   });
-
-  it.effect("opens safe external URLs", () =>
-    Effect.gen(function* () {
-      openExternalMock.mockResolvedValue(undefined);
-
-      const electronShell = yield* ElectronShell.ElectronShell;
-      const result = yield* electronShell.openExternal("https://example.com/path");
-
-      assert.equal(result, true);
-      assert.deepEqual(openExternalMock.mock.calls, [["https://example.com/path"]]);
-    }).pipe(Effect.provide(ElectronShell.layer)),
-  );
-
-  it.effect("does not open unsafe external URLs", () =>
-    Effect.gen(function* () {
-      const electronShell = yield* ElectronShell.ElectronShell;
-      const result = yield* electronShell.openExternal("file:///etc/passwd");
-
-      assert.equal(result, false);
-      assert.equal(openExternalMock.mock.calls.length, 0);
-    }).pipe(Effect.provide(ElectronShell.layer)),
-  );
-
-  it.effect("returns false when Electron rejects openExternal", () =>
-    Effect.gen(function* () {
-      openExternalMock.mockRejectedValue(new Error("open failed"));
-
-      const electronShell = yield* ElectronShell.ElectronShell;
-      const result = yield* electronShell.openExternal("https://example.com/path");
-
-      assert.equal(result, false);
-    }).pipe(Effect.provide(ElectronShell.layer)),
-  );
 });

@@ -1,152 +1,117 @@
-import * as Context from "effect/Context";
+import {
+  DesktopBackendBootstrap,
+  SERVER_DESCRIPTOR_PATH,
+  SERVER_EXIT_CODE_STATE_DIR_OWNED,
+} from "@app/contracts";
+import { type HttpReadinessError, waitForHttpReady } from "@app/shared/httpReadiness";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as PlatformError from "effect/PlatformError";
+import type * as PlatformError from "effect/PlatformError";
 import * as Ref from "effect/Ref";
-import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import { HttpClient } from "effect/unstable/http";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { HttpClient } from "effect/http";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { ServerBootstrapEnvelope } from "@app/contracts";
-import { waitForHttpReady } from "@app/shared/httpReadiness";
-import { NetService } from "@app/shared/Net";
-
-import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
-import { makeComponentLogger } from "../app/DesktopObservability.ts";
-import * as DesktopWindow from "../window/DesktopWindow.ts";
-import * as DesktopBackendConfiguration from "./DesktopBackendConfiguration.ts";
-import type { DesktopBackendStartConfig } from "./DesktopBackendConfiguration.ts";
-
-// Supervises the single local server child: picks a free port, spawns the
-// process, probes HTTP readiness before revealing the window, restarts with
-// exponential backoff on unexpected exit, and stops it with SIGTERM + a grace
-// window. A `Semaphore(1)` serializes start/stop so overlapping requests can't
-// spawn two children.
+import * as DesktopLogger from "../app/DesktopLogger.ts";
 
 const INITIAL_RESTART_DELAY = Duration.millis(500);
 const MAX_RESTART_DELAY = Duration.seconds(10);
-const READINESS_TIMEOUT = Duration.minutes(1);
+const DEFAULT_READINESS_TIMEOUT = Duration.minutes(1);
 const READINESS_INTERVAL = Duration.millis(100);
 const READINESS_REQUEST_TIMEOUT = Duration.seconds(1);
-const TERMINATE_GRACE = Duration.seconds(2);
-const HEALTH_PATH = "/.well-known/app/health";
+const TERMINATE_GRACE = Duration.seconds(5);
+const OUTPUT_DRAIN_TIMEOUT = Duration.seconds(5);
 
-const encodeBootstrapEnvelopeJson = Schema.encodeEffect(
-  Schema.fromJsonString(ServerBootstrapEnvelope),
-);
+export type BackendOutputStream = "stdout" | "stderr";
 
-export class DesktopBackendReadinessError extends Schema.TaggedErrorClass<DesktopBackendReadinessError>()(
-  "DesktopBackendReadinessError",
-  {
-    url: Schema.String,
-  },
-) {
-  override get message(): string {
-    return `Timed out waiting for backend readiness at ${this.url}.`;
-  }
-}
-
-export class DesktopBackendBootstrapEncodeError extends Schema.TaggedErrorClass<DesktopBackendBootstrapEncodeError>()(
-  "DesktopBackendBootstrapEncodeError",
-  {
-    cause: Schema.Defect(),
-  },
-) {
-  override get message(): string {
-    return "Failed to encode the backend bootstrap envelope.";
-  }
-}
-
-class BackendProcessSpawnError extends Schema.TaggedErrorClass<BackendProcessSpawnError>()(
-  "BackendProcessSpawnError",
-  {
-    executablePath: Schema.String,
-    cause: Schema.Defect(),
-  },
-) {
-  override get message(): string {
-    return `Failed to spawn the desktop backend process at ${this.executablePath}.`;
-  }
+export interface DesktopBackendStartConfig {
+  readonly executablePath: string;
+  readonly entryPath: string;
+  readonly args: ReadonlyArray<string>;
+  readonly cwd: string;
+  readonly env: Record<string, string | undefined>;
+  readonly bootstrap: DesktopBackendBootstrap;
+  readonly httpBaseUrl: URL;
 }
 
 interface BackendProcessExit {
   readonly code: Option.Option<number>;
   readonly reason: string;
-  readonly result: Result.Result<ChildProcessSpawner.ExitCode, PlatformError.PlatformError>;
 }
 
-function describeProcessExit(
-  result: Result.Result<ChildProcessSpawner.ExitCode, PlatformError.PlatformError>,
-): BackendProcessExit {
-  if (Result.isSuccess(result)) {
-    return {
-      code: Option.some(result.success),
-      reason: `code=${result.success}`,
-      result,
-    };
+export class BackendProcessError extends Schema.TaggedError<BackendProcessError>()(
+  "BackendProcessError",
+  {
+    stage: Schema.Literals(["encode-bootstrap", "spawn", "exit-status"]),
+    entryPath: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `The server process at ${this.entryPath} failed during ${this.stage}.`;
   }
-
-  return {
-    code: Option.none(),
-    reason: result.failure.message,
-    result,
-  };
 }
 
-interface DesktopBackendReadyCallbacks {
-  readonly onReady: (config: DesktopBackendStartConfig) => Effect.Effect<void>;
-  readonly onNotReady: Effect.Effect<void>;
+export interface DesktopBackendSnapshot {
+  readonly desiredRunning: boolean;
+  readonly ready: boolean;
+  readonly activePid: Option.Option<number>;
+  readonly restartAttempt: number;
+  readonly restartScheduled: boolean;
 }
 
-/**
- * Where the child's stdout/stderr go. Dev keeps `inherit` so `pnpm dev`
- * streams to the terminal; packaged apps have no console, so output is
- * captured to `logDir/server-child.log` — otherwise a failing production
- * backend leaves no artifact at all. Appended across runs; no rotation (a
- * starter's log volume is a few lines per boot).
- */
-type BackendOutputTarget =
-  | { readonly _tag: "inherit" }
-  | { readonly _tag: "file"; readonly directory: string; readonly filePath: string };
-
-export interface DesktopBackendManagerShape {
+export interface DesktopBackendInstance {
   readonly start: Effect.Effect<void>;
-  readonly stop: Effect.Effect<void>;
+  readonly stop: (options?: { readonly timeout?: Duration.Duration }) => Effect.Effect<void>;
   readonly currentConfig: Effect.Effect<Option.Option<DesktopBackendStartConfig>>;
+  readonly snapshot: Effect.Effect<DesktopBackendSnapshot>;
 }
 
-export class DesktopBackendManager extends Context.Service<
-  DesktopBackendManager,
-  DesktopBackendManagerShape
->()("@app/desktop/backend/DesktopBackendManager") {}
+export interface BackendInstanceSpec {
+  readonly configResolve: Effect.Effect<DesktopBackendStartConfig, PlatformError.PlatformError>;
+  /** Receives the ready run's URL; reading current config could race a later restart. */
+  readonly onReady?: (httpBaseUrl: URL) => Effect.Effect<void>;
+  readonly onShutdown?: () => Effect.Effect<void>;
+  readonly onStateDirOwned?: () => Effect.Effect<void>;
+  readonly outputLog?: DesktopLogger.DesktopBackendOutputLog;
+  readonly readinessTimeout?: Duration.Duration;
+}
 
-interface ActiveRun {
+const noOutputLog: DesktopLogger.DesktopBackendOutputLog = {
+  beginSession: () => Effect.void,
+  writeOutputChunk: () => Effect.void,
+  persistFailureSnapshot: () => Effect.void,
+  persistFailure: () => Effect.void,
+  discardSession: Effect.void,
+};
+
+interface ActiveBackendRun {
   readonly id: number;
   readonly scope: Scope.Closeable;
   readonly fiber: Option.Option<Fiber.Fiber<void, never>>;
   readonly pid: Option.Option<number>;
+  readonly exitObserved: boolean;
+  readonly stopRequested: boolean;
 }
 
-interface ManagerState {
+interface BackendManagerState {
   readonly desiredRunning: boolean;
   readonly ready: boolean;
   readonly config: Option.Option<DesktopBackendStartConfig>;
-  readonly active: Option.Option<ActiveRun>;
+  readonly active: Option.Option<ActiveBackendRun>;
   readonly restartAttempt: number;
   readonly restartFiber: Option.Option<Fiber.Fiber<void, never>>;
   readonly nextRunId: number;
 }
 
-const initialState: ManagerState = {
+const initialState: BackendManagerState = {
   desiredRunning: false,
   ready: false,
   config: Option.none(),
@@ -156,68 +121,79 @@ const initialState: ManagerState = {
   nextRunId: 1,
 };
 
-const calculateRestartDelay = (attempt: number): Duration.Duration =>
+const withActiveRun =
+  (runId: number, f: (run: ActiveBackendRun) => ActiveBackendRun) =>
+  (state: BackendManagerState): BackendManagerState => ({
+    ...state,
+    active: Option.map(state.active, (run) => (run.id === runId ? f(run) : run)),
+  });
+
+export const calculateRestartDelay = (attempt: number): Duration.Duration =>
   Duration.min(Duration.times(INITIAL_RESTART_DELAY, 2 ** attempt), MAX_RESTART_DELAY);
 
-type ManagerServices =
-  | DesktopBackendConfiguration.DesktopBackendConfiguration
-  | DesktopEnvironment.DesktopEnvironment
-  | NetService
-  | FileSystem.FileSystem
-  | ChildProcessSpawner.ChildProcessSpawner
-  | HttpClient.HttpClient;
+const closeRun = (
+  run: ActiveBackendRun,
+  parentScope: Scope.Scope,
+  options?: { readonly timeout?: Duration.Duration },
+): Effect.Effect<boolean> => {
+  const waitForFiber = Option.match(run.fiber, {
+    onNone: () => Effect.void,
+    onSome: (fiber) => Fiber.await(fiber).pipe(Effect.asVoid),
+  });
 
-const { logInfo, logWarning, logError } = makeComponentLogger("desktop-backend");
+  const close = Scope.close(run.scope, Exit.void).pipe(Effect.andThen(waitForFiber));
 
-// Resolve the backend port: the configured/default port when free on both
-// loopback stacks, otherwise a fresh ephemeral loopback port.
-const resolvePort = Effect.fn("desktop.backend.resolvePort")(function* (
-  net: NetService["Service"],
-  configuredPort: Option.Option<number>,
-  defaultPort: number,
-) {
-  const preferredPort = Option.getOrElse(configuredPort, () => defaultPort);
-  return yield* net.findAvailablePort(preferredPort);
-});
+  if (!options?.timeout) return close.pipe(Effect.as(true));
+  const timeout = options.timeout;
 
-// Spawn the child + probe readiness (in a forked fiber), then wait for exit.
-const runBackendProcess = Effect.fn("desktop.backend.runBackendProcess")(function* (
+  return Effect.forkIn(close, parentScope).pipe(
+    Effect.flatMap((closeFiber) =>
+      Fiber.await(closeFiber).pipe(Effect.timeoutOption(timeout), Effect.map(Option.isSome)),
+    ),
+  );
+};
+
+const encodeBootstrapJson = Schema.encodeEffect(Schema.fromJsonString(DesktopBackendBootstrap));
+
+/**
+ * Runs one server process until it exits. The bootstrap envelope goes over fd 3 so secrets stay
+ * out of argv and the environment; readiness is the descriptor endpoint answering over HTTP.
+ */
+export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
   config: DesktopBackendStartConfig,
-  output: BackendOutputTarget,
   callbacks: {
+    readonly readinessTimeout: Duration.Duration;
     readonly onStarted: (pid: number) => Effect.Effect<void>;
+    readonly onExitObserved: Effect.Effect<void>;
     readonly onReady: Effect.Effect<void>;
-    readonly onReadinessFailure: (error: DesktopBackendReadinessError) => Effect.Effect<void>;
+    readonly onReadinessFailure: (error: HttpReadinessError) => Effect.Effect<void>;
+    readonly onOutput: (stream: BackendOutputStream, chunk: Uint8Array) => Effect.Effect<void>;
   },
 ): Effect.fn.Return<
   BackendProcessExit,
-  DesktopBackendBootstrapEncodeError | BackendProcessSpawnError,
-  | ChildProcessSpawner.ChildProcessSpawner
-  | FileSystem.FileSystem
-  | HttpClient.HttpClient
-  | Scope.Scope
+  BackendProcessError,
+  ChildProcessSpawner.ChildProcessSpawner | HttpClient.HttpClient | Scope.Scope
 > {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const bootstrapJson = yield* encodeBootstrapEnvelopeJson(config.bootstrapEnvelope).pipe(
-    Effect.mapError((cause) => new DesktopBackendBootstrapEncodeError({ cause })),
+
+  const bootstrapJson = yield* encodeBootstrapJson(config.bootstrap).pipe(
+    Effect.mapError(
+      (cause) =>
+        new BackendProcessError({ stage: "encode-bootstrap", entryPath: config.entryPath, cause }),
+    ),
   );
-  const stdio = output._tag === "file" ? ("pipe" as const) : ("inherit" as const);
+
   const command = ChildProcess.make(config.executablePath, [...config.args], {
     cwd: config.cwd,
     env: config.env,
-    // The primary passes ELECTRON_RUN_AS_NODE + the token/port in `env`; merge
-    // the parent env on top so PATH and friends are still available to the child.
     extendEnv: true,
     stdin: "ignore",
-    stdout: stdio,
-    stderr: stdio,
+    stdout: "pipe",
+    stderr: "pipe",
     killSignal: "SIGTERM",
     forceKillAfter: TERMINATE_GRACE,
     additionalFds: {
-      fd3: {
-        type: "input",
-        stream: Stream.encodeText(Stream.make(`${bootstrapJson}\n`)),
-      },
+      fd3: { type: "input", stream: Stream.encodeText(Stream.make(`${bootstrapJson}\n`)) },
     },
   });
 
@@ -225,344 +201,362 @@ const runBackendProcess = Effect.fn("desktop.backend.runBackendProcess")(functio
     .spawn(command)
     .pipe(
       Effect.mapError(
-        (cause) => new BackendProcessSpawnError({ executablePath: config.executablePath, cause }),
+        (cause) => new BackendProcessError({ stage: "spawn", entryPath: config.entryPath, cause }),
       ),
     );
+
   yield* callbacks.onStarted(handle.pid);
 
-  if (output._tag === "file") {
-    // Scoped file: closed when this run's scope closes. Log I/O failures must
-    // never take the backend down, so the drain is fire-and-forget with logging.
-    yield* Effect.gen(function* () {
-      const fileSystem = yield* FileSystem.FileSystem;
-      yield* fileSystem.makeDirectory(output.directory, { recursive: true });
-      const file = yield* fileSystem.open(output.filePath, { flag: "a" });
-      const header = `--- backend start pid=${handle.pid} port=${config.port}\n`;
-      yield* file.writeAll(new TextEncoder().encode(header));
-      yield* handle.all.pipe(
-        Stream.runForEach((chunk) => file.writeAll(chunk)),
-        Effect.ignore({ log: true }),
-        Effect.forkScoped,
-      );
-    }).pipe(Effect.ignore({ log: true }));
-  }
+  // Output that cannot be read or written must never take the server down with it.
+  const drain = (streamName: BackendOutputStream, stream: Stream.Stream<Uint8Array, unknown>) =>
+    stream.pipe(
+      Stream.runForEach((chunk) => callbacks.onOutput(streamName, chunk)),
+      Effect.ignore,
+      Effect.forkScoped,
+    );
 
-  yield* waitForHttpReady({
-    baseUrl: config.httpBaseUrl.href,
-    path: HEALTH_PATH,
-    timeoutMs: Duration.toMillis(READINESS_TIMEOUT),
-    intervalMs: Duration.toMillis(READINESS_INTERVAL),
-    probeTimeoutMs: Duration.toMillis(READINESS_REQUEST_TIMEOUT),
-    makeError: () =>
-      new DesktopBackendReadinessError({
-        url: new URL(HEALTH_PATH, config.httpBaseUrl).href,
-      }),
+  const outputFibers = [
+    yield* drain("stdout", handle.stdout),
+    yield* drain("stderr", handle.stderr),
+  ];
+
+  // A slow cold start can outlast one readiness budget; keep probing while the process lives.
+  const probeReadiness = waitForHttpReady({
+    baseUrl: config.httpBaseUrl,
+    path: SERVER_DESCRIPTOR_PATH,
+    timeout: callbacks.readinessTimeout,
+    interval: READINESS_INTERVAL,
+    probeTimeout: READINESS_REQUEST_TIMEOUT,
   }).pipe(
-    Effect.matchEffect({
-      onFailure: callbacks.onReadinessFailure,
-      onSuccess: () => callbacks.onReady,
+    Effect.andThen(callbacks.onReady),
+    Effect.as(true),
+    Effect.catchTags({
+      HttpReadinessError: (error) => callbacks.onReadinessFailure(error).pipe(Effect.as(false)),
     }),
-    Effect.forkScoped,
   );
 
-  // Block on the child's exit. When it resolves the run scope closes and the
-  // finalize path decides whether to restart, with the exit code (or kill
-  // signal) carried in the restart reason.
-  return describeProcessExit(yield* Effect.result(handle.exitCode));
+  yield* probeReadiness.pipe(Effect.repeat({ while: (ready) => !ready }), Effect.forkScoped);
+
+  const exit = yield* handle.exitCode.pipe(
+    Effect.map((exitCode): BackendProcessExit => ({
+      code: Option.some(exitCode),
+      reason: `code=${exitCode}`,
+    })),
+    Effect.catch((cause) => {
+      // Effect's Node spawner exposes signal exits only through this cause message.
+      const signal =
+        cause.cause instanceof Error
+          ? /^Process interrupted due to receipt of signal: '(SIG[A-Z0-9]+)'$/.exec(
+              cause.cause.message,
+            )?.[1]
+          : undefined;
+
+      return signal !== undefined
+        ? Effect.succeed<BackendProcessExit>({ code: Option.none(), reason: `killed by ${signal}` })
+        : Effect.fail(
+            new BackendProcessError({ stage: "exit-status", entryPath: config.entryPath, cause }),
+          );
+    }),
+    Effect.exit,
+  );
+
+  yield* callbacks.onExitObserved;
+  yield* Effect.forEach(outputFibers, Fiber.await, {
+    concurrency: "unbounded",
+    discard: true,
+  }).pipe(Effect.timeout(OUTPUT_DRAIN_TIMEOUT), Effect.ignore);
+
+  return yield* exit;
 });
 
-// Builds a backend manager bound to the given readiness callbacks. `layer`
-// supplies the window's onReady/onNotReady hooks. Exported for tests, which
-// drive it with scripted spawner/net/http services and recording callbacks.
-export const makeManager = (
-  callbacks: DesktopBackendReadyCallbacks,
-): Effect.Effect<DesktopBackendManagerShape, never, ManagerServices | Scope.Scope> =>
-  Effect.gen(function* () {
-    const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
-    const environment = yield* DesktopEnvironment.DesktopEnvironment;
-    const net = yield* NetService;
-    const fileSystem = yield* FileSystem.FileSystem;
-    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const httpClient = yield* HttpClient.HttpClient;
-    const parentScope = yield* Scope.Scope;
-    const state = yield* Ref.make(initialState);
-    const mutex = yield* Semaphore.make(1);
+/**
+ * Supervises the server process: one run at a time, each in its own scope, restarted with backoff
+ * when it exits unexpectedly. Exit code 78 means another server owns the state directory, so the
+ * supervisor stops instead of restarting into the same refusal.
+ */
+export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
+  spec: BackendInstanceSpec,
+): Effect.fn.Return<
+  DesktopBackendInstance,
+  never,
+  | FileSystem.FileSystem
+  | ChildProcessSpawner.ChildProcessSpawner
+  | HttpClient.HttpClient
+  | Scope.Scope
+> {
+  const parentScope = yield* Scope.Scope;
+  const fileSystem = yield* FileSystem.FileSystem;
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const httpClient = yield* HttpClient.HttpClient;
+  const state = yield* Ref.make(initialState);
+  const mutex = yield* Semaphore.make(1);
+  const outputLog = spec.outputLog ?? noOutputLog;
+  const { logInfo, logWarning, logError } = DesktopLogger.forComponent("desktop-backend");
 
-    const outputTarget: BackendOutputTarget = environment.isPackaged
-      ? {
-          _tag: "file",
-          directory: environment.logDir,
-          filePath: environment.path.join(environment.logDir, "server-child.log"),
-        }
-      : { _tag: "inherit" };
+  const updateActiveRun = (runId: number, f: (run: ActiveBackendRun) => ActiveBackendRun) =>
+    Ref.update(state, withActiveRun(runId, f));
 
-    const currentConfig = Ref.get(state).pipe(Effect.map((current) => current.config));
+  const snapshot = Ref.get(state).pipe(
+    Effect.map((current): DesktopBackendSnapshot => ({
+      desiredRunning: current.desiredRunning,
+      ready: current.ready,
+      activePid: Option.flatMap(current.active, (run) => run.pid),
+      restartAttempt: current.restartAttempt,
+      restartScheduled: Option.isSome(current.restartFiber),
+    })),
+  );
 
-    const cancelRestart = Effect.gen(function* () {
-      const restartFiber = yield* Ref.modify(state, (current) => [
-        current.restartFiber,
-        { ...current, restartFiber: Option.none() },
-      ]);
-      yield* Option.match(restartFiber, {
-        onNone: () => Effect.void,
-        onSome: (fiber) => Fiber.interrupt(fiber).pipe(Effect.asVoid),
-      });
+  const currentConfig = Ref.get(state).pipe(Effect.map((current) => current.config));
+
+  const cancelRestart = Effect.gen(function* () {
+    const restartFiber = yield* Ref.modify(state, (current) => [
+      current.restartFiber,
+      { ...current, restartFiber: Option.none() },
+    ]);
+
+    if (Option.isSome(restartFiber)) yield* Fiber.interrupt(restartFiber.value);
+  });
+
+  const scheduleRestart = Effect.fn("DesktopBackend.scheduleRestart")(function* (reason: string) {
+    const scheduled = yield* Ref.modify(state, (latest) => {
+      if (!latest.desiredRunning || Option.isSome(latest.restartFiber)) {
+        return [Option.none<Duration.Duration>(), latest] as const;
+      }
+
+      return [
+        Option.some(calculateRestartDelay(latest.restartAttempt)),
+        { ...latest, restartAttempt: latest.restartAttempt + 1 },
+      ] as const;
     });
 
-    const scheduleRestart = Effect.fn("desktop.backend.scheduleRestart")(function* (
-      reason: string,
-    ) {
-      const scheduled = yield* Ref.modify(state, (current) => {
-        if (!current.desiredRunning || Option.isSome(current.restartFiber)) {
-          return [Option.none<Duration.Duration>(), current] as const;
-        }
-        const delay = calculateRestartDelay(current.restartAttempt);
-        return [
-          Option.some(delay),
-          { ...current, restartAttempt: current.restartAttempt + 1 },
-        ] as const;
-      });
-
-      yield* Option.match(scheduled, {
-        onNone: () => Effect.void,
-        onSome: (delay) =>
-          Effect.gen(function* () {
-            yield* logWarning("backend exited; restart scheduled", {
-              reason,
-              delayMs: Duration.toMillis(delay),
-            });
-            const restartFiber = yield* Effect.forkIn(
-              Effect.sleep(delay).pipe(
-                Effect.andThen(
-                  Ref.modify(state, (current) => [
-                    current.desiredRunning,
-                    { ...current, restartFiber: Option.none() },
-                  ]),
-                ),
-                Effect.flatMap((shouldRestart) => (shouldRestart ? start : Effect.void)),
-                Effect.ignore({ log: true }),
-              ),
-              parentScope,
-            );
-            yield* Ref.update(state, (current) =>
-              Option.isNone(current.restartFiber)
-                ? { ...current, restartFiber: Option.some(restartFiber) }
-                : current,
-            );
-          }),
-      });
+    if (Option.isNone(scheduled)) return;
+    yield* logError("server exited unexpectedly; restart scheduled", {
+      reason,
+      delayMs: Duration.toMillis(scheduled.value),
     });
 
-    const start: Effect.Effect<void> = Effect.suspend(() =>
-      mutex.withPermits(1)(
-        Effect.gen(function* () {
-          const current = yield* Ref.get(state);
-          if (Option.isSome(current.active)) {
-            return;
+    const restartFiber = yield* Effect.forkIn(
+      Effect.sleep(scheduled.value).pipe(
+        Effect.andThen(
+          Ref.modify(state, (latest) => [
+            latest.desiredRunning,
+            { ...latest, restartFiber: Option.none() },
+          ]),
+        ),
+        Effect.flatMap((shouldRestart) => (shouldRestart ? start : Effect.void)),
+        Effect.catchCause((cause) => logError("server restart fiber failed", cause)),
+      ),
+      parentScope,
+    );
+
+    yield* Ref.update(state, (latest) =>
+      Option.isNone(latest.restartFiber)
+        ? { ...latest, restartFiber: Option.some(restartFiber) }
+        : latest,
+    );
+  });
+
+  const start: Effect.Effect<void> = Effect.suspend(() =>
+    mutex.withPermits(1)(
+      Effect.gen(function* () {
+        const current = yield* Ref.get(state);
+
+        if (Option.isSome(current.active)) {
+          if (!current.desiredRunning) {
+            yield* Ref.update(state, (latest) => ({ ...latest, desiredRunning: true }));
           }
 
-          const config = yield* resolvePort(
-            net,
-            environment.configuredBackendPort,
-            environment.defaultBackendPort,
-          ).pipe(
-            Effect.flatMap((port) => configuration.resolve({ port })),
-            Effect.tapError((error) =>
-              logError("failed to resolve backend configuration", {
-                cause: error.message,
-              }),
-            ),
-            Effect.option,
-          );
-          if (Option.isNone(config)) {
-            return;
-          }
+          return;
+        }
 
-          yield* cancelRestart;
-          yield* Ref.update(state, (latest) => ({
+        if (current.ready) {
+          yield* spec.onShutdown?.() ?? Effect.void;
+          yield* Ref.update(state, (latest) => ({ ...latest, ready: false }));
+        }
+
+        const config = yield* spec.configResolve.pipe(
+          Effect.tapError((error) => logError("failed to resolve the server configuration", error)),
+          Effect.option,
+        );
+
+        if (Option.isNone(config)) {
+          if (current.desiredRunning) yield* scheduleRestart("server configuration failed");
+
+          return;
+        }
+
+        yield* cancelRestart;
+        yield* Ref.update(state, (latest) => ({
+          ...latest,
+          desiredRunning: true,
+          ready: false,
+          config: Option.some(config.value),
+        }));
+
+        const entryExists = yield* fileSystem
+          .exists(config.value.entryPath)
+          .pipe(Effect.orElseSucceed(() => false));
+
+        if (!entryExists) {
+          yield* scheduleRestart(`missing server entry at ${config.value.entryPath}`);
+
+          return;
+        }
+
+        const runScope = yield* Scope.make("sequential");
+
+        const runId = yield* Ref.modify(state, (latest) => [
+          latest.nextRunId,
+          {
             ...latest,
-            desiredRunning: true,
-            ready: false,
-            config: Option.some(config.value),
-          }));
+            active: Option.some({
+              id: latest.nextRunId,
+              scope: runScope,
+              fiber: Option.none(),
+              pid: Option.none(),
+              exitObserved: false,
+              stopRequested: false,
+            } satisfies ActiveBackendRun),
+            nextRunId: latest.nextRunId + 1,
+          },
+        ]);
 
-          const entryExists = yield* fileSystem
-            .exists(config.value.entryPath)
-            .pipe(Effect.orElseSucceed(() => false));
-          if (!entryExists) {
-            yield* scheduleRestart(`missing server entry at ${config.value.entryPath}`);
-            return;
-          }
-
-          const runScope = yield* Scope.make("sequential");
-          const runId = yield* Ref.modify(state, (latest) => [
-            latest.nextRunId,
-            {
-              ...latest,
-              active: Option.some({
-                id: latest.nextRunId,
-                scope: runScope,
-                fiber: Option.none<Fiber.Fiber<void, never>>(),
-                pid: Option.none<number>(),
-              } satisfies ActiveRun),
-              nextRunId: latest.nextRunId + 1,
-            },
-          ]);
-
-          const finalizeRun = Effect.fn("desktop.backend.finalizeRun")(function* (reason: string) {
-            yield* mutex.withPermits(1)(
-              Effect.gen(function* () {
-                const isCurrentRun = yield* Ref.modify(state, (latest) => {
-                  const run = Option.getOrUndefined(latest.active);
-                  if (run?.id !== runId) {
-                    return [false, latest] as const;
-                  }
-                  return [
-                    true,
-                    {
-                      ...latest,
-                      active: Option.none<ActiveRun>(),
-                      ready: false,
-                    },
-                  ] as const;
-                });
-                if (isCurrentRun) {
-                  yield* callbacks.onNotReady;
-                  const latest = yield* Ref.get(state);
-                  if (latest.desiredRunning) {
-                    yield* scheduleRestart(reason);
-                  }
-                }
-              }),
-            );
-          });
-
-          const program = runBackendProcess(config.value, outputTarget, {
-            onStarted: (pid) =>
-              Effect.gen(function* () {
-                yield* Ref.update(state, (latest) => ({
-                  ...latest,
-                  active: Option.map(latest.active, (run) =>
-                    run.id === runId ? { ...run, pid: Option.some(pid) } : run,
-                  ),
-                }));
-                yield* logInfo("backend started", {
-                  pid,
-                  port: config.value.port,
-                });
-              }),
-            onReady: Effect.gen(function* () {
-              const isCurrentRun = yield* Ref.modify(state, (latest) => {
+        const finalizeRun = Effect.fn("DesktopBackend.finalizeRun")(function* (
+          reason: string,
+          exitCode?: number,
+        ) {
+          yield* mutex.withPermits(1)(
+            Effect.gen(function* () {
+              const ended = yield* Ref.modify(state, (latest) => {
                 const run = Option.getOrUndefined(latest.active);
-                if (run?.id !== runId) {
-                  return [false, latest] as const;
-                }
-                return [true, { ...latest, restartAttempt: 0, ready: true }] as const;
+
+                if (run?.id !== runId) return [Option.none(), latest] as const;
+
+                return [
+                  Option.some({
+                    pid: run.pid,
+                    exitObserved: run.exitObserved,
+                    stopRequested: run.stopRequested,
+                    wasReady: latest.ready,
+                  }),
+                  { ...latest, active: Option.none<ActiveBackendRun>(), ready: false },
+                ] as const;
               });
-              if (!isCurrentRun) {
+
+              if (Option.isNone(ended)) return;
+
+              if (Option.isSome(ended.value.pid)) {
+                if (ended.value.exitObserved && !ended.value.stopRequested) {
+                  yield* outputLog.persistFailure({
+                    details: `pid=${ended.value.pid.value} ${reason}`,
+                  });
+                } else {
+                  yield* outputLog.discardSession;
+                }
+              }
+
+              if (ended.value.wasReady) yield* spec.onShutdown?.() ?? Effect.void;
+
+              if (!(yield* Ref.get(state)).desiredRunning) return;
+
+              if (exitCode === SERVER_EXIT_CODE_STATE_DIR_OWNED && !ended.value.stopRequested) {
+                yield* Ref.update(state, (latest) => ({ ...latest, desiredRunning: false }));
+                yield* spec.onStateDirOwned?.() ?? Effect.void;
+
                 return;
               }
-              yield* logInfo("backend ready", {
-                url: config.value.httpBaseUrl.href,
-              });
-              yield* callbacks.onReady(config.value);
+
+              yield* scheduleRestart(reason);
             }),
-            onReadinessFailure: (error) =>
-              logWarning("backend readiness check failed", {
-                error: error.message,
-              }),
-          }).pipe(
-            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-            Effect.provideService(FileSystem.FileSystem, fileSystem),
-            Effect.provideService(HttpClient.HttpClient, httpClient),
-            Scope.provide(runScope),
-            Effect.matchEffect({
-              onFailure: (error) => finalizeRun(error.message),
-              onSuccess: (exit) => finalizeRun(exit.reason),
-            }),
-            Effect.ensuring(Scope.close(runScope, Exit.void).pipe(Effect.ignore)),
           );
+        });
 
-          const fiber = yield* Effect.forkIn(program, parentScope);
-          yield* Ref.update(state, (latest) => ({
-            ...latest,
-            active: Option.map(latest.active, (run) =>
-              run.id === runId ? { ...run, fiber: Option.some(fiber) } : run,
-            ),
-          }));
-        }),
-      ),
-    ).pipe(Effect.withSpan("desktop.backend.start"));
+        const program = runBackendProcess(config.value, {
+          readinessTimeout: spec.readinessTimeout ?? DEFAULT_READINESS_TIMEOUT,
+          onStarted: Effect.fn("DesktopBackend.onStarted")(function* (pid) {
+            yield* updateActiveRun(runId, (run) => ({ ...run, pid: Option.some(pid) }));
+            yield* logInfo("server started", { pid, port: config.value.bootstrap.port });
+            yield* outputLog.beginSession({
+              details: `pid=${pid} port=${config.value.bootstrap.port} cwd=${config.value.cwd}`,
+            });
+          }),
+          onExitObserved: updateActiveRun(runId, (run) => ({ ...run, exitObserved: true })),
+          onReady: Effect.gen(function* () {
+            const isCurrentRun = yield* Ref.modify(state, (latest) =>
+              Option.getOrUndefined(latest.active)?.id === runId
+                ? ([true, { ...latest, restartAttempt: 0, ready: true }] as const)
+                : ([false, latest] as const),
+            );
 
-    const stop = Effect.gen(function* () {
-      const { active, restartFiber } = yield* mutex.withPermits(1)(
-        Ref.modify(state, (latest) => [
-          { active: latest.active, restartFiber: latest.restartFiber },
+            if (isCurrentRun) yield* spec.onReady?.(config.value.httpBaseUrl) ?? Effect.void;
+          }),
+          onReadinessFailure: Effect.fn("DesktopBackend.onReadinessFailure")(function* (error) {
+            yield* logWarning("server readiness check failed", error.message, error);
+            yield* outputLog.persistFailureSnapshot({ details: error.message });
+          }),
+          onOutput: outputLog.writeOutputChunk,
+        }).pipe(
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+          Effect.provideService(HttpClient.HttpClient, httpClient),
+          Scope.provide(runScope),
+          Effect.matchEffect({
+            onFailure: (error) => finalizeRun(error.message),
+            onSuccess: (exit) => finalizeRun(exit.reason, Option.getOrUndefined(exit.code)),
+          }),
+          Effect.ensuring(Scope.close(runScope, Exit.void).pipe(Effect.ignore)),
+        );
+
+        const fiber = yield* Effect.forkIn(program, parentScope);
+        yield* updateActiveRun(runId, (run) => ({ ...run, fiber: Option.some(fiber) }));
+      }),
+    ),
+  ).pipe(Effect.withSpan("DesktopBackend.start"));
+
+  const stop = Effect.fn("DesktopBackend.stop")(function* (options?: {
+    readonly timeout?: Duration.Duration;
+  }) {
+    const { active, restartFiber, notifyShutdown } = yield* mutex.withPermits(1)(
+      Ref.modify(state, (latest) => {
+        const active = Option.map(latest.active, (run) =>
+          run.exitObserved ? run : { ...run, stopRequested: true },
+        );
+
+        return [
+          { active, restartFiber: latest.restartFiber, notifyShutdown: latest.ready },
           {
             ...latest,
             desiredRunning: false,
             ready: false,
-            active: Option.none<ActiveRun>(),
+            active,
             restartFiber: Option.none<Fiber.Fiber<void, never>>(),
           },
-        ]),
-      );
+        ] as const;
+      }),
+    );
 
-      yield* Option.match(restartFiber, {
-        onNone: () => Effect.void,
-        onSome: (fiber) => Fiber.interrupt(fiber).pipe(Effect.asVoid),
-      });
-      yield* Option.match(active, {
-        onNone: () => Effect.void,
-        onSome: (run) =>
-          // Closing the run scope tears down the ChildProcessSpawner handle,
-          // which sends SIGTERM and force-kills after the grace window.
-          Scope.close(run.scope, Exit.void)
-            .pipe(
-              Effect.andThen(
-                Option.match(run.fiber, {
-                  onNone: () => Effect.void,
-                  onSome: (fiber) => Fiber.await(fiber).pipe(Effect.asVoid),
-                }),
-              ),
-            )
-            .pipe(Effect.ignore),
-      });
-    }).pipe(Effect.withSpan("desktop.backend.stop"));
+    if (notifyShutdown) yield* spec.onShutdown?.() ?? Effect.void;
 
-    yield* Effect.addFinalizer(() => stop);
+    if (Option.isSome(restartFiber)) yield* Fiber.interrupt(restartFiber.value);
 
-    return {
-      start,
-      stop,
-      currentConfig,
-    } satisfies DesktopBackendManagerShape;
+    if (Option.isNone(active)) return;
+    const closed = yield* closeRun(active.value, parentScope, options);
+
+    if (!closed) {
+      yield* logWarning("server did not stop within the timeout");
+
+      return;
+    }
+
+    const needsCleanup = yield* Ref.modify(state, (latest) =>
+      Option.getOrUndefined(latest.active)?.id === active.value.id
+        ? ([true, { ...latest, active: Option.none<ActiveBackendRun>() }] as const)
+        : ([false, latest] as const),
+    );
+
+    if (needsCleanup) yield* outputLog.discardSession;
   });
 
-// Wires the manager into the window's readiness callbacks. `onReady` reveals the
-// main window; `onNotReady` clears the latch so a dock-click while the backend
-// is down doesn't strand a window pointing at nothing.
-export const layer: Layer.Layer<
-  DesktopBackendManager,
-  never,
-  | DesktopBackendConfiguration.DesktopBackendConfiguration
-  | DesktopEnvironment.DesktopEnvironment
-  | DesktopWindow.DesktopWindow
-  | NetService
-  | FileSystem.FileSystem
-  | ChildProcessSpawner.ChildProcessSpawner
-  | HttpClient.HttpClient
-> = Layer.effect(
-  DesktopBackendManager,
-  Effect.gen(function* () {
-    const window = yield* DesktopWindow.DesktopWindow;
-    const manager = yield* makeManager({
-      // A window-create failure while revealing on backend-ready is unexpected
-      // and fatal; surface it as a defect rather than widening the callback's
-      // error channel.
-      onReady: (config) => window.handleBackendReady(config).pipe(Effect.orDie),
-      onNotReady: window.handleBackendNotReady,
-    });
-    return manager;
-  }),
-);
+  yield* Effect.addFinalizer(() => stop());
+
+  return { start, stop, currentConfig, snapshot } satisfies DesktopBackendInstance;
+});

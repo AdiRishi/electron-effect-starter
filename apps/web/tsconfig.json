@@ -1,17 +1,18 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "@app/tsconfig/base.json",
   "compilerOptions": {
-    "composite": true,
     "module": "Preserve",
     "moduleResolution": "Bundler",
-    "erasableSyntaxOnly": false,
-    "verbatimModuleSyntax": false,
     "jsx": "react-jsx",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "types": ["node", "react", "react-dom"],
+    "lib": ["ES2023", "ESNext.Disposable", "DOM", "DOM.Iterable"],
+    "types": ["vite/client", "@vitest/browser-playwright"],
+    "paths": {
+      "~/*": ["./src/*"]
+    },
     "plugins": [
       {
         "name": "@effect/language-service",
+        // Diagnostic severities deep-merge with @app/tsconfig/base.json; list only browser overrides here.
         "diagnosticSeverity": {
           "globalDate": "off",
           "globalConsole": "off",

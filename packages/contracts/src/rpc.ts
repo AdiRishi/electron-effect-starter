@@ -1,108 +1,73 @@
 import * as Schema from "effect/Schema";
-import * as Rpc from "effect/unstable/rpc/Rpc";
-import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
+import * as Rpc from "effect/rpc/Rpc";
+import * as RpcGroup from "effect/rpc/RpcGroup";
 
-import { EnvironmentAuthorizationError } from "./auth.ts";
 import {
   Note,
   NoteCreateInput,
   NoteDeleteInput,
   NoteNotFoundError,
+  NotesStorageError,
   NotesStreamEvent,
   NoteUpdateInput,
 } from "./notes.ts";
-import {
-  EchoInput,
-  EchoResult,
-  ServerConfig,
-  ServerLifecycleStreamEvent,
-  TickEvent,
-} from "./server.ts";
+import { ServerLifecycleEvent } from "./server.ts";
 
-/**
- * String method names for every WS RPC — the single source of truth the
- * server registers handlers against and the client calls by tag.
- */
+export const WS_PATH = "/ws";
+
 export const WS_METHODS = {
-  serverGetConfig: "server.getConfig",
-  serverEcho: "server.echo",
-  serverSubscribeTicks: "server.subscribeTicks",
-  serverSubscribeLifecycle: "server.subscribeLifecycle",
+  serverProbe: "server.probe",
+  subscribeServerLifecycle: "server.subscribeLifecycle",
   notesCreate: "notes.create",
   notesUpdate: "notes.update",
   notesDelete: "notes.delete",
-  notesSubscribe: "notes.subscribe",
+  subscribeNotes: "notes.subscribe",
 } as const;
 
-// ── Unary RPCs ──────────────────────────────────────────────────────────────
-
-/** No payload; the first call after connect also serves as initial sync. */
-export const WsServerGetConfigRpc = Rpc.make(WS_METHODS.serverGetConfig, {
+/** Answers immediately; the connection supervisor uses it to check a socket is alive. */
+const WsServerProbeRpc = Rpc.make(WS_METHODS.serverProbe, {
   payload: Schema.Struct({}),
-  success: ServerConfig,
-  error: EnvironmentAuthorizationError,
+  success: Schema.Struct({}),
 });
 
-/** Round-trips input → output. The template for a request/response method. */
-export const WsServerEchoRpc = Rpc.make(WS_METHODS.serverEcho, {
-  payload: EchoInput,
-  success: EchoResult,
-  error: EnvironmentAuthorizationError,
-});
-
-// ── Streaming RPCs (server → client push) ────────────────────────────────────
-
-/** A monotonic counter. The template for a live server-push stream. */
-export const WsServerSubscribeTicksRpc = Rpc.make(WS_METHODS.serverSubscribeTicks, {
+const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecycle, {
   payload: Schema.Struct({}),
-  success: TickEvent,
-  error: EnvironmentAuthorizationError,
+  success: ServerLifecycleEvent,
   stream: true,
 });
 
-/** Retained-snapshot + live lifecycle events (the ordered push-bus pattern). */
-export const WsServerSubscribeLifecycleRpc = Rpc.make(WS_METHODS.serverSubscribeLifecycle, {
-  payload: Schema.Struct({}),
-  success: ServerLifecycleStreamEvent,
-  error: EnvironmentAuthorizationError,
-  stream: true,
-});
-
-// ── Notes RPCs (the sample domain — remove alongside notes.ts when forking) ──
-
-export const WsNotesCreateRpc = Rpc.make(WS_METHODS.notesCreate, {
+const WsNotesCreateRpc = Rpc.make(WS_METHODS.notesCreate, {
   payload: NoteCreateInput,
   success: Note,
-  error: EnvironmentAuthorizationError,
+  error: NotesStorageError,
 });
 
-export const WsNotesUpdateRpc = Rpc.make(WS_METHODS.notesUpdate, {
+const WsNotesUpdateRpc = Rpc.make(WS_METHODS.notesUpdate, {
   payload: NoteUpdateInput,
   success: Note,
-  error: Schema.Union([NoteNotFoundError, EnvironmentAuthorizationError]),
+  error: Schema.Union([NoteNotFoundError, NotesStorageError]),
 });
 
-export const WsNotesDeleteRpc = Rpc.make(WS_METHODS.notesDelete, {
+const WsNotesDeleteRpc = Rpc.make(WS_METHODS.notesDelete, {
   payload: NoteDeleteInput,
-  error: Schema.Union([NoteNotFoundError, EnvironmentAuthorizationError]),
+  success: Schema.Struct({}),
+  error: Schema.Union([NoteNotFoundError, NotesStorageError]),
 });
 
-/** Snapshot-then-live push bus for the notes list (same contract as lifecycle). */
-export const WsNotesSubscribeRpc = Rpc.make(WS_METHODS.notesSubscribe, {
+const WsSubscribeNotesRpc = Rpc.make(WS_METHODS.subscribeNotes, {
   payload: Schema.Struct({}),
   success: NotesStreamEvent,
-  error: EnvironmentAuthorizationError,
+  error: NotesStorageError,
   stream: true,
 });
 
-/** The wire contract the server decodes against and the client is typed by. */
 export const WsRpcGroup = RpcGroup.make(
-  WsServerGetConfigRpc,
-  WsServerEchoRpc,
-  WsServerSubscribeTicksRpc,
-  WsServerSubscribeLifecycleRpc,
+  WsServerProbeRpc,
+  WsSubscribeServerLifecycleRpc,
   WsNotesCreateRpc,
   WsNotesUpdateRpc,
   WsNotesDeleteRpc,
-  WsNotesSubscribeRpc,
+  WsSubscribeNotesRpc,
 );
+
+export type WsRpcMethod = (typeof WS_METHODS)[keyof typeof WS_METHODS];

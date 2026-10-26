@@ -4,19 +4,21 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
-// The IPC registration service + codec-validated method helpers. `handle`/
-// `handleSync` register a channel and, via `Effect.acquireRelease`, remove it
-// when the scope closes. `makeIpcMethod`/`makeSyncIpcMethod` wrap a handler so
-// its payload is decoded and its result encoded through Schema codecs — nothing
-// crosses the IPC wire without validation.
+export interface DesktopIpcInvokeEvent {
+  readonly sender: { readonly id: number };
+}
 
-// Minimal structural view of Electron's `ipcMain` so this module doesn't import
-// `electron` directly (it stays testable with a fake).
 export interface DesktopIpcSyncEvent {
   returnValue: unknown;
 }
 
-export type DesktopIpcHandleListener = (event: unknown, raw: unknown) => unknown | Promise<unknown>;
+// Electron hands IPC arguments over untyped; makeIpcMethod decodes them with each method's schema.
+export type DesktopIpcHandleListener = (
+  event: DesktopIpcInvokeEvent,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- Electron delivers the argument untyped.
+  raw: unknown,
+  // oxlint-disable-next-line anti-slop/no-unknown-returns -- Electron sends the reply back untyped.
+) => unknown | Promise<unknown>;
 
 export type DesktopIpcSyncListener = (event: DesktopIpcSyncEvent) => void;
 
@@ -27,7 +29,7 @@ export interface DesktopIpcMain {
   on(channel: string, listener: DesktopIpcSyncListener): void;
 }
 
-export class DesktopIpcRegistrationError extends Schema.TaggedErrorClass<DesktopIpcRegistrationError>()(
+export class DesktopIpcRegistrationError extends Schema.TaggedError<DesktopIpcRegistrationError>()(
   "DesktopIpcRegistrationError",
   {
     handlerKind: Schema.Literals(["invoke", "sync"]),
@@ -40,7 +42,7 @@ export class DesktopIpcRegistrationError extends Schema.TaggedErrorClass<Desktop
   }
 }
 
-export class DesktopIpcUnregistrationError extends Schema.TaggedErrorClass<DesktopIpcUnregistrationError>()(
+export class DesktopIpcUnregistrationError extends Schema.TaggedError<DesktopIpcUnregistrationError>()(
   "DesktopIpcUnregistrationError",
   {
     handlerKind: Schema.Literals(["invoke", "sync"]),
@@ -57,12 +59,13 @@ export const DesktopIpcError = Schema.Union([
   DesktopIpcRegistrationError,
   DesktopIpcUnregistrationError,
 ]);
+
 export type DesktopIpcError = typeof DesktopIpcError.Type;
-export const isDesktopIpcError = Schema.is(DesktopIpcError);
 
 export interface DesktopIpcMethod<E, R> {
   readonly channel: string;
-  readonly handler: (raw: unknown) => Effect.Effect<unknown, E, R>;
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- The handler decodes the raw IPC argument itself.
+  readonly handler: (raw: unknown, event?: DesktopIpcInvokeEvent) => Effect.Effect<unknown, E, R>;
 }
 
 export interface DesktopSyncIpcMethod<E, R> {
@@ -96,31 +99,24 @@ export const make = (ipcMain: DesktopIpcMain): DesktopIpc["Service"] =>
         Effect.try({
           try: () => {
             ipcMain.removeHandler(channel);
-            ipcMain.handle(channel, (_event, raw) =>
+            ipcMain.handle(channel, (event, raw) =>
               runPromise(
                 Effect.gen(function* () {
                   yield* Effect.annotateCurrentSpan({ channel });
-                  return yield* handler(raw);
+
+                  return yield* handler(raw, event);
                 }).pipe(Effect.annotateLogs({ channel }), Effect.withSpan("desktop.ipc.invoke")),
               ),
             );
           },
           catch: (cause) =>
-            new DesktopIpcRegistrationError({
-              handlerKind: "invoke",
-              channel,
-              cause,
-            }),
+            new DesktopIpcRegistrationError({ handlerKind: "invoke", channel, cause }),
         }),
         () =>
           Effect.try({
             try: () => ipcMain.removeHandler(channel),
             catch: (cause) =>
-              new DesktopIpcUnregistrationError({
-                handlerKind: "invoke",
-                channel,
-                cause,
-              }),
+              new DesktopIpcUnregistrationError({ handlerKind: "invoke", channel, cause }),
           }).pipe(Effect.orDie),
       );
     }),
@@ -141,6 +137,7 @@ export const make = (ipcMain: DesktopIpcMain): DesktopIpc["Service"] =>
               event.returnValue = runSync(
                 Effect.gen(function* () {
                   yield* Effect.annotateCurrentSpan({ channel });
+
                   return yield* handler();
                 }).pipe(
                   Effect.annotateLogs({ channel }),
@@ -150,29 +147,19 @@ export const make = (ipcMain: DesktopIpcMain): DesktopIpc["Service"] =>
             });
           },
           catch: (cause) =>
-            new DesktopIpcRegistrationError({
-              handlerKind: "sync",
-              channel,
-              cause,
-            }),
+            new DesktopIpcRegistrationError({ handlerKind: "sync", channel, cause }),
         }),
         () =>
           Effect.try({
             try: () => ipcMain.removeAllListeners(channel),
             catch: (cause) =>
-              new DesktopIpcUnregistrationError({
-                handlerKind: "sync",
-                channel,
-                cause,
-              }),
+              new DesktopIpcUnregistrationError({ handlerKind: "sync", channel, cause }),
           }).pipe(Effect.orDie),
       );
     }),
   });
 
 export const layer = (ipcMain: DesktopIpcMain) => Layer.succeed(DesktopIpc, make(ipcMain));
-
-// ── Codec-validated method helpers ──
 
 export interface DesktopIpcMethodRegistration<
   Payload,
@@ -182,12 +169,24 @@ export interface DesktopIpcMethodRegistration<
   E,
   R,
   PayloadDecodingServices = never,
+  PayloadEncodingServices = never,
+  ResultDecodingServices = never,
   ResultEncodingServices = never,
 > {
   readonly channel: string;
-  readonly payload: Schema.Codec<Payload, EncodedPayload, PayloadDecodingServices, never>;
-  readonly result: Schema.Codec<Result, EncodedResult, never, ResultEncodingServices>;
-  readonly handler: (input: Payload) => Effect.Effect<Result, E, R>;
+  readonly payload: Schema.Codec<
+    Payload,
+    EncodedPayload,
+    PayloadDecodingServices,
+    PayloadEncodingServices
+  >;
+  readonly result: Schema.Codec<
+    Result,
+    EncodedResult,
+    ResultDecodingServices,
+    ResultEncodingServices
+  >;
+  readonly handler: (input: Payload, event?: DesktopIpcInvokeEvent) => Effect.Effect<Result, E, R>;
 }
 
 export const makeIpcMethod = <
@@ -198,6 +197,8 @@ export const makeIpcMethod = <
   E,
   R,
   PayloadDecodingServices = never,
+  PayloadEncodingServices = never,
+  ResultDecodingServices = never,
   ResultEncodingServices = never,
 >(
   method: DesktopIpcMethodRegistration<
@@ -208,6 +209,8 @@ export const makeIpcMethod = <
     E,
     R,
     PayloadDecodingServices,
+    PayloadEncodingServices,
+    ResultDecodingServices,
     ResultEncodingServices
   >,
 ): DesktopIpcMethod<
@@ -219,13 +222,11 @@ export const makeIpcMethod = <
 
   return {
     channel: method.channel,
-    handler: (raw) =>
+    handler: (raw, event) =>
       decode(raw).pipe(
-        Effect.flatMap(method.handler),
+        Effect.flatMap((input) => method.handler(input, event)),
         Effect.flatMap(encode),
-        Effect.withSpan("desktop.ipc.method", {
-          attributes: { channel: method.channel },
-        }),
+        Effect.withSpan("desktop.ipc.method", { attributes: { channel: method.channel } }),
       ),
   };
 };
@@ -235,26 +236,46 @@ export interface DesktopSyncIpcMethodRegistration<
   EncodedResult,
   E,
   R,
+  ResultDecodingServices = never,
   ResultEncodingServices = never,
 > {
   readonly channel: string;
-  readonly result: Schema.Codec<Result, EncodedResult, never, ResultEncodingServices>;
+  readonly result: Schema.Codec<
+    Result,
+    EncodedResult,
+    ResultDecodingServices,
+    ResultEncodingServices
+  >;
   readonly handler: () => Effect.Effect<Result, E, R>;
 }
 
-export const makeSyncIpcMethod = <Result, EncodedResult, E, R, ResultEncodingServices = never>(
-  method: DesktopSyncIpcMethodRegistration<Result, EncodedResult, E, R, ResultEncodingServices>,
+export const makeSyncIpcMethod = <
+  Result,
+  EncodedResult,
+  E,
+  R,
+  ResultDecodingServices = never,
+  ResultEncodingServices = never,
+>(
+  method: DesktopSyncIpcMethodRegistration<
+    Result,
+    EncodedResult,
+    E,
+    R,
+    ResultDecodingServices,
+    ResultEncodingServices
+  >,
 ): DesktopSyncIpcMethod<E | Schema.SchemaError, R | ResultEncodingServices> => {
   const encode = Schema.encodeUnknownEffect(method.result);
 
   return {
     channel: method.channel,
     handler: () =>
-      method.handler().pipe(
-        Effect.flatMap(encode),
-        Effect.withSpan("desktop.ipc.method", {
-          attributes: { channel: method.channel },
-        }),
-      ),
+      method
+        .handler()
+        .pipe(
+          Effect.flatMap(encode),
+          Effect.withSpan("desktop.ipc.method", { attributes: { channel: method.channel } }),
+        ),
   };
 };

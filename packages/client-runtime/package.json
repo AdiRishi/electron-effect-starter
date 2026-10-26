@@ -1,20 +1,15 @@
 {
   "name": "@app/client-runtime",
-  "version": "0.0.0",
   "private": true,
   "type": "module",
   "exports": {
-    "./authorization": {
-      "types": "./src/authorization.ts",
-      "import": "./src/authorization.ts"
-    },
     "./connection": {
       "types": "./src/connection/index.ts",
-      "import": "./src/connection/index.ts"
+      "default": "./src/connection/index.ts"
     },
     "./rpc": {
       "types": "./src/rpc/index.ts",
-      "import": "./src/rpc/index.ts"
+      "default": "./src/rpc/index.ts"
     }
   },
   "scripts": {
@@ -26,8 +21,9 @@
     "effect": "catalog:"
   },
   "devDependencies": {
+    "@app/tsconfig": "workspace:*",
+    "@app/vitest-config": "workspace:*",
     "@effect/vitest": "catalog:",
-    "typescript": "catalog:",
     "vitest": "catalog:"
   }
 }

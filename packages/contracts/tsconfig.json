@@ -1,4 +1,7 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  "extends": "@app/tsconfig/base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "esnext.disposable"]
+  },
+  "include": ["src", "tests", "vitest.config.ts"]
 }

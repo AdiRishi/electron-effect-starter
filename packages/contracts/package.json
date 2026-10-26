@@ -1,6 +1,5 @@
 {
   "name": "@app/contracts",
-  "version": "0.0.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -17,8 +16,9 @@
     "effect": "catalog:"
   },
   "devDependencies": {
+    "@app/tsconfig": "workspace:*",
+    "@app/vitest-config": "workspace:*",
     "@effect/vitest": "catalog:",
-    "typescript": "catalog:",
     "vitest": "catalog:"
   }
 }

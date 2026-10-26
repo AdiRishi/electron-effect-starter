@@ -1,12 +1,11 @@
-// Connection model + reconnect supervisor.
-export {
-  type ConnectionAttemptError,
-  ConnectionBlockedError,
-  ConnectionBlockedReason,
-  type ConnectionPhase,
-  type ConnectionState,
-  ConnectionTransientError,
-  INITIAL_CONNECTION_STATE,
-  type PreparedConnection,
-} from "./model.ts";
-export { ConnectionSupervisor, layer as connectionSupervisorLayer, start } from "./supervisor.ts";
+export * as Connectivity from "./connectivity.ts";
+
+export * as ConnectionSupervisor from "./supervisor.ts";
+
+export * as ConnectionTarget from "./target.ts";
+
+export * as ConnectionWakeups from "./wakeups.ts";
+
+export * from "./model.ts";
+
+export * from "./presentation.ts";

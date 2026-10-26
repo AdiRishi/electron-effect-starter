@@ -1,45 +1,110 @@
 import tailwindcss from "@tailwindcss/vite";
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { playwright } from "@vitest/browser-playwright";
+import { defineConfig, mergeConfig } from "vitest/config";
 
-const wsUrl = process.env.VITE_WS_URL?.trim() || "ws://127.0.0.1:13773";
-const bootstrapToken = process.env.VITE_BOOTSTRAP_TOKEN?.trim() || "";
-const port = Number(process.env.PORT ?? 5733);
+import {
+  DEV_PROXIED_ORIGIN_PRESERVING_PREFIXES,
+  DEV_PROXIED_PATH_PREFIXES,
+} from "@app/shared/devProxy";
+import shared from "@app/vitest-config";
 
-// The http origin form of the ws URL, used both for the /api proxy target and
-// as the browser's `httpBaseUrl` default (see src/env.ts).
-function httpTarget(url: string): string {
-  try {
-    const parsed = new URL(url);
-    parsed.protocol = parsed.protocol === "wss:" ? "https:" : "http:";
-    parsed.pathname = "";
-    parsed.search = "";
-    parsed.hash = "";
-    return parsed.toString().replace(/\/$/, "");
-  } catch {
-    return "http://127.0.0.1:13773";
-  }
-}
+import pkg from "./package.json" with { type: "json" };
 
-const proxyHttpTarget = httpTarget(wsUrl);
+const port = Number(process.env.APP_WEB_PORT ?? 5733);
+const appVersion = process.env.APP_VERSION?.trim() || pkg.version;
+const serverPort = process.env.APP_PORT?.trim();
 
-export default defineConfig(() => ({
-  plugins: [react(), tailwindcss()],
-  define: {
-    "import.meta.env.VITE_WS_URL": JSON.stringify(wsUrl),
-    "import.meta.env.VITE_BOOTSTRAP_TOKEN": JSON.stringify(bootstrapToken),
-  },
-  server: {
-    port,
-    strictPort: true,
-    proxy: {
-      "/api": { target: proxyHttpTarget, changeOrigin: true },
-      "/ws": { target: proxyHttpTarget, changeOrigin: true, ws: true },
-      "/.well-known": { target: proxyHttpTarget, changeOrigin: true },
+// Dev is single-origin: Vite proxies the server's paths, so no server URL is baked into the bundle.
+const proxy = serverPort
+  ? Object.fromEntries(
+      DEV_PROXIED_PATH_PREFIXES.map((prefix) => [
+        prefix,
+        {
+          target: `http://127.0.0.1:${serverPort}`,
+          ws: prefix === "/ws",
+          changeOrigin: !DEV_PROXIED_ORIGIN_PRESERVING_PREFIXES.has(prefix),
+        },
+      ]),
+    )
+  : undefined;
+
+export default mergeConfig(
+  shared,
+  defineConfig({
+    plugins: [
+      tanstackRouter({ autoCodeSplitting: true }),
+      react({ compiler: true }),
+      tailwindcss(),
+    ],
+    define: { "import.meta.env.APP_VERSION": JSON.stringify(appVersion) },
+    resolve: { tsconfigPaths: true },
+    server: {
+      host: "127.0.0.1",
+      port,
+      strictPort: true,
+      ...(proxy ? { proxy } : {}),
     },
-  },
-  build: {
-    outDir: "dist",
-    emptyOutDir: true,
-  },
-}));
+    build: {
+      // The server reads the manifest to mark hashed assets as immutable.
+      manifest: true,
+      sourcemap: true,
+    },
+    test: {
+      projects: [
+        {
+          extends: true,
+          test: {
+            name: "unit",
+            include: ["tests/**/*.test.{ts,tsx}"],
+            exclude: ["tests/**/*.browser.test.{ts,tsx}"],
+          },
+        },
+        {
+          extends: true,
+          // Pre-bundle what browser tests import so a mid-run dependency discovery cannot reload the page.
+          optimizeDeps: {
+            include: [
+              "vitest/browser",
+              "react",
+              "react/jsx-dev-runtime",
+              "react-dom/client",
+              "@tanstack/react-router",
+              "@base-ui/react/merge-props",
+              "@base-ui/react/use-render",
+              "@base-ui/react/input",
+              "@base-ui/react/field",
+              "@base-ui/react/tooltip",
+              "class-variance-authority",
+              "tailwind-merge",
+              "lucide-react",
+            ],
+          },
+          test: {
+            name: "browser",
+            include: ["tests/**/*.browser.test.{ts,tsx}"],
+            setupFiles: ["./tests/support/browserSetup.ts"],
+            browser: {
+              enabled: true,
+              headless: true,
+              provider: playwright(),
+              instances: [{ browser: "chromium" }],
+              screenshotFailures: false,
+              commands: {
+                // Playwright's mouse outlives each test, so whatever mounts under its last
+                // position starts hovered. tests/support/browserSetup.ts parks it off the page.
+                resetPointer: async ({ page }) => {
+                  await page.mouse.move(-1, -1);
+                },
+                emulateColorScheme: async ({ page }, colorScheme: "light" | "dark") => {
+                  await page.emulateMedia({ colorScheme });
+                },
+              },
+            },
+          },
+        },
+      ],
+    },
+  }),
+);

@@ -2,16 +2,16 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+
 import * as Electron from "electron";
 
-const SAFE_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"]);
+const SAFE_EXTERNAL_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 
-export function parseSafeExternalUrl(rawUrl: unknown): Option.Option<string> {
-  if (typeof rawUrl !== "string") {
-    return Option.none();
-  }
+/** Only web and mail links leave the app; anything else could launch an arbitrary local handler. */
+export function parseSafeExternalUrl(rawUrl: string): Option.Option<string> {
   try {
     const url = new URL(rawUrl);
+
     return SAFE_EXTERNAL_PROTOCOLS.has(url.protocol) ? Option.some(url.href) : Option.none();
   } catch {
     return Option.none();
@@ -21,22 +21,27 @@ export function parseSafeExternalUrl(rawUrl: unknown): Option.Option<string> {
 export class ElectronShell extends Context.Service<
   ElectronShell,
   {
-    readonly openExternal: (rawUrl: unknown) => Effect.Effect<boolean>;
+    readonly openExternal: (rawUrl: string) => Effect.Effect<boolean>;
+    readonly copyText: (text: string) => Effect.Effect<void>;
   }
 >()("@app/desktop/electron/ElectronShell") {}
 
-export const make = ElectronShell.of({
-  openExternal: (rawUrl) =>
-    Option.match(parseSafeExternalUrl(rawUrl), {
+const make = ElectronShell.of({
+  openExternal: Effect.fn("ElectronShell.openExternal")(function (rawUrl: string) {
+    return Option.match(parseSafeExternalUrl(rawUrl), {
       onNone: () => Effect.succeed(false),
-      onSome: (externalUrl) =>
+      onSome: (url) =>
         Effect.promise(() =>
-          Electron.shell.openExternal(externalUrl).then(
+          Electron.shell.openExternal(url).then(
             () => true,
             () => false,
           ),
         ),
-    }),
+    });
+  }),
+  copyText: Effect.fn("ElectronShell.copyText")(function (text: string) {
+    return Effect.promise(() => Electron.clipboard.writeText(text).catch(() => undefined));
+  }),
 });
 
 export const layer = Layer.succeed(ElectronShell, make);

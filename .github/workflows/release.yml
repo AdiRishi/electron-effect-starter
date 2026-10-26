@@ -1,0 +1,206 @@
+# Pushing a v*.*.* tag runs CI, builds installers for macOS (arm64 and x64), Windows and Linux,
+# and publishes them in one GitHub release, which installed apps update from. The tag must match
+# the version in apps/desktop/package.json.
+#
+# macOS builds are signed and notarized when these repository secrets are set; without them the
+# build is unsigned and macOS auto-update does not work:
+#   CSC_LINK, CSC_KEY_PASSWORD  the Developer ID Application certificate as a base64 .p12, and its password
+#   APPLE_API_KEY               the App Store Connect API key (.p8 contents)
+#   APPLE_API_KEY_ID, APPLE_API_ISSUER
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+# A running publisher is never canceled; a second tag waits for it.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      name: ${{ steps.release_meta.outputs.name }}
+      is_prerelease: ${{ steps.release_meta.outputs.is_prerelease }}
+      make_latest: ${{ steps.release_meta.outputs.make_latest }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: /apps/desktop/package.json
+          sparse-checkout-cone-mode: false
+
+      # The installers take their version from apps/desktop/package.json, so a tag that names a
+      # different version would publish installers the updater reads as another release.
+      - id: release_meta
+        name: Check the tag matches the desktop version
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid release version: $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+          package_version="$(jq -r .version apps/desktop/package.json)"
+          if [[ "$version" != "$package_version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match apps/desktop/package.json version $package_version."
+            exit 1
+          fi
+
+          echo "name=$(jq -r .productName apps/desktop/package.json) v$version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  ci:
+    name: CI
+    needs: [preflight]
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Build ${{ matrix.label }}
+    needs: [preflight, ci]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS arm64
+            os: macos-latest
+            platform: mac
+            arch: arm64
+          # electron-builder packages for the host arch, so x64 builds on an Intel runner.
+          - label: macOS x64
+            os: macos-15-intel
+            platform: mac
+            arch: x64
+          - label: Windows x64
+            os: windows-latest
+            platform: win
+            arch: x64
+          - label: Linux x64
+            os: ubuntu-latest
+            platform: linux
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            /*
+            !/repos/
+          sparse-checkout-cone-mode: false
+      - uses: ./.github/actions/setup
+      - run: pnpm build
+      # electron-builder reads APPLE_API_KEY as a path to the .p8 key.
+      - name: Write the App Store Connect key
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          if [ -n "$APPLE_API_KEY" ]; then
+            key_path="$RUNNER_TEMP/AuthKey.p8"
+            printf '%s' "$APPLE_API_KEY" > "$key_path"
+            echo "APPLE_API_KEY=$key_path" >> "$GITHUB_ENV"
+          fi
+      # Builds without publishing; the publish job uploads every platform's files at once.
+      - run: pnpm dist:desktop
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+
+      # Both macOS jobs write latest-mac.yml. The x64 copy is renamed so the publish job can merge
+      # the two instead of one overwriting the other.
+      - name: Collect release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-publish
+          shopt -s nullglob
+          for file in release/*.dmg release/*.zip release/*.AppImage release/*.exe release/*.blockmap release/*.yml; do
+            # builder-debug.yml is electron-builder's config dump, not an updater manifest.
+            [[ "$file" == */builder-debug.yml ]] && continue
+            cp "$file" release-publish/
+          done
+
+          if [[ "${{ matrix.platform }}" == "mac" && "${{ matrix.arch }}" != "arm64" ]]; then
+            for manifest in release-publish/*-mac.yml; do
+              mv "$manifest" "${manifest%.yml}-${{ matrix.arch }}.yml"
+            done
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          path: release-publish/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # electron-builder's own GitHub publishing looks for the release and creates it when missing,
+  # so parallel jobs can each create a draft for the same tag, and the two macOS jobs overwrite
+  # each other's latest-mac.yml. One job uploads everything instead.
+  publish:
+    name: Publish GitHub Release
+    needs: [preflight, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            /*
+            !/repos/
+          sparse-checkout-cone-mode: false
+      - uses: ./.github/actions/setup
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*
+          merge-multiple: true
+          path: release-assets
+
+      # electron-updater reads one manifest per platform and picks the file entry whose name
+      # carries the running arch, so the per-arch macOS manifests are merged into that one file.
+      - name: Merge macOS updater manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for x64_manifest in release-assets/*-mac-x64.yml; do
+            arm64_manifest="${x64_manifest%-x64.yml}.yml"
+            node tooling/scripts/merge-update-manifests.ts --platform mac "$arm64_manifest" "$x64_manifest"
+            rm -f "$x64_manifest"
+          done
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ needs.preflight.outputs.name }}
+          generate_release_notes: true
+          prerelease: ${{ needs.preflight.outputs.is_prerelease }}
+          make_latest: ${{ needs.preflight.outputs.make_latest }}
+          files: |
+            release-assets/*.dmg
+            release-assets/*.zip
+            release-assets/*.AppImage
+            release-assets/*.exe
+            release-assets/*.blockmap
+            release-assets/*.yml
+          fail_on_unmatched_files: true
+          token: ${{ github.token }}

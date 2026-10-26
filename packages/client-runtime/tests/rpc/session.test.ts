@@ -1,24 +1,26 @@
-import { assert, describe, it } from "@effect/vitest";
-import * as DateTime from "effect/DateTime";
+import { NotesStreamEvent, WS_METHODS } from "@app/contracts";
+import { describe, expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
-import * as TestClock from "effect/testing/TestClock";
-import * as Socket from "effect/unstable/socket/Socket";
+import * as Stream from "effect/Stream";
+import * as Socket from "effect/socket/Socket";
 
-import { ServerConfig, WS_METHODS, type ServerConfig as ServerConfigType } from "@app/contracts";
-
-import { ConnectionTransientError, type PreparedConnection } from "../../src/connection/model.ts";
+import { ConnectionTransientError } from "../../src/connection/model.ts";
 import * as RpcSession from "../../src/rpc/session.ts";
 
 type SocketEventType = "open" | "message" | "close" | "error";
+
 type SocketEvent = {
   readonly code?: number;
-  readonly data?: unknown;
+  readonly data?: string;
   readonly reason?: string;
   readonly type: SocketEventType;
 };
+
 type SocketListener = (event: SocketEvent) => void;
 
 class TestWebSocket {
@@ -30,10 +32,12 @@ class TestWebSocket {
   readyState = TestWebSocket.CONNECTING;
   readonly sent: string[] = [];
   readonly url: string;
+  readonly sentChanges: Queue.Queue<void>;
   private readonly listeners = new Map<SocketEventType, Set<SocketListener>>();
 
-  constructor(url: string) {
+  constructor(url: string, sentChanges: Queue.Queue<void>) {
     this.url = url;
+    this.sentChanges = sentChanges;
   }
 
   addEventListener(type: SocketEventType, listener: SocketListener) {
@@ -48,12 +52,14 @@ class TestWebSocket {
 
   send(data: string) {
     this.sent.push(data);
+    Queue.offerUnsafe(this.sentChanges, undefined);
   }
 
   close(code = 1000, reason = "") {
     if (this.readyState === TestWebSocket.CLOSED) {
       return;
     }
+
     this.readyState = TestWebSocket.CLOSED;
     this.emit("close", { code, reason, type: "close" });
   }
@@ -74,147 +80,186 @@ class TestWebSocket {
   }
 }
 
-const SOCKET_URL = "wss://environment.example.test/ws?token=test";
+const LABEL = "Test server";
+const SOCKET_URL = "wss://server.example.test/ws?wsTicket=test";
 
-const PREPARED: PreparedConnection = {
-  label: "test",
-  prepareSocketUrl: Effect.succeed(SOCKET_URL),
-};
-
-const SERVER_CONFIG: ServerConfigType = {
-  appName: "test-app",
-  version: "0.0.0-test",
-  startedAt: DateTime.makeUnsafe(0),
-};
+const RequestId = Schema.Union([Schema.String, Schema.Number]);
 
 const RpcRequest = Schema.TaggedStruct("Request", {
-  id: Schema.Union([Schema.String, Schema.Number]),
+  id: RequestId,
   payload: Schema.Unknown,
   tag: Schema.String,
 });
-const decodeJson = Schema.decodeUnknownSync(Schema.UnknownFromJsonString);
-const decodeRpcRequest = Schema.decodeUnknownSync(RpcRequest);
-const encodeJson = Schema.encodeUnknownSync(Schema.UnknownFromJsonString);
-const encodeServerConfig = Schema.encodeSync(ServerConfig);
 
-/** Collects every socket the session constructs so tests can drive them. */
-const makeSockets = Effect.sync(() => {
-  const sockets: TestWebSocket[] = [];
-  const constructorLayer = Layer.succeed(Socket.WebSocketConstructor, (url: string) => {
-    const socket = new TestWebSocket(url);
-    sockets.push(socket);
-    return socket as unknown as globalThis.WebSocket;
-  });
-  return { constructorLayer, sockets };
+// Server frames as RpcSerialization.json writes them to the socket.
+const ResponseChunk = Schema.TaggedStruct("Chunk", {
+  requestId: RequestId,
+  values: Schema.Array(Schema.Unknown),
 });
 
-const awaitSocket = (sockets: ReadonlyArray<TestWebSocket>) =>
-  Effect.gen(function* () {
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      const socket = sockets[0];
-      if (socket) {
-        return socket;
-      }
-      yield* Effect.yieldNow;
+const SuccessExit = Schema.TaggedStruct("Success", { value: Schema.Unknown });
+
+const ResponseExit = Schema.TaggedStruct("Exit", { requestId: RequestId, exit: SuccessExit });
+
+const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
+const isRpcRequest = Schema.is(RpcRequest);
+const encodeJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
+const encodeNotesEvent = Schema.encodeSync(NotesStreamEvent);
+
+const makeFactory = Effect.fn("TestRpcSessionFactory.make")(function* () {
+  const sentChanges = yield* Queue.unbounded<void>();
+
+  const sockets = Object.assign(new Array<TestWebSocket>(), {
+    changes: yield* Queue.unbounded<void>(),
+  });
+
+  const layerConstructor = Layer.succeed(Socket.WebSocketConstructor, (url) => {
+    const socket = new TestWebSocket(url, sentChanges);
+    sockets.push(socket);
+    Queue.offerUnsafe(sockets.changes, undefined);
+
+    // SAFETY: TestWebSocket implements the members Socket.makeWebSocket uses: readyState, the
+    // event listener pair, send and close.
+    // oxlint-disable-next-line anti-slop/no-chained-type-assertions -- a fake socket stands in for the DOM WebSocket class.
+    return socket as unknown as globalThis.WebSocket;
+  });
+
+  const layer = RpcSession.layer.pipe(Layer.provide(layerConstructor));
+  const factory = yield* RpcSession.RpcSessionFactory.pipe(Effect.provide(layer));
+
+  return { factory, sockets };
+});
+
+const awaitSocket = Effect.fn("TestRpcSessionFactory.awaitSocket")(function* (
+  sockets: ReadonlyArray<TestWebSocket> & { readonly changes: Queue.Queue<void> },
+  index = 0,
+) {
+  for (;;) {
+    const socket = sockets[index];
+
+    if (socket) {
+      return socket;
     }
-    return yield* Effect.die(new Error("Expected the RPC protocol to create a websocket."));
-  });
 
-const awaitRequest = (socket: TestWebSocket) =>
-  Effect.gen(function* () {
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      const request = socket.sent[0];
-      if (request) {
-        return decodeRpcRequest(decodeJson(request));
-      }
-      yield* Effect.yieldNow;
+    yield* Queue.take(sockets.changes);
+  }
+});
+
+const awaitRequest = Effect.fn("TestRpcSessionFactory.awaitRequest")(function* (
+  socket: TestWebSocket,
+  index = 0,
+) {
+  for (;;) {
+    const request = socket.sent.map((message) => decodeJson(message)).filter(isRpcRequest)[index];
+
+    if (request) {
+      return request;
     }
-    return yield* Effect.die(new Error("Expected the RPC protocol to send a request."));
-  });
 
-/** Answer the readiness probe (`server.getConfig`) the session sends on open. */
-const completeInitialSync = (socket: TestWebSocket) =>
-  Effect.gen(function* () {
-    const request = yield* awaitRequest(socket);
-    assert.equal(request.tag, WS_METHODS.serverGetConfig);
-    assert.deepEqual(request.payload, {});
-    socket.serverMessage(
-      encodeJson({
-        _tag: "Exit",
-        requestId: request.id,
-        exit: {
-          _tag: "Success",
-          value: encodeServerConfig(SERVER_CONFIG),
-        },
-      }),
-    );
-  });
+    yield* Queue.take(socket.sentChanges);
+  }
+});
 
-describe("RpcSession", () => {
+const answerProbe = Effect.fn("TestRpcSessionFactory.answerProbe")(function* (
+  socket: TestWebSocket,
+  index: number,
+) {
+  const request = yield* awaitRequest(socket, index);
+  expect(request.tag).toBe(WS_METHODS.serverProbe);
+  expect(request.payload).toEqual({});
+  socket.serverMessage(
+    encodeJson(ResponseExit.make({ requestId: request.id, exit: SuccessExit.make({ value: {} }) })),
+  );
+});
+
+describe("RpcSessionFactory", () => {
   it.effect("owns one scoped websocket attempt and exposes readiness and closure", () =>
     Effect.gen(function* () {
-      const { constructorLayer, sockets } = yield* makeSockets;
-      const session = yield* RpcSession.connect(PREPARED).pipe(Effect.provide(constructorLayer));
-      const connectedFiber = yield* Effect.forkChild(session.connected);
+      const { factory, sockets } = yield* makeFactory();
+      const session = yield* factory.connect({ label: LABEL, socketUrl: SOCKET_URL });
+      const readyFiber = yield* Effect.forkChild(session.ready);
       const socket = yield* awaitSocket(sockets);
 
-      assert.equal(socket.url, SOCKET_URL);
+      expect(socket.url).toBe(SOCKET_URL);
       socket.open();
-      yield* completeInitialSync(socket);
-      yield* Fiber.join(connectedFiber);
-      assert.equal(socket.sent.length, 1);
+      yield* answerProbe(socket, 0);
+      yield* Fiber.join(readyFiber);
+
+      const probeFiber = yield* Effect.forkChild(session.probe);
+      yield* answerProbe(socket, 1);
+      yield* Fiber.join(probeFiber);
+
+      expect(
+        socket.sent
+          .map((message) => decodeJson(message))
+          .filter(isRpcRequest)
+          .map((request) => request.tag),
+      ).toEqual([WS_METHODS.serverProbe, WS_METHODS.serverProbe]);
 
       socket.close(1012, "service restart");
       const error = yield* Effect.flip(session.closed);
 
-      assert.instanceOf(error, ConnectionTransientError);
-      assert.equal(error.detail, "test disconnected.");
+      expect(error).toBeInstanceOf(ConnectionTransientError);
+      expect(error).toMatchObject({ reason: "transport", message: "Test server disconnected." });
       yield* Effect.yieldNow;
-      assert.equal(sockets.length, 1);
+      expect(sockets).toHaveLength(1);
     }).pipe(Effect.scoped),
   );
 
   it.effect("closes the websocket when the session scope is released", () =>
     Effect.gen(function* () {
-      const { constructorLayer, sockets } = yield* makeSockets;
+      const { factory, sockets } = yield* makeFactory();
 
       yield* Effect.scoped(
         Effect.gen(function* () {
-          const session = yield* RpcSession.connect(PREPARED).pipe(
-            Effect.provide(constructorLayer),
-          );
-          const connectedFiber = yield* Effect.forkChild(session.connected);
+          const session = yield* factory.connect({ label: LABEL, socketUrl: SOCKET_URL });
+          const readyFiber = yield* Effect.forkChild(session.ready);
           const socket = yield* awaitSocket(sockets);
           socket.open();
-          yield* completeInitialSync(socket);
-          yield* Fiber.join(connectedFiber);
+          yield* answerProbe(socket, 0);
+          yield* Fiber.join(readyFiber);
         }),
       );
 
-      assert.equal(sockets[0]?.readyState, TestWebSocket.CLOSED);
+      expect(sockets[0]?.readyState).toBe(TestWebSocket.CLOSED);
     }),
   );
 
-  it.effect("fails readiness when the websocket never opens", () =>
+  it.effect("keeps reading replies after closing a stream with a full buffer", () =>
     Effect.gen(function* () {
-      const { constructorLayer, sockets } = yield* makeSockets;
+      const { factory, sockets } = yield* makeFactory();
+      const session = yield* factory.connect({ label: LABEL, socketUrl: SOCKET_URL });
+      const readyFiber = yield* Effect.forkChild(session.ready);
+      const socket = yield* awaitSocket(sockets);
+      socket.open();
+      yield* answerProbe(socket, 0);
+      yield* Fiber.join(readyFiber);
 
-      const error = yield* Effect.scoped(
-        Effect.gen(function* () {
-          const session = yield* RpcSession.connect(PREPARED).pipe(
-            Effect.provide(constructorLayer),
-          );
-          const connectedFiber = yield* Effect.forkChild(Effect.flip(session.connected));
-          yield* awaitSocket(sockets);
+      const consuming = yield* Deferred.make<void>();
 
-          yield* TestClock.adjust("15 seconds");
-          return yield* Fiber.join(connectedFiber);
-        }),
+      const streamFiber = yield* session.client[WS_METHODS.subscribeNotes]({}).pipe(
+        Stream.runForEach(() =>
+          Deferred.succeed(consuming, undefined).pipe(Effect.andThen(Effect.never)),
+        ),
+        Effect.forkChild,
       );
 
-      assert.instanceOf(error, ConnectionTransientError);
-      assert.equal(error.detail, "test could not establish a WebSocket connection.");
-      assert.equal(sockets[0]?.readyState, TestWebSocket.CLOSED);
-    }),
+      const streamRequest = yield* awaitRequest(socket, 1);
+      const snapshot = encodeNotesEvent({ type: "snapshot", revision: 0, notes: [] });
+      socket.serverMessage(
+        encodeJson(
+          ResponseChunk.make({
+            requestId: streamRequest.id,
+            values: Array.from({ length: 64 }, () => snapshot),
+          }),
+        ),
+      );
+      yield* Deferred.await(consuming);
+      yield* Fiber.interrupt(streamFiber);
+
+      const probeFiber = yield* Effect.forkChild(session.probe);
+      yield* answerProbe(socket, 2);
+      yield* Fiber.join(probeFiber);
+    }).pipe(Effect.scoped),
   );
 });

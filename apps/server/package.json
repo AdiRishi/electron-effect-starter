@@ -1,17 +1,12 @@
 {
   "name": "@app/server",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
-  "bin": {
-    "app-server": "./dist/bin.mjs"
-  },
-  "files": [
-    "dist"
-  ],
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/bin.ts start",
-    "build": "vite build",
+    "dev": "node --disable-warning=ExperimentalWarning --watch --watch-path=src --watch-path=../../packages src/bin.ts",
+    "build": "tsdown",
+    "start": "node --disable-warning=ExperimentalWarning dist/bin.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
@@ -19,13 +14,15 @@
     "@app/contracts": "workspace:*",
     "@app/shared": "workspace:*",
     "@effect/platform-node": "catalog:",
+    "@effect/sql-sqlite-node": "catalog:",
     "effect": "catalog:"
   },
   "devDependencies": {
+    "@app/tsconfig": "workspace:*",
+    "@app/vitest-config": "workspace:*",
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
-    "typescript": "catalog:",
-    "vite": "catalog:",
+    "tsdown": "catalog:",
     "vitest": "catalog:"
   }
 }

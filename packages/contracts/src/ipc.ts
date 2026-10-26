@@ -1,67 +1,31 @@
-import type {
-  ContextMenuItem,
-  ContextMenuPosition,
-  DesktopAppInfo,
-  DesktopServerBootstrap,
-  DesktopTheme,
-  DesktopUpdateChannel,
-  DesktopUpdateState,
-  PickFolderOptions,
-} from "./desktop.ts";
+import * as Schema from "effect/Schema";
 
-/** Unsubscribe handle returned by every `on*` event subscription. */
-export type Unsubscribe = () => void;
+import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+
+/** Custom URL schemes the desktop shell serves the renderer from; separate schemes keep dev and packaged storage apart. */
+export const DESKTOP_SCHEME = "electron-effect-starter";
+export const DESKTOP_DEV_SCHEME = "electron-effect-starter-dev";
+
+export const DESKTOP_RENDERER_ORIGINS = [
+  `${DESKTOP_SCHEME}://app`,
+  `${DESKTOP_DEV_SCHEME}://app`,
+] as const;
+
+/** Where the renderer finds the server the desktop shell supervises. */
+export const DesktopServerBootstrap = Schema.Struct({
+  httpBaseUrl: TrimmedNonEmptyString,
+  wsBaseUrl: TrimmedNonEmptyString,
+});
+
+export type DesktopServerBootstrap = typeof DesktopServerBootstrap.Type;
 
 /**
- * The typed contract for `window.desktopBridge`. `preload.ts` implements this
- * with `... satisfies DesktopBridge` (context isolation on), and the renderer
- * consumes the SAME type — so main, preload, and renderer share one contract.
- *
- * Sync methods (`ipcRenderer.sendSync`) return values directly; everything
- * else is `ipcRenderer.invoke` and returns a Promise.
+ * Installed on `window.desktopBridge` by the preload script. Its absence means the web build is
+ * running in a plain browser.
  */
 export interface DesktopBridge {
-  /** Synchronous: static identity read at boot for branding. */
-  readonly getAppInfo: () => DesktopAppInfo | null;
-  /** Synchronous: where the local server lives (null before it's ready). */
+  readonly getClientPlatform: () => string;
   readonly getServerBootstrap: () => DesktopServerBootstrap | null;
-
-  /** Exchange the bootstrap token for a `/ws` bearer session (async). */
   readonly getBearerToken: () => Promise<string>;
-
-  readonly setTheme: (theme: DesktopTheme) => Promise<void>;
   readonly openExternal: (url: string) => Promise<boolean>;
-  readonly confirm: (message: string) => Promise<boolean>;
-  readonly pickFolder: (options?: PickFolderOptions) => Promise<string | null>;
-  /** Resolves with the id of the picked item — narrowed to the ids passed in. */
-  readonly showContextMenu: <T extends string>(
-    items: readonly ContextMenuItem<T>[],
-    position?: ContextMenuPosition,
-  ) => Promise<T | null>;
-
-  readonly getUpdateState: () => Promise<DesktopUpdateState>;
-  readonly setUpdateChannel: (channel: DesktopUpdateChannel) => Promise<void>;
-  readonly checkForUpdate: () => Promise<void>;
-  readonly downloadUpdate: () => Promise<void>;
-  readonly installUpdate: () => Promise<void>;
-  readonly onUpdateState: (listener: (state: DesktopUpdateState) => void) => Unsubscribe;
-
-  readonly onMenuAction: (listener: (action: string) => void) => Unsubscribe;
-}
-
-/**
- * The capability surface the renderer actually programs against. It degrades:
- * in the shell it delegates to `window.desktopBridge`; in a plain browser it
- * uses web fallbacks (`window.open`, `window.confirm`, `localStorage`). This is
- * why the SAME web build runs in both places.
- */
-export interface LocalApi {
-  readonly isDesktop: boolean;
-  readonly setTheme: (theme: DesktopTheme) => Promise<void>;
-  readonly openExternal: (url: string) => Promise<void>;
-  readonly confirm: (message: string) => Promise<boolean>;
-  /** Returns null in the browser (no native folder picker). */
-  readonly pickFolder: (options?: PickFolderOptions) => Promise<string | null>;
-  /** Native menu actions. In a plain browser this never fires (no menu). */
-  readonly onMenuAction: (listener: (action: string) => void) => Unsubscribe;
 }

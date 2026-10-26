@@ -1,27 +1,78 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
+  push:
+    branches: [main]
+  # release.yml runs this before it builds installers.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
+    name: Check, test and build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
         with:
-          node-version-file: .nvmrc
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
-      # electron's postinstall exits 0 without installing on Node >= 24.16
-      # (electron#51619), and the desktop unit tests load the `electron`
-      # package. The ensure script repairs the runtime, bypassing install.js.
-      - run: pnpm --filter @app/desktop ensure:electron
-      - run: pnpm typecheck
-      - run: pnpm lint
+          sparse-checkout: |
+            /*
+            !/repos/
+          sparse-checkout-cone-mode: false
+      - uses: ./.github/actions/setup
+
+      # electron's install.js reads this cache before it downloads from GitHub. The key changes
+      # only with the Electron version.
+      - name: Cache Electron download
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/electron
+          key: electron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/.pnpm/electron@*/node_modules/electron/package.json') }}
+
+      # Electron has no install script and downloads its binary on first use, so a failed download
+      # would otherwise surface inside the smoke test.
+      - name: Ensure Electron runtime is installed
+        run: pnpm --filter @app/desktop exec install-electron
+
+      - run: pnpm check
+
+      - name: Resolve Playwright version
+        id: playwright_version
+        run: echo "version=$(node -p "require('./apps/web/node_modules/playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # The web browser tests run headless, which uses Chromium's headless shell only.
+      - name: Cache Chromium
+        id: chromium_cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-shell-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright_version.outputs.version }}
+
+      - name: Install Chromium for web browser tests
+        if: steps.chromium_cache.outputs.cache-hit != 'true'
+        run: node apps/web/node_modules/playwright/cli.js install --only-shell chromium
+
+      - name: Install missing Chromium system dependencies
+        run: |
+          browser=$(find "$HOME/.cache/ms-playwright" -name chrome-headless-shell -type f -print -quit)
+          test -n "$browser"
+          if ldd "$browser" | grep '=> not found'; then
+            node apps/web/node_modules/playwright/cli.js install-deps chromium
+          fi
+
       - run: pnpm test
-      - run: pnpm format:check
+      - run: pnpm build
+
+      - name: Verify preload bundle output
+        run: pnpm --filter @app/desktop verify:preload
+
+      # Ubuntu 24.04 blocks the unprivileged user namespaces Chromium's sandbox needs.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: xvfb-run -a pnpm --filter @app/desktop smoke-test

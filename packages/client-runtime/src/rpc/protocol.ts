@@ -1,20 +1,11 @@
-import type * as Effect from "effect/Effect";
-import * as RpcClient from "effect/unstable/rpc/RpcClient";
-
 import { WsRpcGroup } from "@app/contracts";
+import type * as Effect from "effect/Effect";
+import * as RpcClient from "effect/rpc/RpcClient";
 
-/**
- * The factory that materializes a typed client for every method in `WsRpcGroup`.
- * Building it requires an `RpcClient.Protocol` in context (wired in `session.ts`).
- */
 export const makeWsRpcProtocolClient = RpcClient.make(WsRpcGroup);
 
-type RpcClientFactory = typeof makeWsRpcProtocolClient;
+export type WsRpcProtocolClient = Effect.Success<typeof makeWsRpcProtocolClient>;
 
-/**
- * The typed RPC client surface. Unary methods return `Effect`s; `stream: true`
- * methods (`server.subscribeTicks`, `server.subscribeLifecycle`) return `Stream`s. The
- * method tags come straight from `WS_METHODS`.
- */
-export type WsRpcProtocolClient =
-  RpcClientFactory extends Effect.Effect<infer Client, unknown, unknown> ? Client : never;
+// Pings go out every 5 seconds, and a server busy for a few seconds stops
+// answering them. Allow 15 seconds without any frame before dropping the socket.
+export const PING_TIMEOUT = "15 seconds";

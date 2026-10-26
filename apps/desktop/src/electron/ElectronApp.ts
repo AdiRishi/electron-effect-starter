@@ -2,112 +2,117 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
-import * as Electron from "electron";
+import type * as Scope from "effect/Scope";
 
-// ── Tier-1 Electron wrapper ──
-// Every raw `Electron.app` call is wrapped in `Effect.try`/`Effect.tryPromise`
-// producing a `Schema.TaggedErrorClass`. `Desktop*` services depend on this
-// wrapper and never touch `electron` directly, which is what keeps the shell's
-// logic testable.
+import * as Electron from "electron";
 
 export interface ElectronAppMetadata {
   readonly appVersion: string;
   readonly appPath: string;
   readonly isPackaged: boolean;
+  readonly appDataPath: string;
   readonly resourcesPath: string;
 }
 
-export class ElectronAppMetadataReadError extends Schema.TaggedErrorClass<ElectronAppMetadataReadError>()(
-  "ElectronAppMetadataReadError",
-  {
-    property: Schema.Literals(["app-version", "app-path"]),
-    cause: Schema.Defect(),
-  },
-) {
-  override get message(): string {
-    return `Failed to read Electron app metadata property "${this.property}".`;
-  }
+/** The app events this shell listens to, with the arguments Electron passes. */
+export interface ElectronAppEvents {
+  readonly "before-quit": readonly [event: Electron.Event];
+  readonly activate: readonly [];
+  readonly "window-all-closed": readonly [];
+  readonly "second-instance": readonly [
+    event: Electron.Event,
+    argv: ReadonlyArray<string>,
+    workingDirectory: string,
+  ];
 }
 
-export class ElectronAppWhenReadyError extends Schema.TaggedErrorClass<ElectronAppWhenReadyError>()(
+export class ElectronAppWhenReadyError extends Schema.TaggedError<ElectronAppWhenReadyError>()(
   "ElectronAppWhenReadyError",
-  {
-    isPackaged: Schema.Boolean,
-    cause: Schema.Defect(),
-  },
+  { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return `Failed to wait for the Electron app to become ready (packaged: ${this.isPackaged}).`;
+    return "Failed to wait for the Electron app to become ready.";
   }
 }
 
 export class ElectronApp extends Context.Service<
   ElectronApp,
   {
-    readonly metadata: Effect.Effect<ElectronAppMetadata, ElectronAppMetadataReadError>;
+    readonly metadata: Effect.Effect<ElectronAppMetadata>;
     readonly whenReady: Effect.Effect<void, ElectronAppWhenReadyError>;
+    readonly requestSingleInstanceLock: Effect.Effect<boolean>;
     readonly quit: Effect.Effect<void>;
+    readonly exit: (code: number) => Effect.Effect<void>;
     readonly setPath: (
       name: Parameters<Electron.App["setPath"]>[0],
       path: string,
     ) => Effect.Effect<void>;
-    readonly requestSingleInstanceLock: Effect.Effect<boolean>;
-    readonly on: <Args extends ReadonlyArray<unknown>>(
-      eventName: string,
-      listener: (...args: Args) => void,
+    readonly setAboutPanelOptions: (
+      options: Electron.AboutPanelOptionsOptions,
+    ) => Effect.Effect<void>;
+    readonly setAppUserModelId: (id: string) => Effect.Effect<void>;
+    readonly on: <K extends keyof ElectronAppEvents>(
+      eventName: K,
+      listener: (...args: ElectronAppEvents[K]) => void,
+    ) => Effect.Effect<void, never, Scope.Scope>;
+    readonly onBeforeQuitForUpdate: (
+      listener: () => void,
     ) => Effect.Effect<void, never, Scope.Scope>;
   }
 >()("@app/desktop/electron/ElectronApp") {}
 
-const addScopedAppListener = <Args extends ReadonlyArray<unknown>>(
-  eventName: string,
-  listener: (...args: Args) => void,
-): Effect.Effect<void, never, Scope.Scope> =>
-  Effect.acquireRelease(
-    Effect.sync(() => {
-      Electron.app.on(eventName as never, listener as never);
-    }),
-    () =>
-      Effect.sync(() => {
-        Electron.app.removeListener(eventName as never, listener as never);
-      }),
-  ).pipe(Effect.asVoid);
-
-export const make = ElectronApp.of({
-  metadata: Effect.gen(function* () {
-    const appVersion = yield* Effect.try({
-      try: () => Electron.app.getVersion(),
-      catch: (cause) => new ElectronAppMetadataReadError({ property: "app-version", cause }),
-    });
-    const appPath = yield* Effect.try({
-      try: () => Electron.app.getAppPath(),
-      catch: (cause) => new ElectronAppMetadataReadError({ property: "app-path", cause }),
-    });
-
-    return {
-      appVersion,
-      appPath,
-      isPackaged: Electron.app.isPackaged,
-      resourcesPath: process.resourcesPath,
-    };
+const make = ElectronApp.of({
+  metadata: Effect.sync(() => ({
+    appVersion: Electron.app.getVersion(),
+    appPath: Electron.app.getAppPath(),
+    isPackaged: Electron.app.isPackaged,
+    appDataPath: Electron.app.getPath("appData"),
+    resourcesPath: process.resourcesPath,
+  })),
+  whenReady: Effect.tryPromise({
+    try: () => Electron.app.whenReady(),
+    catch: (cause) => new ElectronAppWhenReadyError({ cause }),
   }),
-  whenReady: Effect.gen(function* () {
-    const isPackaged = Electron.app.isPackaged;
-    yield* Effect.tryPromise({
-      try: () => Electron.app.whenReady(),
-      catch: (cause) => new ElectronAppWhenReadyError({ isPackaged, cause }),
-    });
-  }),
-  quit: Effect.sync(() => {
-    Electron.app.quit();
-  }),
-  setPath: (name, path) =>
-    Effect.sync(() => {
-      Electron.app.setPath(name, path);
-    }),
   requestSingleInstanceLock: Effect.sync(() => Electron.app.requestSingleInstanceLock()),
-  on: addScopedAppListener,
+  quit: Effect.sync(() => Electron.app.quit()),
+  exit: Effect.fn("ElectronApp.exit")(function (code: number) {
+    return Effect.sync(() => Electron.app.exit(code));
+  }),
+  setPath: Effect.fn("ElectronApp.setPath")(function (
+    name: Parameters<Electron.App["setPath"]>[0],
+    path: string,
+  ) {
+    return Effect.sync(() => Electron.app.setPath(name, path));
+  }),
+  setAboutPanelOptions: Effect.fn("ElectronApp.setAboutPanelOptions")(function (
+    options: Electron.AboutPanelOptionsOptions,
+  ) {
+    return Effect.sync(() => Electron.app.setAboutPanelOptions(options));
+  }),
+  setAppUserModelId: Effect.fn("ElectronApp.setAppUserModelId")(function (id: string) {
+    return Effect.sync(() => Electron.app.setAppUserModelId(id));
+  }),
+  on: Effect.fn("ElectronApp.on")(function <K extends keyof ElectronAppEvents>(
+    eventName: K,
+    listener: (...args: ElectronAppEvents[K]) => void,
+  ) {
+    // App is an EventEmitter; the event map above keeps listener arguments typed.
+    const emitter: NodeJS.EventEmitter = Electron.app;
+
+    return Effect.acquireRelease(
+      Effect.sync(() => emitter.on(eventName, listener)),
+      () => Effect.sync(() => emitter.removeListener(eventName, listener)),
+    ).pipe(Effect.asVoid);
+  }),
+  onBeforeQuitForUpdate: Effect.fn("ElectronApp.onBeforeQuitForUpdate")(function (
+    listener: () => void,
+  ) {
+    return Effect.acquireRelease(
+      Effect.sync(() => Electron.autoUpdater.on("before-quit-for-update", listener)),
+      () =>
+        Effect.sync(() => Electron.autoUpdater.removeListener("before-quit-for-update", listener)),
+    ).pipe(Effect.asVoid);
+  }),
 });
 
 export const layer = Layer.succeed(ElectronApp, make);

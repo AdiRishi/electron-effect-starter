@@ -1,43 +1,63 @@
 packages:
   - apps/*
-  - oxlint-plugin-app
   - packages/*
-  - scripts
+  - tooling/*
+
+# Every dependency must have been published for at least a day before it installs.
+minimumReleaseAge: 1440
 
 allowBuilds:
-  electron: true
-  electron-winstaller: true
-  msgpackr-extract: true
-
-overrides:
-  "@effect/platform-node-shared": "catalog:"
-  # Deduplicate electron-builder's transitive toml parser onto one version.
-  toml: 4.1.1
-
-peerDependencyRules:
-  ignoreMissing:
-    # Optional electron-builder target we don't build (NSIS is used on Windows).
-    - electron-builder-squirrel-windows
-    # Optional Redis peer of @effect/platform-node-shared; unused here.
-    - ioredis
+  # Electron 44+ has no install script; it downloads its binary on first use.
+  electron: false
+  # Squirrel.Windows installer support; the Windows target is NSIS.
+  electron-winstaller: false
 
 catalog:
-  "@effect/atom-react": 4.0.0-beta.99
-  "@effect/platform-node": 4.0.0-beta.99
-  "@effect/platform-node-shared": 4.0.0-beta.99
-  "@effect/vitest": 4.0.0-beta.99
-  "@oxlint/plugins": ^1.72.0
-  "@types/node": 24.12.4
-  effect: 4.0.0-beta.99
-  oxfmt: ^0.57.0
-  oxlint: ^1.72.0
-  typescript: ~6.0.3
-  vite: ^8.1.3
-  vitest: ^4.1.9
+  "@base-ui/react": 1.9.0
+  "@effect/atom-react": 4.0.6
+  "@effect/platform-node": 4.0.6
+  "@effect/sql-sqlite-node": 4.0.6
+  "@effect/tsgo": 0.57.0
+  "@effect/vitest": 4.0.6
+  "@oxlint/plugins": 1.89.0
+  "@tailwindcss/vite": 4.3.3
+  "@tanstack/react-router": 1.170.46
+  "@tanstack/router-plugin": 1.168.48
+  "@types/node": 26.6.5
+  "@types/react": 19.3.0
+  "@types/react-dom": 19.3.0
+  "@vitejs/plugin-react": 6.1.2
+  "@vitest/browser-playwright": 5.0.5
+  class-variance-authority: 0.7.1
+  effect: 4.0.6
+  electron: 45.0.0
+  electron-builder: 26.18.0
+  "@electron/asar": 3.4.1
+  electron-updater: 6.8.11
+  lucide-react: 1.61.0
+  # @vitejs/plugin-react 6.1 accepts only the 0.152 line.
+  oxc-transform-react: 0.152.0
+  oxfmt: 0.74.0
+  oxlint: 1.89.0
+  playwright: 1.64.1
+  react: 19.3.1
+  react-dom: 19.3.1
+  tailwind-merge: 3.7.0
+  tailwindcss: 4.3.3
+  tsdown: 0.23.2
+  turbo: 2.11.10
+  typescript: 7.0.2
+  vite: 8.3.5
+  vitest: 5.0.5
 
-minimumReleaseAgeExclude:
-  - "@effect/atom-react@4.0.0-beta.99"
-  - "@effect/platform-node-shared@4.0.0-beta.99"
-  - "@effect/platform-node@4.0.0-beta.99"
-  - "@effect/vitest@4.0.0-beta.99"
-  - "effect@4.0.0-beta.99"
+overrides:
+  # Two copies of effect split every Context tag and Schema in two.
+  effect: "catalog:"
+
+# pnpm 12 links agent skills that dependencies ship into .claude/skills once
+# approved. We curate our own skills, so deny these to keep installs quiet.
+permissions:
+  "@tanstack/react-router":
+    skills: false
+  "@tanstack/router-plugin":
+    skills: false

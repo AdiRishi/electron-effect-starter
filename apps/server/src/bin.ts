@@ -1,31 +1,15 @@
-/**
- * CLI entrypoint. `app-server [start]` runs the server; the root command
- * defaults to the same behavior as `start`.
- *
- * @module bin
- */
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NetService from "@app/shared/Net";
 import * as Effect from "effect/Effect";
-import { Command } from "effect/unstable/cli";
+import * as Layer from "effect/Layer";
+import { Command } from "effect/cli";
 
-import { runServerCommand, sharedServerCommandFlags, startCommand } from "./cli/server.ts";
-import { APP_VERSION } from "./config.ts";
+import packageJson from "../package.json" with { type: "json" };
+import { cli } from "./cli.ts";
 
-export const cli = Command.make("app-server", {
-  ...sharedServerCommandFlags,
-}).pipe(
-  Command.withDescription("Run the Electron Effect Starter server."),
-  Command.withHandler((flags) => runServerCommand(flags)),
-  Command.withSubcommands([startCommand]),
-);
-
-// Run unconditionally — this bundle is only ever the process entrypoint. We
-// deliberately avoid an `import.meta.main` guard: it is `undefined` on the Node
-// bundled with Electron (v20.18), where the desktop shell spawns this server,
-// which would make the CLI silently no-op.
-Command.run(cli, { version: APP_VERSION }).pipe(
+Command.run(cli, { version: packageJson.version }).pipe(
   Effect.scoped,
-  Effect.provide(NodeServices.layer),
+  Effect.provide(Layer.mergeAll(NodeServices.layer, NetService.layer)),
   NodeRuntime.runMain,
 );

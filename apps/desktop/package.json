@@ -1,31 +1,36 @@
 {
   "name": "@app/desktop",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
+  "description": "Electron shell that supervises the local Effect server.",
   "type": "module",
-  "main": "dist-electron/main.cjs",
+  "main": "dist-electron/boot.cjs",
   "scripts": {
-    "build": "vite build --mode main && vite build --mode preload",
-    "ensure:electron": "node scripts/ensure-electron-runtime.mjs",
+    "dev": "tsdown --watch",
+    "build": "tsdown",
     "start": "node scripts/start-electron.mjs",
+    "smoke-test": "node scripts/smoke-test.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "verify:preload": "node scripts/verify-preload-bundle.mjs"
   },
   "dependencies": {
-    "@app/client-runtime": "workspace:*",
     "@app/contracts": "workspace:*",
     "@app/shared": "workspace:*",
     "@effect/platform-node": "catalog:",
     "effect": "catalog:",
-    "electron": "41.5.0",
-    "electron-updater": "^6.8.9"
+    "electron-updater": "catalog:"
   },
   "devDependencies": {
+    "@app/tsconfig": "workspace:*",
+    "@app/vitest-config": "workspace:*",
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
-    "electron-builder": "26.15.6",
-    "typescript": "catalog:",
-    "vite": "catalog:",
+    "acorn": "8.16.0",
+    "electron": "catalog:",
+    "electron-builder": "catalog:",
+    "tsdown": "catalog:",
     "vitest": "catalog:"
-  }
+  },
+  "productName": "Electron Effect Starter"
 }

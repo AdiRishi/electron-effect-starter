@@ -1,311 +1,417 @@
-import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
-import * as NodePath from "node:path";
-
-import * as NodeServices from "@effect/platform-node/NodeServices";
-import { assert, beforeEach, describe, it } from "@effect/vitest";
+import { DesktopBackendBootstrap, SERVER_EXIT_CODE_STATE_DIR_OWNED } from "@app/contracts";
+import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import * as Ref from "effect/Ref";
+import * as PlatformError from "effect/PlatformError";
+import * as Queue from "effect/Queue";
+import * as Schema from "effect/Schema";
+import * as Scope from "effect/Scope";
+import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import { FetchHttpClient } from "effect/unstable/http";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { NetService, type NetServiceShape } from "@app/shared/Net";
+import * as DesktopLogger from "../../src/app/DesktopLogger.ts";
+import * as DesktopBackendManager from "../../src/backend/DesktopBackendManager.ts";
 
-import * as DesktopEnvironment from "../../src/app/DesktopEnvironment.ts";
-import * as DesktopBackendConfiguration from "../../src/backend/DesktopBackendConfiguration.ts";
-import {
-  makeManager,
-  type DesktopBackendManagerShape,
-} from "../../src/backend/DesktopBackendManager.ts";
+const decodeBootstrap = Schema.decodeEffect(Schema.fromJsonString(DesktopBackendBootstrap));
 
-const PORT = 34_567;
-
-// A real file on disk so the manager's entry-exists preflight passes.
-const SCRATCH = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "desktop-manager-test-"));
-const ENTRY_PATH = NodePath.join(SCRATCH, "bin.mjs");
-NodeFS.writeFileSync(ENTRY_PATH, "// fake server entry\n");
-const LOG_DIR_HOME = NodePath.join(SCRATCH, "home");
-
-// The readiness probe uses the global fetch (FetchHttpClient); answer 200.
-beforeEach(() => {
-  (globalThis as { fetch: typeof fetch }).fetch = async () => new Response("ok", { status: 200 });
-});
-
-const fakeNet: NetServiceShape = {
-  canListenOnHost: () => Effect.succeed(true),
-  isPortAvailableOnLoopback: () => Effect.succeed(true),
-  reserveLoopbackPort: () => Effect.succeed(PORT),
-  findAvailablePort: (preferred) => Effect.succeed(preferred),
+const baseConfig: DesktopBackendManager.DesktopBackendStartConfig = {
+  executablePath: "/electron",
+  entryPath: "/server/bin.mjs",
+  args: ["/server/bin.mjs", "--bootstrap-fd", "3"],
+  cwd: "/server",
+  env: { ELECTRON_RUN_AS_NODE: "1" },
+  bootstrap: {
+    mode: "desktop",
+    port: 3773,
+    host: "127.0.0.1",
+    baseDir: "/tmp/app",
+    desktopBootstrapToken: "token",
+  },
+  httpBaseUrl: new URL("http://127.0.0.1:3773"),
 };
 
-interface SpawnedChild {
-  readonly exit: Deferred.Deferred<number>;
-  killed: boolean;
+// The child process and the HTTP readiness probe are the external seams.
+function makeProcess(options: {
+  readonly exitCode: Effect.Effect<ChildProcessSpawner.ExitCode, PlatformError.PlatformError>;
+  readonly stdout?: Stream.Stream<Uint8Array, PlatformError.PlatformError>;
+}): ChildProcessSpawner.ChildProcessHandle {
+  return ChildProcessSpawner.makeHandle({
+    pid: ChildProcessSpawner.ProcessId(123),
+    stdout: options.stdout ?? Stream.empty,
+    stderr: Stream.empty,
+    all: options.stdout ?? Stream.empty,
+    exitCode: options.exitCode,
+    isRunning: Effect.succeed(false),
+    kill: () => Effect.void,
+    stdin: Sink.drain,
+    getInputFd: () => Sink.drain,
+    getOutputFd: () => Stream.empty,
+    unref: Effect.succeed(Effect.void),
+  });
 }
 
-/** A spawner whose children exit when the test says so (or when killed). */
-const makeScriptedSpawner = Effect.gen(function* () {
-  const children = yield* Ref.make<ReadonlyArray<SpawnedChild>>([]);
-  const spawnCount = Ref.get(children).pipe(Effect.map((all) => all.length));
-
-  const spawner = ChildProcessSpawner.make((_command) =>
-    Effect.gen(function* () {
-      const exit = yield* Deferred.make<number>();
-      const child: SpawnedChild = { exit, killed: false };
-      yield* Ref.update(children, (all) => [...all, child]);
-      yield* Effect.addFinalizer(() =>
-        Effect.gen(function* () {
-          child.killed = true;
-          yield* Deferred.succeed(exit, 0).pipe(Effect.asVoid);
-        }),
-      );
-      return {
-        pid: 4242,
-        exitCode: Deferred.await(exit),
-        isRunning: Deferred.isDone(exit).pipe(Effect.map((done) => !done)),
-        kill: () =>
-          Effect.suspend(() => {
-            child.killed = true;
-            return Deferred.succeed(exit, 0 as never).pipe(Effect.asVoid);
-          }),
-        stdin: undefined,
-        stdout: Stream.empty,
-        stderr: Stream.empty,
-        all: Stream.make(new TextEncoder().encode("hello from server\n")),
-      } as unknown as ChildProcessSpawner.ChildProcessHandle;
-    }),
+const layerHttpClient = (status: number | "never") =>
+  Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request: HttpClientRequest.HttpClientRequest) =>
+      status === "never"
+        ? Effect.never
+        : Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status }))),
+    ),
   );
 
-  const exitCurrent = (code: number) =>
-    Ref.get(children).pipe(
-      Effect.flatMap((all) => {
-        const current = all[all.length - 1];
-        return current === undefined
-          ? Effect.die("exitCurrent before any spawn")
-          : Deferred.succeed(current.exit, code).pipe(Effect.asVoid);
-      }),
-    );
-
-  const currentKilled = Ref.get(children).pipe(
-    Effect.map((all) => all[all.length - 1]?.killed ?? false),
-  );
-
-  return { spawner, spawnCount, exitCurrent, currentKilled };
-});
-
-const environmentLayer = (input?: { readonly isPackaged?: boolean; readonly entry?: string }) =>
-  Layer.effect(
-    DesktopEnvironment.DesktopEnvironment,
-    Effect.map(Path.Path, (path) =>
-      DesktopEnvironment.makeWith(
-        {
-          dirname: NodePath.join(SCRATCH, "dist-electron"),
-          homeDirectory: LOG_DIR_HOME,
-          platform: "darwin",
-          appVersion: "0.0.0-test",
-          appPath: SCRATCH,
-          isPackaged: input?.isPackaged ?? false,
-          resourcesPath: NodePath.join(SCRATCH, "resources"),
-          appDataDirectory: Option.none(),
-          xdgConfigHome: Option.none(),
-          serverEntryOverride: Option.some(input?.entry ?? ENTRY_PATH),
-          configuredBackendPort: Option.some(PORT),
-          devServerUrl: Option.none(),
-        },
-        path,
+const makeInstance = (input: {
+  readonly spawn: (
+    command: Parameters<Parameters<typeof ChildProcessSpawner.make>[0]>[0],
+  ) => Effect.Effect<
+    ChildProcessSpawner.ChildProcessHandle,
+    PlatformError.PlatformError,
+    Scope.Scope
+  >;
+  readonly httpStatus?: number | "never";
+  readonly onReady?: (httpBaseUrl: URL) => Effect.Effect<void>;
+  readonly onStateDirOwned?: () => Effect.Effect<void>;
+  readonly outputLog?: DesktopLogger.DesktopBackendOutputLog;
+}) =>
+  DesktopBackendManager.makeBackendInstance({
+    configResolve: Effect.succeed(baseConfig),
+    ...(input.outputLog ? { outputLog: input.outputLog } : {}),
+    ...(input.onReady ? { onReady: input.onReady } : {}),
+    ...(input.onStateDirOwned ? { onStateDirOwned: input.onStateDirOwned } : {}),
+  }).pipe(
+    Effect.provide(
+      Layer.mergeAll(
+        FileSystem.layerNoop({ exists: () => Effect.succeed(true) }),
+        Layer.succeed(
+          ChildProcessSpawner.ChildProcessSpawner,
+          ChildProcessSpawner.make(input.spawn),
+        ),
+        layerHttpClient(input.httpStatus ?? 200),
       ),
     ),
   );
 
-interface Harness {
-  readonly manager: DesktopBackendManagerShape;
-  readonly spawnCount: Effect.Effect<number>;
-  readonly exitCurrent: (code: number) => Effect.Effect<void>;
-  readonly currentKilled: Effect.Effect<boolean>;
-  readonly awaitReady: Effect.Effect<void>;
-  readonly notReadyCount: Effect.Effect<number>;
-}
-
-const makeHarness = (input?: Parameters<typeof environmentLayer>[0]) =>
-  Effect.gen(function* () {
-    const scripted = yield* makeScriptedSpawner;
-    const readyLatch = yield* Deferred.make<void>();
-    const notReadyHits = yield* Ref.make(0);
-
-    const manager = yield* makeManager({
-      onReady: () => Deferred.succeed(readyLatch, undefined).pipe(Effect.asVoid),
-      onNotReady: Ref.update(notReadyHits, (n) => n + 1),
-    }).pipe(
-      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, scripted.spawner),
-      Effect.provideService(NetService, fakeNet),
-      Effect.provide(
-        DesktopBackendConfiguration.layer.pipe(
-          Layer.provideMerge(environmentLayer(input)),
-          Layer.provideMerge(NodeServices.layer),
-          Layer.provideMerge(FetchHttpClient.layer),
-        ),
-      ),
-    );
-
-    return {
-      manager,
-      spawnCount: scripted.spawnCount,
-      exitCurrent: scripted.exitCurrent,
-      currentKilled: scripted.currentKilled,
-      awaitReady: Deferred.await(readyLatch),
-      notReadyCount: Ref.get(notReadyHits),
-    } satisfies Harness;
-  });
-
 describe("DesktopBackendManager", () => {
-  it.effect("spawns the backend and reveals the window on readiness", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness();
+  it.effect("hands the server its bootstrap envelope on fd 3 and reports it ready", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const bootstrapLines = yield* Queue.unbounded<string>();
+        const ready = yield* Deferred.make<URL>();
 
-      yield* harness.manager.start;
-      yield* harness.awaitReady;
+        const instance = yield* makeInstance({
+          spawn: (command) =>
+            Effect.gen(function* () {
+              const fd3 = ChildProcess.isStandardCommand(command)
+                ? command.options.additionalFds?.fd3
+                : undefined;
 
-      assert.equal(yield* harness.spawnCount, 1);
-      const config = yield* harness.manager.currentConfig;
-      assert.isTrue(Option.isSome(config));
-      if (Option.isSome(config)) {
-        assert.equal(config.value.port, PORT);
-      }
-    }).pipe(Effect.scoped),
+              if (fd3?.type === "input" && fd3.stream) {
+                yield* Queue.offer(
+                  bootstrapLines,
+                  yield* fd3.stream.pipe(Stream.decodeText(), Stream.mkString),
+                );
+              }
+
+              return makeProcess({ exitCode: Effect.never });
+            }),
+          onReady: (httpBaseUrl) => Deferred.succeed(ready, httpBaseUrl).pipe(Effect.asVoid),
+        });
+
+        yield* instance.start;
+        const envelope = yield* decodeBootstrap((yield* Queue.take(bootstrapLines)).trim());
+        assert.deepStrictEqual(envelope, baseConfig.bootstrap);
+        assert.strictEqual((yield* Deferred.await(ready)).href, "http://127.0.0.1:3773/");
+        assert.isTrue((yield* instance.snapshot).ready);
+      }),
+    ),
   );
 
-  it.effect("restarts with backoff after an unexpected exit", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness();
-      yield* harness.manager.start;
-      yield* harness.awaitReady;
+  it.effect("restarts a server that exits unexpectedly after a backoff", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const starts = yield* Queue.unbounded<number>();
+        let startCount = 0;
 
-      yield* harness.exitCurrent(1);
-      // The exit path clears the window latch, then schedules the restart.
-      yield* Effect.gen(function* () {
-        while ((yield* harness.notReadyCount) < 1) {
-          yield* Effect.yieldNow;
-        }
+        const instance = yield* makeInstance({
+          httpStatus: "never",
+          spawn: () =>
+            Effect.gen(function* () {
+              startCount += 1;
+              yield* Queue.offer(starts, startCount);
+
+              return makeProcess({
+                exitCode:
+                  startCount === 1 ? Effect.succeed(ChildProcessSpawner.ExitCode(1)) : Effect.never,
+              });
+            }),
+        });
+
+        yield* instance.start;
+        assert.strictEqual(yield* Queue.take(starts), 1);
+        // The first restart waits half a second.
+        yield* TestClock.adjust(Duration.millis(500));
+        assert.strictEqual(yield* Queue.take(starts), 2);
+        assert.isTrue((yield* instance.snapshot).desiredRunning);
+      }),
+    ),
+  );
+
+  it.effect("stops restarting once another server owns the state directory", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const refused = yield* Deferred.make<void>();
+        let startCount = 0;
+
+        const instance = yield* makeInstance({
+          httpStatus: "never",
+          spawn: () =>
+            Effect.sync(() => {
+              startCount += 1;
+
+              return makeProcess({
+                exitCode: Effect.succeed(
+                  ChildProcessSpawner.ExitCode(SERVER_EXIT_CODE_STATE_DIR_OWNED),
+                ),
+              });
+            }),
+          onStateDirOwned: () => Deferred.succeed(refused, undefined).pipe(Effect.asVoid),
+        });
+
+        yield* instance.start;
+        yield* Deferred.await(refused);
+        const snapshot = yield* instance.snapshot;
+        assert.isFalse(snapshot.desiredRunning);
+        assert.isFalse(snapshot.restartScheduled);
+        yield* TestClock.adjust(Duration.minutes(1));
+        assert.strictEqual(startCount, 1);
+      }),
+    ),
+  );
+
+  it.effect("closes the running server on stop and does not restart it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const closed = yield* Deferred.make<void>();
+        const ready = yield* Deferred.make<void>();
+        let startCount = 0;
+
+        const instance = yield* makeInstance({
+          spawn: () =>
+            Effect.gen(function* () {
+              startCount += 1;
+              // Closing the run's scope is how the real spawner kills the process.
+              yield* Effect.addFinalizer(() => Deferred.succeed(closed, undefined));
+
+              return makeProcess({
+                exitCode: Deferred.await(closed).pipe(Effect.as(ChildProcessSpawner.ExitCode(0))),
+              });
+            }),
+          onReady: () => Deferred.succeed(ready, undefined).pipe(Effect.asVoid),
+        });
+
+        yield* instance.start;
+        yield* Deferred.await(ready);
+        yield* instance.stop();
+        assert.isTrue(yield* Deferred.isDone(closed));
+        const snapshot = yield* instance.snapshot;
+        assert.isFalse(snapshot.desiredRunning);
+        assert.isTrue(Option.isNone(snapshot.activePid));
+        yield* TestClock.adjust(Duration.minutes(1));
+        assert.strictEqual(startCount, 1);
+      }),
+    ),
+  );
+
+  it.effect("persists a crashed run's output and discards a stopped run's", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events: string[] = [];
+        const crashed = yield* Deferred.make<void>();
+        let startCount = 0;
+
+        const instance = yield* makeInstance({
+          httpStatus: "never",
+          outputLog: {
+            beginSession: ({ details }) => Effect.sync(() => events.push(`begin:${details}`)),
+            writeOutputChunk: () => Effect.void,
+            persistFailureSnapshot: () => Effect.void,
+            persistFailure: ({ details }) =>
+              Effect.sync(() => events.push(`persist:${details}`)).pipe(
+                Effect.andThen(Deferred.succeed(crashed, undefined)),
+                Effect.asVoid,
+              ),
+            discardSession: Effect.sync(() => {
+              events.push("discard");
+            }),
+          },
+          spawn: () =>
+            Effect.gen(function* () {
+              startCount += 1;
+              const closed = yield* Deferred.make<void>();
+              yield* Effect.addFinalizer(() => Deferred.succeed(closed, undefined));
+
+              return makeProcess({
+                exitCode:
+                  startCount === 1
+                    ? Effect.succeed(ChildProcessSpawner.ExitCode(1))
+                    : Deferred.await(closed).pipe(Effect.as(ChildProcessSpawner.ExitCode(0))),
+              });
+            }),
+        });
+
+        yield* instance.start;
+        yield* Deferred.await(crashed);
+        yield* TestClock.adjust(Duration.millis(500));
+        yield* instance.stop();
+
+        assert.deepStrictEqual(events, [
+          "begin:pid=123 port=3773 cwd=/server",
+          "persist:pid=123 code=1",
+          "begin:pid=123 port=3773 cwd=/server",
+          "discard",
+        ]);
+      }),
+    ),
+  );
+
+  it.effect("restarts when start is requested during stop teardown", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const starts = yield* Queue.unbounded<number>();
+        const teardownStarted = yield* Deferred.make<void>();
+        const finishTeardown = yield* Deferred.make<void>();
+        let startCount = 0;
+
+        const instance = yield* makeInstance({
+          httpStatus: "never",
+          spawn: () =>
+            Effect.gen(function* () {
+              const closed = yield* Deferred.make<void>();
+              startCount += 1;
+              yield* Queue.offer(starts, startCount);
+
+              yield* Effect.addFinalizer(() =>
+                startCount === 1
+                  ? Deferred.succeed(teardownStarted, undefined).pipe(
+                      Effect.andThen(Deferred.await(finishTeardown)),
+                      Effect.andThen(Deferred.succeed(closed, undefined)),
+                    )
+                  : Deferred.succeed(closed, undefined),
+              );
+
+              return makeProcess({
+                exitCode: Deferred.await(closed).pipe(Effect.as(ChildProcessSpawner.ExitCode(0))),
+              });
+            }),
+        });
+
+        yield* instance.start;
+        assert.strictEqual(yield* Queue.take(starts), 1);
+
+        const stopFiber = yield* instance.stop().pipe(Effect.forkChild);
+        yield* Deferred.await(teardownStarted);
+        yield* instance.start;
+        assert.isTrue((yield* instance.snapshot).desiredRunning);
+
+        yield* Deferred.succeed(finishTeardown, undefined);
+        yield* Fiber.join(stopFiber);
+        yield* TestClock.adjust(Duration.millis(500));
+
+        assert.strictEqual(yield* Queue.take(starts), 2);
+        const restarted = yield* instance.snapshot;
+        assert.isTrue(restarted.desiredRunning);
+        assert.deepStrictEqual(restarted.activePid, Option.some(123));
+      }),
+    ),
+  );
+
+  it.effect("reports child exit before waiting for trailing output to drain", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const exitObserved = yield* Deferred.make<void>();
+        const finishOutputDrain = yield* Deferred.make<void>();
+
+        const runFiber = yield* DesktopBackendManager.runBackendProcess(baseConfig, {
+          readinessTimeout: Duration.seconds(1),
+          onStarted: () => Effect.void,
+          onExitObserved: Deferred.succeed(exitObserved, undefined).pipe(Effect.asVoid),
+          onReady: Effect.void,
+          onReadinessFailure: () => Effect.void,
+          onOutput: () => Effect.void,
+        }).pipe(
+          Effect.provide(
+            Layer.merge(
+              Layer.succeed(
+                ChildProcessSpawner.ChildProcessSpawner,
+                ChildProcessSpawner.make(() =>
+                  Effect.succeed(
+                    makeProcess({
+                      stdout: Stream.fromEffect(
+                        Deferred.await(finishOutputDrain).pipe(
+                          Effect.as(new TextEncoder().encode("trailing output\n")),
+                        ),
+                      ),
+                      exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(1)),
+                    }),
+                  ),
+                ),
+              ),
+              layerHttpClient("never"),
+            ),
+          ),
+          Effect.forkChild,
+        );
+
+        yield* Deferred.await(exitObserved);
+        assert.isUndefined(runFiber.pollUnsafe());
+
+        yield* Deferred.succeed(finishOutputDrain, undefined);
+        assert.deepStrictEqual((yield* Fiber.join(runFiber)).code, Option.some(1));
+      }),
+    ),
+  );
+
+  it.effect("reports a signal exit without an exit code", () =>
+    Effect.gen(function* () {
+      const exitCause = PlatformError.systemError({
+        // oxlint-disable-next-line anti-slop-effect/no-manual-tagged-construction -- systemError takes the reason tag as input.
+        _tag: "Unknown",
+        module: "ChildProcess",
+        method: "exitCode",
+        cause: new Error("Process interrupted due to receipt of signal: 'SIGKILL'"),
       });
 
-      yield* TestClock.adjust("500 millis");
-      yield* Effect.gen(function* () {
-        while ((yield* harness.spawnCount) < 2) {
-          yield* Effect.yieldNow;
-        }
-      });
-      assert.equal(yield* harness.spawnCount, 2);
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("stop kills the child and does not restart", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness();
-      yield* harness.manager.start;
-      yield* harness.awaitReady;
-
-      yield* harness.manager.stop;
-      assert.isTrue(yield* harness.currentKilled);
-
-      yield* TestClock.adjust("5 seconds");
-      assert.equal(yield* harness.spawnCount, 1);
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("cancels a scheduled restart when start is requested manually", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness();
-      yield* harness.manager.start;
-      yield* harness.awaitReady;
-
-      yield* harness.exitCurrent(1);
-      yield* Effect.gen(function* () {
-        while ((yield* harness.notReadyCount) < 1) {
-          yield* Effect.yieldNow;
-        }
-      });
-
-      // A manual start during the backoff window spawns immediately and
-      // cancels the scheduled restart.
-      yield* harness.manager.start;
-      yield* Effect.gen(function* () {
-        while ((yield* harness.spawnCount) < 2) {
-          yield* Effect.yieldNow;
-        }
-      });
-
-      yield* harness.manager.stop;
-      yield* TestClock.adjust("500 millis");
-      assert.equal(yield* harness.spawnCount, 2);
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("does not restart after stop cancels a scheduled restart", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness();
-      yield* harness.manager.start;
-      yield* harness.awaitReady;
-
-      yield* harness.exitCurrent(1);
-      yield* Effect.gen(function* () {
-        while ((yield* harness.notReadyCount) < 1) {
-          yield* Effect.yieldNow;
-        }
-      });
-
-      // Stop during the backoff window cancels the pending restart; nothing
-      // respawns once the delay elapses.
-      yield* harness.manager.stop;
-      yield* TestClock.adjust("5 seconds");
-      assert.equal(yield* harness.spawnCount, 1);
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("does not spawn when the server entry is missing, and keeps retrying", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness({ entry: NodePath.join(SCRATCH, "missing.mjs") });
-      yield* harness.manager.start;
-
-      yield* TestClock.adjust("500 millis");
-      yield* TestClock.adjust("1 second");
-      assert.equal(yield* harness.spawnCount, 0);
-      // Still wants to run: the config is resolved and waiting on the entry.
-      assert.isTrue(Option.isSome(yield* harness.manager.currentConfig));
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("captures child output to logDir/server-child.log when packaged", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness({ isPackaged: true });
-      yield* harness.manager.start;
-      yield* harness.awaitReady;
-
-      const logPath = NodePath.join(
-        LOG_DIR_HOME,
-        "Library",
-        "Application Support",
-        "electron-effect-starter",
-        "logs",
-        "server-child.log",
+      const exit = yield* DesktopBackendManager.runBackendProcess(baseConfig, {
+        readinessTimeout: Duration.seconds(1),
+        onStarted: () => Effect.void,
+        onExitObserved: Effect.void,
+        onReady: Effect.void,
+        onReadinessFailure: () => Effect.void,
+        onOutput: () => Effect.void,
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.merge(
+            Layer.succeed(
+              ChildProcessSpawner.ChildProcessSpawner,
+              ChildProcessSpawner.make(() =>
+                Effect.succeed(makeProcess({ exitCode: Effect.fail(exitCause) })),
+              ),
+            ),
+            layerHttpClient("never"),
+          ),
+        ),
       );
-      yield* Effect.gen(function* () {
-        while (
-          !NodeFS.existsSync(logPath) ||
-          !NodeFS.readFileSync(logPath, "utf8").includes("hello from server")
-        ) {
-          yield* Effect.yieldNow;
-        }
-      });
 
-      const contents = NodeFS.readFileSync(logPath, "utf8");
-      assert.include(contents, "--- backend start pid=4242");
-      assert.include(contents, "hello from server");
-    }).pipe(Effect.scoped),
+      assert.deepStrictEqual(exit, { code: Option.none(), reason: "killed by SIGKILL" });
+    }),
   );
 });

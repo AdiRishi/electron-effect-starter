@@ -1,202 +1,290 @@
-/**
- * HTTP routes: health, auth exchange, static SPA + dev redirect, and CORS.
- *
- * @module http
- */
+import { AppHttpApi, DESKTOP_RENDERER_ORIGINS } from "@app/contracts";
+import { isDevProxiedPath } from "@app/shared/devProxy";
+import * as ByteSize from "effect/ByteSize";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
+import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import { HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
+import * as Mime from "effect/http/Mime";
+import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 
-import { BearerSessionJson, BootstrapBearerInput, type BearerSession } from "@app/contracts";
-
-import * as Auth from "./auth.ts";
 import * as ServerConfig from "./config.ts";
-import * as Readiness from "./readiness.ts";
-
-export const HEALTH_PATH = "/.well-known/app/health";
-export const AUTH_BOOTSTRAP_PATH = "/api/auth/bootstrap/bearer";
-
-// Encodes via the JSON wire codec so `expires_at` leaves as an ISO string —
-// `HttpServerResponse.json` alone would stringify the raw DateTime instance,
-// which the client's decoder rejects.
-const respondBearerSession = HttpServerResponse.schemaJson(BearerSessionJson);
+import { serverDescriptor } from "./descriptor.ts";
 
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 
-export function isLoopbackHostname(hostname: string): boolean {
-  const normalized = hostname
-    .trim()
-    .toLowerCase()
-    .replace(/^\[(.*)\]$/, "$1");
-  return LOOPBACK_HOSTNAMES.has(normalized);
-}
+export const layerMetadata = HttpApiBuilder.group(AppHttpApi, "metadata", (handlers) =>
+  handlers.handle("descriptor", () => serverDescriptor),
+);
 
-export function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
-  const redirectUrl = new URL(devUrl.toString());
-  redirectUrl.pathname = requestUrl.pathname;
-  redirectUrl.search = requestUrl.search;
-  redirectUrl.hash = requestUrl.hash;
-  return redirectUrl.toString();
-}
+export const layerHttpCompression = HttpRouter.middleware(HttpMiddleware.compression(), {
+  global: true,
+});
 
-/** Paths that must never be redirected/served as SPA navigations. */
-function isReservedPath(pathname: string): boolean {
-  return (
-    pathname.startsWith("/api") || pathname.startsWith("/ws") || pathname.startsWith("/.well-known")
-  );
-}
-
-/**
- * CORS. In dev the renderer makes credentialed requests from the Vite origin,
- * so that origin must be explicit; packaged mode uses the default wildcard.
- */
-export const corsLayer = Layer.unwrap(
+export const layerCors = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
-    const devOrigin = config.devWebUrl?.origin;
+    const devOrigin = config.devUrl?.origin;
+
+    // Credentialed dev requests need explicit origins; the packaged desktop renderer sends a
+    // bearer header, which the default wildcard allows.
     return HttpRouter.cors({
-      ...(devOrigin ? { allowedOrigins: [devOrigin], credentials: true } : {}),
+      ...(devOrigin
+        ? { allowedOrigins: [devOrigin, ...DESKTOP_RENDERER_ORIGINS], credentials: true }
+        : {}),
       allowedMethods: ["GET", "POST", "OPTIONS"],
-      allowedHeaders: ["Authorization", "Content-Type"],
+      allowedHeaders: ["authorization", "content-type", "traceparent", "b3"],
       maxAge: 600,
     });
   }),
 );
 
-/** `GET /.well-known/app/health` — no auth. 200 `ok` once the gate is open, else 503. */
-export const healthRouteLayer = HttpRouter.add(
-  "GET",
-  HEALTH_PATH,
-  Effect.gen(function* () {
-    const readiness = yield* Readiness.ReadinessGate;
-    const ready = yield* readiness.isReady;
-    return ready
-      ? HttpServerResponse.text("ok", { status: 200 })
-      : HttpServerResponse.text("starting", { status: 503 });
-  }),
+function isLoopbackHostname(hostname: string): boolean {
+  return LOOPBACK_HOSTNAMES.has(
+    hostname
+      .trim()
+      .toLowerCase()
+      .replace(/^\[(.*)\]$/, "$1"),
+  );
+}
+
+function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
+  const redirectUrl = new URL(devUrl.toString());
+  redirectUrl.pathname = requestUrl.pathname;
+  redirectUrl.search = requestUrl.search;
+  redirectUrl.hash = requestUrl.hash;
+
+  return redirectUrl.toString();
+}
+
+const decodeBuildManifest = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    Schema.Record(
+      Schema.String,
+      Schema.Struct({
+        file: Schema.String,
+        css: Schema.optional(Schema.Array(Schema.String)),
+        assets: Schema.optional(Schema.Array(Schema.String)),
+      }),
+    ),
+  ),
 );
 
-/** `POST /api/auth/bootstrap/bearer` — exchange the bootstrap token for a bearer. */
-export const authBootstrapRouteLayer = HttpRouter.add(
-  "POST",
-  AUTH_BOOTSTRAP_PATH,
-  Effect.gen(function* () {
-    const auth = yield* Auth.BearerSessionStore;
-    const input = yield* HttpServerRequest.schemaBodyJson(BootstrapBearerInput).pipe(
-      Effect.orElseSucceed(() => null),
+const loadImmutableBuildAssets = Effect.gen(function* () {
+  const config = yield* ServerConfig.ServerConfig;
+
+  if (!config.staticDir) return new Set<string>();
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+
+  return yield* fileSystem
+    .readFileString(path.join(config.staticDir, ".vite", "manifest.json"))
+    .pipe(
+      Effect.flatMap(decodeBuildManifest),
+      Effect.map(
+        (manifest) =>
+          new Set(
+            Object.values(manifest).flatMap((entry) => [
+              entry.file,
+              ...(entry.css ?? []),
+              ...(entry.assets ?? []),
+            ]),
+          ),
+      ),
+      Effect.orElseSucceed(() => new Set<string>()),
     );
-    if (input === null) {
-      return HttpServerResponse.text("Bad Request", { status: 400 });
-    }
+});
 
-    const minted = yield* auth.authenticateBootstrap(input.credential);
-    if (Option.isNone(minted)) {
-      return HttpServerResponse.text("Unauthorized", { status: 401 });
-    }
+const openStaticFile = Effect.fn("openStaticFile")(function* (filePath: string) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const pathInfo = yield* fileSystem.stat(filePath).pipe(Effect.orElseSucceed(() => null));
 
-    const session: BearerSession = {
-      access_token: minted.value,
-      expires_at: null,
-    };
-    // Encoding a value we just constructed can only fail on a schema bug — die.
-    return yield* respondBearerSession(session).pipe(Effect.orDie);
-  }),
-);
+  if (pathInfo?.type !== "File") return null;
 
-/** `GET *` — SPA static serving with `index.html` fallback, plus dev redirect. */
-export const staticAndDevRouteLayer = HttpRouter.add(
-  "GET",
-  "*",
-  Effect.gen(function* () {
+  const file = yield* fileSystem
+    .open(filePath, { flag: "r" })
+    .pipe(Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed(null)));
+
+  // Electron asar can stat and read files even when opening a handle returns NotFound.
+  // Refresh path metadata because the file may have been replaced since the first stat.
+  const info = yield* file === null ? fileSystem.stat(filePath) : file.stat;
+
+  return info.type === "File" ? { file, info } : null;
+});
+
+// Per-chunk reads share the request span.
+const streamStaticFile = (file: FileSystem.File, size: bigint) =>
+  Stream.unfold(
+    0n,
+    Effect.fnUntraced(function* (offset: bigint) {
+      if (offset >= size) return;
+      const remaining = size - offset;
+      const bytes = yield* file.readAlloc(Number(remaining < 65_536n ? remaining : 65_536n));
+
+      if (Option.isNone(bytes)) return;
+
+      return [bytes.value, offset + BigInt(bytes.value.byteLength)] as const;
+    }),
+  );
+
+const handleStaticAndDevRequest = Effect.fn("handleStaticAndDevRequest")(
+  function* (immutableBuildAssets: ReadonlySet<string>) {
     const request = yield* HttpServerRequest.HttpServerRequest;
     const url = HttpServerRequest.toURL(request);
+
     if (Option.isNone(url)) {
       return HttpServerResponse.text("Bad Request", { status: 400 });
     }
 
     const config = yield* ServerConfig.ServerConfig;
 
-    // Dev: 302-redirect navigations (not reserved paths) to the Vite dev server.
-    if (
-      config.devWebUrl &&
-      !isReservedPath(url.value.pathname) &&
-      isLoopbackHostname(url.value.hostname)
-    ) {
-      return HttpServerResponse.redirect(resolveDevRedirectUrl(config.devWebUrl, url.value), {
+    if (config.devUrl && isDevProxiedPath(url.value.pathname)) {
+      return HttpServerResponse.text("Not Found", { status: 404 });
+    }
+
+    if (config.devUrl && isLoopbackHostname(url.value.hostname)) {
+      return HttpServerResponse.redirect(resolveDevRedirectUrl(config.devUrl, url.value), {
         status: 302,
       });
     }
 
-    const staticDir = config.staticDir ?? (yield* ServerConfig.resolveStaticDir());
-    if (!staticDir) {
-      return HttpServerResponse.text("No static directory configured and no dev URL set.", {
-        status: 503,
-      });
+    if (!config.staticDir) {
+      return HttpServerResponse.text("No web build found and no dev URL set.", { status: 503 });
     }
 
-    const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const staticRoot = path.resolve(staticDir);
-    const requestPath = url.value.pathname === "/" ? "/index.html" : url.value.pathname;
-    const rawRelative = requestPath.replace(/^[/\\]+/, "");
-    const hasRawLeadingParent = rawRelative.startsWith("..");
-    const relative = path.normalize(rawRelative).replace(/^[/\\]+/, "");
+    const staticRoot = path.resolve(config.staticDir);
+    const staticRequestPath = url.value.pathname === "/" ? "/index.html" : url.value.pathname;
+    const rawStaticRelativePath = staticRequestPath.replace(/^[/\\]+/, "");
+    const staticRelativePath = path.normalize(rawStaticRelativePath).replace(/^[/\\]+/, "");
+
     if (
-      relative.length === 0 ||
-      hasRawLeadingParent ||
-      relative.startsWith("..") ||
-      relative.includes("\0")
+      staticRelativePath.length === 0 ||
+      rawStaticRelativePath.startsWith("..") ||
+      staticRelativePath.startsWith("..") ||
+      staticRelativePath.includes("\0")
     ) {
-      return HttpServerResponse.text("Invalid static file path", {
-        status: 400,
-      });
+      return HttpServerResponse.text("Invalid static file path", { status: 400 });
     }
 
-    const isWithinRoot = (candidate: string) =>
+    const isWithinStaticRoot = (candidate: string) =>
       candidate === staticRoot ||
       candidate.startsWith(staticRoot.endsWith(path.sep) ? staticRoot : `${staticRoot}${path.sep}`);
 
-    let filePath = path.resolve(staticRoot, relative);
-    if (!isWithinRoot(filePath)) {
-      return HttpServerResponse.text("Invalid static file path", {
-        status: 400,
-      });
+    let filePath = path.resolve(staticRoot, staticRelativePath);
+
+    if (!isWithinStaticRoot(filePath)) {
+      return HttpServerResponse.text("Invalid static file path", { status: 400 });
     }
+
     if (!path.extname(filePath)) {
       filePath = path.resolve(filePath, "index.html");
-      if (!isWithinRoot(filePath)) {
-        return HttpServerResponse.text("Invalid static file path", {
-          status: 400,
-        });
+
+      if (!isWithinStaticRoot(filePath)) {
+        return HttpServerResponse.text("Invalid static file path", { status: 400 });
       }
     }
 
-    const info = yield* fileSystem.stat(filePath).pipe(Effect.orElseSucceed(() => null));
-    if (!info || info.type !== "File") {
-      // SPA fallback: serve index.html for unknown routes.
-      const indexData = yield* fileSystem
-        .readFile(path.resolve(staticRoot, "index.html"))
-        .pipe(Effect.orElseSucceed(() => null));
-      if (!indexData) {
-        return HttpServerResponse.text("Not Found", { status: 404 });
-      }
-      return HttpServerResponse.uint8Array(indexData, {
-        status: 200,
-        contentType: "text/html; charset=utf-8",
+    let opened = yield* openStaticFile(filePath);
+
+    if (!opened) {
+      filePath = path.resolve(staticRoot, "index.html");
+      opened = yield* openStaticFile(filePath);
+
+      if (!opened) return HttpServerResponse.text("Not Found", { status: 404 });
+    }
+
+    const fileInfo = opened.info;
+    const mimeType = Option.getOrElse(Mime.getType(filePath), () => "application/octet-stream");
+    const isHtml = mimeType === "text/html";
+
+    // A hash-like name is not enough: custom static files can use the same naming pattern.
+    const relativePath = path.relative(staticRoot, filePath).replaceAll("\\", "/");
+
+    const immutable =
+      !isHtml &&
+      /^assets\/.+-[\w-]{8}\.[^/]+$/.test(relativePath) &&
+      immutableBuildAssets.has(relativePath);
+
+    const cacheControl = immutable ? "public, max-age=31536000, immutable" : "no-cache";
+
+    const validators = (info: FileSystem.File.Info) => {
+      // Deployments can preserve HTML size and mtime while changing its bundle URLs.
+      const modifiedAt = isHtml ? undefined : Option.getOrUndefined(info.mtime);
+
+      return modifiedAt
+        ? {
+            ETag: `W/"${info.size.toString(16)}-${modifiedAt.getTime().toString(16)}"`,
+            "Last-Modified": modifiedAt.toUTCString(),
+          }
+        : undefined;
+    };
+
+    const fileValidators = validators(fileInfo);
+    const headers = { "Cache-Control": cacheControl, ...fileValidators };
+    const etag = fileValidators?.ETag;
+    const lastModified = fileValidators?.["Last-Modified"];
+
+    // If-None-Match precedes dates and uses weak GET/HEAD comparison even across compression.
+    const ifNoneMatch = request.headers["if-none-match"];
+    const ifModifiedSince = request.headers["if-modified-since"];
+
+    const unchanged =
+      ifNoneMatch !== undefined
+        ? ifNoneMatch.split(",").some((value) => {
+            const candidate = value.trim();
+
+            return (
+              candidate === "*" ||
+              (etag !== undefined && candidate.replace(/^W\//i, "") === etag.slice(2))
+            );
+          })
+        : ifModifiedSince !== undefined &&
+          lastModified !== undefined &&
+          Date.parse(lastModified) <= Date.parse(ifModifiedSince);
+
+    if (!isHtml && unchanged) {
+      return HttpServerResponse.empty({
+        status: 304,
+        headers: { ...headers, Vary: "Accept-Encoding" },
       });
     }
 
-    return yield* HttpServerResponse.file(filePath, {
-      status: 200,
-      headers: {
-        "Cache-Control": "private, max-age=3600",
-        "X-Content-Type-Options": "nosniff",
-      },
-    }).pipe(
-      Effect.orElseSucceed(() => HttpServerResponse.text("Internal Server Error", { status: 500 })),
+    const contentType = isHtml ? "text/html; charset=utf-8" : mimeType;
+
+    if (opened.file === null && request.method !== "HEAD") {
+      const fileSystem = yield* FileSystem.FileSystem;
+      // Complete fallback reads before success headers; stream errors arrive too late for a 500.
+      const bytes = yield* fileSystem.readFile(filePath);
+      const info = yield* fileSystem.stat(filePath);
+
+      return HttpServerResponse.uint8Array(bytes, {
+        headers: {
+          "Cache-Control": cacheControl,
+          ...validators({ ...info, size: ByteSize.bytes(bytes.byteLength) }),
+        },
+        contentType,
+      });
+    }
+
+    // The request scope closes the handle for GET, HEAD, 304, errors, and cancellation.
+    return HttpServerResponse.stream(
+      opened.file === null ? Stream.empty : streamStaticFile(opened.file, fileInfo.size),
+      { headers, contentType, contentLength: Number(fileInfo.size) },
     );
+  },
+  Effect.catchTags({
+    PlatformError: () =>
+      Effect.succeed(HttpServerResponse.text("Internal Server Error", { status: 500 })),
   }),
+);
+
+export const layerStaticAndDevRoute = Layer.unwrap(
+  loadImmutableBuildAssets.pipe(
+    Effect.map((assets) => HttpRouter.add("GET", "*", handleStaticAndDevRequest(assets))),
+  ),
 );

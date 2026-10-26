@@ -1,0 +1,11 @@
+{
+  "name": "@app/vitest-config",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./shared.ts"
+  },
+  "dependencies": {
+    "vitest": "catalog:"
+  }
+}

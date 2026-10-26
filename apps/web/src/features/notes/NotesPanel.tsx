@@ -1,168 +1,159 @@
+import type { Note } from "@app/contracts";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
-import * as DateTime from "effect/DateTime";
-import { AsyncResult } from "effect/unstable/reactivity";
-import { useState } from "react";
+import * as Exit from "effect/Exit";
+import { AsyncResult, type Atom } from "effect/reactivity";
+import { PencilIcon, Trash2Icon } from "lucide-react";
+import { useState, type FormEvent } from "react";
 
-import { notesAtoms, type NoteView } from "./atoms.ts";
+import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
+import { Textarea } from "~/components/ui/textarea";
+import { createNoteAtom, deleteNoteAtom, notesAtom, updateNoteAtom } from "./atoms";
 
-/**
- * The sample app: a synced notes list. Content is set in the sans face; the
- * machinery (timestamps, actions) speaks monospace. Rows carry `.note-flash`
- * keyed by revision, so a change briefly tints when it round-trips through
- * the server — sync made visible when two windows are open.
- */
-export function NotesPanel({ connected }: { readonly connected: boolean }) {
-  const view = useAtomValue(notesAtoms.view);
-  const notes = useAtomValue(notesAtoms.notes);
-  const createResult = useAtomValue(notesAtoms.createNote);
-  const createNote = useAtomSet(notesAtoms.createNote);
+function NoteEditor({
+  initial,
+  submitLabel,
+  onSubmit,
+  onCancel,
+}: {
+  readonly initial: { readonly title: string; readonly body: string };
+  readonly submitLabel: string;
+  readonly onSubmit: (value: { readonly title: string; readonly body: string }) => Promise<boolean>;
+  readonly onCancel?: () => void;
+}) {
+  const [title, setTitle] = useState(initial.title);
+  const [body, setBody] = useState(initial.body);
+  const [pending, setPending] = useState(false);
 
-  const [draft, setDraft] = useState("");
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setPending(true);
+    const saved = await onSubmit({ title, body });
+    setPending(false);
 
-  const submitDraft = () => {
-    const text = draft.trim();
-    if (text.length === 0) return;
-    createNote(text);
-    setDraft("");
+    if (saved && onCancel === undefined) {
+      setTitle("");
+      setBody("");
+    }
   };
 
   return (
-    <section aria-label="Notes">
-      <form
-        className="flex gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          submitDraft();
-        }}
-      >
-        <input
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder={connected ? "Write a note…" : "Waiting for the server…"}
-          aria-label="New note"
-          disabled={!connected}
-          className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none placeholder:text-muted focus-visible:border-accent disabled:opacity-50"
-        />
-        <button
-          type="submit"
-          disabled={!connected || draft.trim().length === 0 || createResult.waiting}
-          className="rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-accent-contrast transition-opacity disabled:opacity-40"
-        >
-          Add note
-        </button>
-      </form>
-      {AsyncResult.isFailure(createResult) && (
-        <p className="mt-2 font-mono text-xs text-red-500">
-          The note was not saved: {String(createResult.cause)}
-        </p>
-      )}
-
-      <div className="mt-6">
-        {notes.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted">
-            {view.ready
-              ? "Nothing here yet. Write a note, then open this same app in a browser tab — it syncs live through your local server."
-              : "Syncing with the local server…"}
-          </p>
-        ) : (
-          <ul className="divide-y divide-border">
-            {notes.map((entry) => (
-              <NoteRow key={`${entry.note.id}:${entry.revision}`} entry={entry} />
-            ))}
-          </ul>
-        )}
+    <form className="space-y-2" onSubmit={submit}>
+      <Input
+        aria-label="Title"
+        placeholder="Title"
+        value={title}
+        onChange={(event) => setTitle(event.target.value)}
+      />
+      <Textarea
+        aria-label="Body"
+        placeholder="Write something…"
+        value={body}
+        onChange={(event) => setBody(event.target.value)}
+      />
+      <div className="flex justify-end gap-2">
+        {onCancel ? (
+          <Button variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+        ) : null}
+        <Button type="submit" disabled={pending || title.trim().length === 0}>
+          {submitLabel}
+        </Button>
       </div>
-    </section>
+    </form>
   );
 }
 
-function NoteRow({ entry }: { readonly entry: NoteView }) {
-  const updateNote = useAtomSet(notesAtoms.updateNote);
-  const deleteNote = useAtomSet(notesAtoms.deleteNote);
+function NoteCard({ note }: { readonly note: Note }) {
   const [editing, setEditing] = useState(false);
+  const updateNote = useAtomSet(updateNoteAtom, { mode: "promiseExit" });
+  const deleteNote = useAtomSet(deleteNoteAtom, { mode: "promiseExit" });
 
-  const { note, revision } = entry;
-  const time = DateTime.toDateUtc(note.updatedAt).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const edited = DateTime.toEpochMillis(note.updatedAt) !== DateTime.toEpochMillis(note.createdAt);
+  if (editing) {
+    return (
+      <li className="rounded-lg border p-3">
+        <NoteEditor
+          initial={note}
+          submitLabel="Save"
+          onCancel={() => setEditing(false)}
+          onSubmit={async (value) => {
+            const exit = await updateNote({ id: note.id, ...value });
+            const saved = Exit.isSuccess(exit);
 
-  const saveEdit = (text: string) => {
-    const trimmed = text.trim();
-    setEditing(false);
-    if (trimmed.length === 0 || trimmed === note.text) return;
-    updateNote({ id: note.id, text: trimmed });
-  };
+            if (saved) setEditing(false);
+
+            return saved;
+          }}
+        />
+      </li>
+    );
+  }
 
   return (
-    <li className={`group -mx-2 rounded-md px-2 ${revision > 0 ? "note-flash" : ""}`}>
-      {editing ? (
-        <NoteEditor initialText={note.text} onSave={saveEdit} onCancel={() => setEditing(false)} />
-      ) : (
-        <div className="flex items-baseline gap-3 py-3">
-          <p className="min-w-0 flex-1 text-sm break-words whitespace-pre-wrap">{note.text}</p>
-          <span className="shrink-0 font-mono text-[11px] text-muted">
-            {edited ? `edited ${time}` : time}
-          </span>
-          <span className="flex shrink-0 gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-            <RowAction label="Edit" onClick={() => setEditing(true)} />
-            <RowAction label="Delete" destructive onClick={() => deleteNote(note.id)} />
-          </span>
-        </div>
-      )}
+    <li className="group flex items-start gap-3 rounded-lg border p-3">
+      <div className="min-w-0 flex-1">
+        <h3 className="truncate font-medium text-sm">{note.title}</h3>
+        {note.body.length > 0 ? (
+          <p className="mt-1 whitespace-pre-wrap text-muted-foreground text-sm">{note.body}</p>
+        ) : null}
+      </div>
+      <div className="flex gap-1">
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Edit note"
+          onClick={() => setEditing(true)}
+        >
+          <PencilIcon />
+        </Button>
+        <Button
+          size="icon-sm"
+          variant="ghost-destructive"
+          aria-label="Delete note"
+          onClick={() => void deleteNote(note.id)}
+        >
+          <Trash2Icon />
+        </Button>
+      </div>
     </li>
   );
 }
 
-function NoteEditor({
-  initialText,
-  onSave,
-  onCancel,
-}: {
-  readonly initialText: string;
-  readonly onSave: (text: string) => void;
-  readonly onCancel: () => void;
-}) {
-  const [text, setText] = useState(initialText);
+function NotesList({ notes }: { readonly notes: Atom.Type<typeof notesAtom> }) {
+  if (AsyncResult.isFailure(notes)) {
+    return <p className="text-destructive text-sm">Notes could not be loaded.</p>;
+  }
+
+  if (!AsyncResult.isSuccess(notes)) {
+    return <p className="text-muted-foreground text-sm">Loading notes…</p>;
+  }
+
+  if (notes.value.notes.length === 0) {
+    return <p className="text-muted-foreground text-sm">No notes yet.</p>;
+  }
+
   return (
-    <div className="flex items-center gap-2 py-2">
-      <input
-        // oxlint-disable-next-line jsx-a11y/no-autofocus -- Focus follows the user's explicit Edit action; this is not a page-load focus steal.
-        autoFocus
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") onSave(text);
-          if (event.key === "Escape") onCancel();
-        }}
-        aria-label="Edit note"
-        className="flex-1 rounded-md border border-accent bg-card px-2 py-1.5 text-sm outline-none"
-      />
-      <RowAction label="Save" onClick={() => onSave(text)} />
-      <RowAction label="Cancel" onClick={onCancel} />
-    </div>
+    <ul className="space-y-2">
+      {notes.value.notes.map((note) => (
+        <NoteCard key={note.id} note={note} />
+      ))}
+    </ul>
   );
 }
 
-function RowAction({
-  label,
-  onClick,
-  destructive = false,
-}: {
-  readonly label: string;
-  readonly onClick: () => void;
-  readonly destructive?: boolean;
-}) {
+export function NotesPanel() {
+  const notes = useAtomValue(notesAtom);
+  const createNote = useAtomSet(createNoteAtom, { mode: "promiseExit" });
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded font-mono text-[11px] outline-none focus-visible:ring-1 focus-visible:ring-accent ${
-        destructive ? "text-red-500 hover:text-red-400" : "text-muted hover:text-foreground"
-      }`}
-    >
-      {label}
-    </button>
+    <section className="mx-auto w-full max-w-xl space-y-6 p-6">
+      <NoteEditor
+        initial={{ title: "", body: "" }}
+        submitLabel="Add note"
+        onSubmit={async (value) => Exit.isSuccess(await createNote(value))}
+      />
+      <NotesList notes={notes} />
+    </section>
   );
 }

@@ -1,113 +1,162 @@
+import * as NetService from "@app/shared/Net";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 
-import * as DesktopBackendManager from "../backend/DesktopBackendManager.ts";
+import * as Electron from "electron";
+
+import * as DesktopBackend from "../backend/DesktopBackend.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
-import * as ElectronTheme from "../electron/ElectronTheme.ts";
+import * as ElectronProtocol from "../electron/ElectronProtocol.ts";
 import { installDesktopIpcHandlers } from "../ipc/DesktopIpcHandlers.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
-import * as DesktopUpdater from "../updates/DesktopUpdater.ts";
-import * as DesktopWindow from "../window/DesktopWindow.ts";
+import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
+import * as DesktopApplicationMenu from "../window/DesktopApplicationMenu.ts";
+import * as DesktopAppIdentity from "./DesktopAppIdentity.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopLifecycle from "./DesktopLifecycle.ts";
-import { makeComponentLogger } from "./DesktopObservability.ts";
+import * as DesktopLogger from "./DesktopLogger.ts";
 import * as DesktopShutdown from "./DesktopShutdown.ts";
 import * as DesktopState from "./DesktopState.ts";
 
-// The application program. It is `Effect.scoped`: `startup` brings the app up,
-// then it blocks on `shutdown.awaitRequest`. When shutdown fires (all windows
-// closed / before-quit), the scope closes and the finalizer stops the backend
-// child. A fatal error during startup/bootstrap shows an error box and quits.
+const DEFAULT_BACKEND_PORT = 3773;
+const MAX_TCP_PORT = 65_535;
 
-const { logInfo: logStartupInfo, logError: logStartupError } =
-  makeComponentLogger("desktop-startup");
-const { logInfo: logBootstrapInfo } = makeComponentLogger("desktop-bootstrap");
+// A port is free only if nothing listens on it on any interface the server could share.
+const BACKEND_PORT_PROBE_HOSTS = ["127.0.0.1", "0.0.0.0", "::"] as const;
 
-const makeRunId = Crypto.Crypto.pipe(
-  Effect.flatMap((crypto) => crypto.randomUUIDv4),
-  Effect.map((value) => value.replaceAll("-", "").slice(0, 12)),
-);
+export class DesktopBackendPortUnavailableError extends Schema.TaggedError<DesktopBackendPortUnavailableError>()(
+  "DesktopBackendPortUnavailableError",
+  { startPort: Schema.Int },
+) {
+  override get message(): string {
+    return `No port from ${this.startPort} upward is free for the local server.`;
+  }
+}
 
-const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalStartupError")(function* (
+const { logInfo, logError } = DesktopLogger.forComponent("desktop-app");
+
+// The renderer may write to the clipboard and go fullscreen; every other gated capability is denied.
+const ALLOWED_RENDERER_PERMISSIONS: ReadonlySet<string> = new Set([
+  "clipboard-sanitized-write",
+  "fullscreen",
+]);
+
+export const isRendererPermissionAllowed = (permission: string): boolean =>
+  ALLOWED_RENDERER_PERMISSIONS.has(permission);
+
+const resolveBackendPort = Effect.fn("DesktopApp.resolveBackendPort")(function* (
+  configuredPort: Option.Option<number>,
+) {
+  if (Option.isSome(configuredPort)) return configuredPort.value;
+  const net = yield* NetService.NetService;
+
+  // A stable port keeps the renderer's origin, and with it localStorage, the same across launches.
+  for (let port = DEFAULT_BACKEND_PORT; port <= MAX_TCP_PORT; port += 1) {
+    let available = true;
+
+    for (const host of BACKEND_PORT_PROBE_HOSTS) {
+      if (!(yield* net.canListenOnHost(port, host))) {
+        available = false;
+        break;
+      }
+    }
+
+    if (available) return port;
+  }
+
+  return yield* new DesktopBackendPortUnavailableError({ startPort: DEFAULT_BACKEND_PORT });
+});
+
+const fatalStartupCause = Effect.fn("DesktopApp.fatalStartupCause")(function* <E>(
   stage: string,
-  cause: Cause.Cause<unknown>,
+  cause: Cause.Cause<E>,
 ) {
   const shutdown = yield* DesktopShutdown.DesktopShutdown;
   const state = yield* DesktopState.DesktopState;
   const electronApp = yield* ElectronApp.ElectronApp;
-  const electronDialog = yield* ElectronDialog.ElectronDialog;
-  const message = Cause.pretty(cause);
-  yield* logStartupError("fatal startup error", { stage, message });
-  const wasQuitting = yield* Ref.getAndSet(state.quitting, true);
-  if (!wasQuitting) {
-    yield* electronDialog.showErrorBox("App failed to start", `Stage: ${stage}\n${message}`);
+  const dialog = yield* ElectronDialog.ElectronDialog;
+  const environment = yield* DesktopEnvironment.DesktopEnvironment;
+  yield* logError("fatal startup error", { stage }, cause);
+
+  if (!(yield* Ref.getAndSet(state.quitting, true))) {
+    yield* dialog.showErrorBox(
+      `${environment.displayName} failed to start`,
+      `Stage: ${stage}\n${Cause.pretty(cause)}`,
+    );
   }
+
   yield* shutdown.request;
   yield* electronApp.quit;
+
+  return yield* Effect.failCause(cause);
 });
 
-const fatalStartupCause = (stage: string, cause: Cause.Cause<unknown>) =>
-  handleFatalStartupError(stage, cause).pipe(Effect.andThen(Effect.failCause(cause)));
-
 const bootstrap = Effect.gen(function* () {
-  const manager = yield* DesktopBackendManager.DesktopBackendManager;
+  const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const state = yield* DesktopState.DesktopState;
-  yield* logBootstrapInfo("bootstrap start");
+  const protocol = yield* ElectronProtocol.ElectronProtocol;
+  const backend = yield* DesktopBackend.DesktopBackend;
+  const settings = yield* DesktopAppSettings.DesktopAppSettings;
 
+  yield* settings.load;
+  yield* protocol.registerDesktopProtocol({
+    scheme: ElectronProtocol.getDesktopScheme(environment.isDevelopment),
+    ...(Option.isSome(environment.devServerUrl)
+      ? { targetOrigin: environment.devServerUrl.value }
+      : { assetDirectory: environment.clientAssetsDir }),
+  });
   yield* installDesktopIpcHandlers();
-  yield* logBootstrapInfo("ipc handlers registered");
 
-  if (!(yield* Ref.get(state.quitting))) {
-    yield* manager.start;
-    yield* logBootstrapInfo("backend start requested");
-  }
-}).pipe(Effect.withSpan("desktop.bootstrap"));
+  const port = yield* resolveBackendPort(environment.configuredBackendPort);
+  yield* logInfo("starting the local server", { port });
+
+  if (!(yield* Ref.get(state.quitting))) yield* backend.start(port);
+}).pipe(Effect.withSpan("DesktopApp.bootstrap"));
 
 const startup = Effect.gen(function* () {
   const electronApp = yield* ElectronApp.ElectronApp;
   const lifecycle = yield* DesktopLifecycle.DesktopLifecycle;
-  const settings = yield* DesktopAppSettings.DesktopAppSettings;
-  const updater = yield* DesktopUpdater.DesktopUpdater;
-  const window = yield* DesktopWindow.DesktopWindow;
-  const electronTheme = yield* ElectronTheme.ElectronTheme;
-  const environment = yield* DesktopEnvironment.DesktopEnvironment;
+  const menu = yield* DesktopApplicationMenu.DesktopApplicationMenu;
+  const updates = yield* DesktopUpdates.DesktopUpdates;
+  const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
 
-  yield* electronApp.setPath("userData", environment.baseDir);
-
-  const loaded = yield* settings.load;
-  yield* electronTheme.setSource(loaded.theme).pipe(Effect.ignore({ log: true }));
-  yield* logStartupInfo("settings loaded", { logDir: environment.logDir });
-
+  yield* identity.configure;
   yield* lifecycle.register;
-
   yield* electronApp.whenReady.pipe(
-    Effect.withSpan("desktop.electron.whenReady"),
     Effect.catchCause((cause) => fatalStartupCause("whenReady", cause)),
   );
-  yield* logStartupInfo("app ready");
-
-  yield* updater.configure;
-  yield* window.installApplicationMenu;
+  Electron.session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) =>
+    callback(isRendererPermissionAllowed(permission)),
+  );
+  Electron.session.defaultSession.setPermissionCheckHandler((_contents, permission) =>
+    isRendererPermissionAllowed(permission),
+  );
+  yield* menu.configure;
+  yield* updates.configure;
   yield* bootstrap.pipe(Effect.catchCause((cause) => fatalStartupCause("bootstrap", cause)));
-}).pipe(Effect.withSpan("desktop.startup"));
+}).pipe(Effect.withSpan("DesktopApp.startup"));
 
-const scopedProgram = Effect.scoped(
+/** The whole app lifetime is one scope; quitting completes the shutdown request. */
+export const program = Effect.scoped(
   Effect.gen(function* () {
-    const runId = yield* makeRunId;
-    yield* Effect.annotateLogsScoped({ scope: "desktop", runId });
-    yield* Effect.annotateCurrentSpan({ scope: "desktop", runId });
+    const crypto = yield* Crypto.Crypto;
+    const runId = (yield* Effect.orDie(crypto.randomUUIDv4())).replaceAll("-", "").slice(0, 12);
+    yield* Effect.annotateLogsScoped({ runId });
 
     const shutdown = yield* DesktopShutdown.DesktopShutdown;
-    const manager = yield* DesktopBackendManager.DesktopBackendManager;
-
-    yield* Effect.addFinalizer(() => manager.stop.pipe(Effect.ensuring(shutdown.markComplete)));
+    const backend = yield* DesktopBackend.DesktopBackend;
+    // Quit can outrun layer finalizers; stop the server here so it gets SIGTERM before teardown.
+    yield* Effect.addFinalizer(() =>
+      backend.stop({ timeout: Duration.seconds(5) }).pipe(Effect.ensuring(shutdown.markComplete)),
+    );
 
     yield* startup;
     yield* shutdown.awaitRequest;
   }),
-);
-
-export const program = scopedProgram.pipe(Effect.withSpan("desktop.app"));
+).pipe(Effect.withSpan("DesktopApp"));

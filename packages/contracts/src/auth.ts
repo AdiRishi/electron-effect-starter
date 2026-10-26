@@ -1,54 +1,67 @@
 import * as Schema from "effect/Schema";
+import * as HttpApiSchema from "effect/http-api/HttpApiSchema";
 
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 
-/**
- * The single shared authorization error for every WS RPC. The server's `/ws`
- * upgrade is gated by a bearer session; a request without a valid session
- * fails with this. Keeping one shared error keeps the RPC group's error
- * unions small and uniform.
- */
-export class EnvironmentAuthorizationError extends Schema.TaggedErrorClass<EnvironmentAuthorizationError>()(
-  "EnvironmentAuthorizationError",
-  {
-    reason: Schema.Literals(["missing-credential", "invalid-credential", "expired"]),
-  },
-) {
-  override get message(): string {
-    return `WebSocket request was not authorized (${this.reason}).`;
-  }
-}
+export const ServerAuthSessionMethod = Schema.Literals([
+  "browser-session-cookie",
+  "bearer-access-token",
+]);
 
-/**
- * Body of `POST /api/auth/bootstrap/bearer`. The desktop shell mints a
- * bootstrap token, hands it to the spawned server AND to the renderer (over
- * IPC); the renderer exchanges the token here for a short-lived bearer session
- * it then uses on the `/ws` upgrade. This is the "shared secret handed to a
- * trusted child" pattern.
- */
-export const BootstrapBearerInput = Schema.Struct({
-  credential: TrimmedNonEmptyString,
-  clientMetadata: Schema.optionalKey(
-    Schema.Struct({
-      label: TrimmedNonEmptyString,
-      deviceType: Schema.Literals(["desktop", "web"]),
-    }),
-  ),
-});
-export type BootstrapBearerInput = typeof BootstrapBearerInput.Type;
+export type ServerAuthSessionMethod = typeof ServerAuthSessionMethod.Type;
 
-export const BearerSession = Schema.Struct({
+export const AuthTokenExchangeGrantType =
+  "urn:ietf:params:oauth:grant-type:token-exchange" as const;
+
+export const AuthAccessTokenType = "urn:ietf:params:oauth:token-type:access_token" as const;
+export const AuthBootstrapTokenType = "urn:app:params:oauth:token-type:bootstrap" as const;
+
+export const AuthTokenExchangeRequest = Schema.Struct({
+  grant_type: Schema.Literal(AuthTokenExchangeGrantType),
+  subject_token: TrimmedNonEmptyString,
+  subject_token_type: Schema.Literal(AuthBootstrapTokenType),
+  requested_token_type: Schema.Literal(AuthAccessTokenType),
+}).pipe(HttpApiSchema.asFormUrlEncoded());
+
+export type AuthTokenExchangeRequest = typeof AuthTokenExchangeRequest.Type;
+
+export const AuthAccessTokenResult = Schema.Struct({
   access_token: TrimmedNonEmptyString,
-  /** When the token expires, or null for "session lifetime". */
-  expires_at: Schema.NullOr(Schema.DateTimeUtc),
+  issued_token_type: Schema.Literal(AuthAccessTokenType),
+  token_type: Schema.Literal("Bearer"),
+  expires_in: Schema.Number,
 });
-export type BearerSession = typeof BearerSession.Type;
 
-/**
- * JSON wire codec for `BearerSession` — `expires_at` crosses HTTP as an ISO
- * string. `Schema.DateTimeUtc` alone only validates in-memory `DateTime.Utc`
- * instances; the RPC layer applies `Schema.toCodecJson` automatically, but the
- * hand-rolled `POST /api/auth/bootstrap/bearer` endpoint must use this codec
- * explicitly on both ends.
- */
-export const BearerSessionJson = Schema.toCodecJson(BearerSession);
+export type AuthAccessTokenResult = typeof AuthAccessTokenResult.Type;
+
+export const AuthBrowserSessionRequest = Schema.Struct({
+  credential: TrimmedNonEmptyString,
+});
+
+export type AuthBrowserSessionRequest = typeof AuthBrowserSessionRequest.Type;
+
+export const AuthBrowserSessionResult = Schema.Struct({
+  authenticated: Schema.Literal(true),
+  sessionMethod: ServerAuthSessionMethod,
+  expiresAt: Schema.DateTimeUtc,
+});
+
+export type AuthBrowserSessionResult = typeof AuthBrowserSessionResult.Type;
+
+export const AuthWebSocketTicketResult = Schema.Struct({
+  ticket: TrimmedNonEmptyString,
+  expiresAt: Schema.DateTimeUtc,
+});
+
+export type AuthWebSocketTicketResult = typeof AuthWebSocketTicketResult.Type;
+
+export const AuthSessionState = Schema.Struct({
+  authenticated: Schema.Boolean,
+  sessionMethod: Schema.optionalKey(ServerAuthSessionMethod),
+  expiresAt: Schema.optionalKey(Schema.DateTimeUtc),
+});
+
+export type AuthSessionState = typeof AuthSessionState.Type;
+
+/** Query parameter that carries a WebSocket ticket on the `/ws` upgrade. */
+export const WS_TICKET_QUERY_PARAM = "wsTicket";

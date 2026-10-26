@@ -1,74 +1,31 @@
-/**
- * Bootstrap envelope reader.
- *
- * The desktop shell mints a one-time bootstrap token and hands it to the
- * spawned server over an inherited file descriptor. The envelope is a single
- * JSON line `{ "desktopBootstrapToken": string, "port"?: number }`. Reading a
- * secret off an fd keeps it out of argv/env where other processes could see it.
- *
- * @module bootstrap
- */
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off -- The bootstrap pipe is a raw inherited file descriptor.
 import * as NodeFS from "node:fs";
 import * as NodeNet from "node:net";
 import * as NodeReadline from "node:readline";
 import type * as NodeStream from "node:stream";
 
+import { DesktopBackendBootstrap } from "@app/contracts";
+import * as HostProcess from "@app/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
-import {
-  ServerBootstrapEnvelope,
-  type ServerBootstrapEnvelope as ServerBootstrapEnvelopeValue,
-} from "@app/contracts";
-import { HostProcessPlatform } from "@app/shared/hostProcess";
-
-/** Shape written by the shell into the bootstrap fd. */
-export const BootstrapEnvelope = ServerBootstrapEnvelope;
-export type BootstrapEnvelope = ServerBootstrapEnvelopeValue;
-
-export class BootstrapFdStatError extends Schema.TaggedErrorClass<BootstrapFdStatError>()(
-  "BootstrapFdStatError",
-  {
-    fd: Schema.Number,
-    cause: Schema.Defect(),
-  },
-) {
-  override get message(): string {
-    return `Failed to stat bootstrap file descriptor ${this.fd}.`;
-  }
-}
-
-export class BootstrapInputStreamOpenError extends Schema.TaggedErrorClass<BootstrapInputStreamOpenError>()(
-  "BootstrapInputStreamOpenError",
-  {
-    fd: Schema.Number,
-    platform: Schema.String,
-    fdPath: Schema.optional(Schema.String),
-    cause: Schema.Defect(),
-  },
-) {
-  override get message(): string {
-    const path = this.fdPath === undefined ? "" : ` via '${this.fdPath}'`;
-    return `Failed to open bootstrap input stream for file descriptor ${this.fd}${path} on '${this.platform}'.`;
-  }
-}
-
-export class BootstrapEnvelopeReadError extends Schema.TaggedErrorClass<BootstrapEnvelopeReadError>()(
+export class BootstrapEnvelopeReadError extends Schema.TaggedError<BootstrapEnvelopeReadError>()(
   "BootstrapEnvelopeReadError",
   {
     fd: Schema.Number,
+    stage: Schema.Literals(["stat", "open", "read"]),
     cause: Schema.Defect(),
   },
 ) {
   override get message(): string {
-    return `Failed to read bootstrap envelope from file descriptor ${this.fd}.`;
+    return `Failed to ${this.stage} the bootstrap file descriptor ${this.fd}.`;
   }
 }
 
-export class BootstrapEnvelopeDecodeError extends Schema.TaggedErrorClass<BootstrapEnvelopeDecodeError>()(
+export class BootstrapEnvelopeDecodeError extends Schema.TaggedError<BootstrapEnvelopeDecodeError>()(
   "BootstrapEnvelopeDecodeError",
   {
     fd: Schema.Number,
@@ -76,184 +33,141 @@ export class BootstrapEnvelopeDecodeError extends Schema.TaggedErrorClass<Bootst
   },
 ) {
   override get message(): string {
-    return `Failed to decode bootstrap envelope from file descriptor ${this.fd}.`;
+    return `Failed to decode the bootstrap envelope from file descriptor ${this.fd}.`;
   }
 }
 
-export const BootstrapError = Schema.Union([
-  BootstrapFdStatError,
-  BootstrapInputStreamOpenError,
-  BootstrapEnvelopeReadError,
-  BootstrapEnvelopeDecodeError,
-]);
-export type BootstrapError = typeof BootstrapError.Type;
+const decodeBootstrapLine = Schema.decodeResult(Schema.fromJsonString(DesktopBackendBootstrap));
 
-const decodeEnvelope = Schema.decodeEffect(Schema.fromJsonString(BootstrapEnvelope));
+const isUnavailableFdError = Predicate.compose(
+  Predicate.hasProperty("code"),
+  (error) => error.code === "EBADF" || error.code === "ENOENT",
+);
+
+// Inherited pipes cannot always be reopened through /dev/fd or /proc/self/fd.
+const isFdPathDuplicationError = Predicate.compose(
+  Predicate.hasProperty("code"),
+  (error) =>
+    error.code === "ENXIO" ||
+    error.code === "EINVAL" ||
+    error.code === "EPERM" ||
+    error.code === "EACCES",
+);
+
+function resolveFdPath(fd: number, platform: NodeJS.Platform): string | undefined {
+  if (platform === "linux") return `/proc/self/fd/${fd}`;
+
+  if (platform === "win32") return undefined;
+
+  return `/dev/fd/${fd}`;
+}
+
+const makeDirectStream = (fd: number): NodeStream.Readable => {
+  try {
+    return NodeFS.createReadStream("", { fd, encoding: "utf8", autoClose: true });
+  } catch {
+    const socket = new NodeNet.Socket({ fd, readable: true, writable: false });
+    socket.setEncoding("utf8");
+
+    return socket;
+  }
+};
+
+const isFdReady = (fd: number) =>
+  Effect.try({
+    try: () => NodeFS.fstatSync(fd),
+    catch: (cause) => new BootstrapEnvelopeReadError({ fd, stage: "stat", cause }),
+  }).pipe(
+    Effect.as(true),
+    Effect.catchTags({
+      BootstrapEnvelopeReadError: (error) =>
+        isUnavailableFdError(error.cause) ? Effect.succeed(false) : Effect.fail(error),
+    }),
+  );
+
+const openFdPathForReading = (fdPath: string) => NodeFS.openSync(fdPath, "r");
+
+const openStream = Effect.fn("bootstrap.openStream")(function* (
+  fd: number,
+  openFdPath: (fdPath: string) => number,
+) {
+  const fdPath = resolveFdPath(fd, yield* HostProcess.Platform);
+
+  return yield* Effect.try({
+    try: (): NodeStream.Readable => {
+      if (fdPath === undefined) return makeDirectStream(fd);
+      let streamFd: number | undefined;
+
+      try {
+        streamFd = openFdPath(fdPath);
+
+        return NodeFS.createReadStream("", { fd: streamFd, encoding: "utf8", autoClose: true });
+      } catch (error) {
+        if (!isFdPathDuplicationError(error)) throw error;
+
+        if (streamFd !== undefined) NodeFS.closeSync(streamFd);
+
+        return makeDirectStream(fd);
+      }
+    },
+    catch: (cause) => new BootstrapEnvelopeReadError({ fd, stage: "open", cause }),
+  });
+});
 
 /**
- * Read + decode the bootstrap envelope from the given file descriptor. Returns
- * `Option.none()` when the fd is unavailable (`EBADF`/`ENOENT`) or when no
- * line arrives before the timeout, so a missing bootstrap fd is not fatal —
- * the caller falls back to env/random tokens.
+ * Reads the one-line JSON envelope the desktop shell writes to an inherited file descriptor. Keeps
+ * secrets out of argv and the environment, where other processes on the machine can read them.
  */
-export const readBootstrapEnvelope = Effect.fn("bootstrap.readBootstrapEnvelope")(function* (
+export const readBootstrapEnvelope = Effect.fn("readBootstrapEnvelope")(function* (
   fd: number,
   options?: {
-    timeoutMs?: number;
+    readonly timeoutMs?: number;
+    /** Reopens the descriptor through its /dev/fd or /proc path; tests replace it to fail. */
+    readonly openFdPath?: (fdPath: string) => number;
   },
-): Effect.fn.Return<Option.Option<BootstrapEnvelope>, BootstrapError> {
-  const fdReady = yield* isFdReady(fd);
-  if (!fdReady) return Option.none();
-
-  const stream = yield* makeBootstrapInputStream(fd);
-
-  const timeoutMs = options?.timeoutMs ?? 1000;
+): Effect.fn.Return<
+  Option.Option<DesktopBackendBootstrap>,
+  BootstrapEnvelopeReadError | BootstrapEnvelopeDecodeError,
+  never
+> {
+  if (!(yield* isFdReady(fd))) return Option.none();
+  const stream = yield* openStream(fd, options?.openFdPath ?? openFdPathForReading);
 
   return yield* Effect.callback<
-    Option.Option<BootstrapEnvelope>,
+    Option.Option<DesktopBackendBootstrap>,
     BootstrapEnvelopeReadError | BootstrapEnvelopeDecodeError
   >((resume) => {
-    const input = NodeReadline.createInterface({
-      input: stream,
-      crlfDelay: Infinity,
-    });
+    const input = NodeReadline.createInterface({ input: stream, crlfDelay: Infinity });
 
-    const cleanup = () => {
+    const handleError = (error: Error) => {
+      resume(
+        isUnavailableFdError(error)
+          ? Effect.succeedNone
+          : Effect.fail(new BootstrapEnvelopeReadError({ fd, stage: "read", cause: error })),
+      );
+    };
+
+    const handleLine = (line: string) => {
+      const decoded = decodeBootstrapLine(line);
+      resume(
+        Result.isSuccess(decoded)
+          ? Effect.succeedSome(decoded.success)
+          : Effect.fail(new BootstrapEnvelopeDecodeError({ fd, cause: decoded.failure })),
+      );
+    };
+
+    const handleClose = () => resume(Effect.succeedNone);
+
+    stream.once("error", handleError);
+    input.once("line", handleLine);
+    input.once("close", handleClose);
+
+    return Effect.sync(() => {
       stream.removeListener("error", handleError);
       input.removeListener("line", handleLine);
       input.removeListener("close", handleClose);
       input.close();
       stream.destroy();
-    };
-
-    const handleError = (error: Error) => {
-      if (isUnavailableBootstrapFdError(error)) {
-        resume(Effect.succeedNone);
-        return;
-      }
-      resume(
-        Effect.fail(
-          new BootstrapEnvelopeReadError({
-            fd,
-            cause: error,
-          }),
-        ),
-      );
-    };
-
-    const handleLine = (line: string) => {
-      if (line.trim().length === 0) return;
-      resume(
-        decodeEnvelope(line).pipe(
-          Effect.map(Option.some),
-          Effect.mapError((cause) => new BootstrapEnvelopeDecodeError({ fd, cause })),
-        ),
-      );
-    };
-
-    const handleClose = () => {
-      resume(Effect.succeedNone);
-    };
-
-    stream.once("error", handleError);
-    input.on("line", handleLine);
-    input.once("close", handleClose);
-
-    return Effect.sync(cleanup);
-  }).pipe(Effect.timeoutOption(timeoutMs), Effect.map(Option.flatten));
+    });
+  }).pipe(Effect.timeoutOption(options?.timeoutMs ?? 1_000), Effect.map(Option.flatten));
 });
-
-const isUnavailableBootstrapFdError = Predicate.compose(
-  Predicate.hasProperty("code"),
-  (_) => _.code === "EBADF" || _.code === "ENOENT",
-);
-
-const isFdReady = (fd: number) =>
-  Effect.try({
-    try: () => NodeFS.fstatSync(fd),
-    catch: (error) =>
-      new BootstrapFdStatError({
-        fd,
-        cause: error,
-      }),
-  }).pipe(
-    Effect.as(true),
-    Effect.catchTags({
-      BootstrapFdStatError: (error) =>
-        isUnavailableBootstrapFdError(error.cause) ? Effect.succeed(false) : Effect.fail(error),
-    }),
-  );
-
-const makeBootstrapInputStream = (fd: number) =>
-  Effect.gen(function* () {
-    const platform = yield* HostProcessPlatform;
-    const fdPath = resolveFdPath(fd, platform);
-    return yield* Effect.try<NodeStream.Readable, BootstrapInputStreamOpenError>({
-      try: () => {
-        if (fdPath === undefined) {
-          return makeDirectBootstrapStream(fd);
-        }
-
-        let streamFd: number | undefined;
-        try {
-          streamFd = NodeFS.openSync(fdPath, "r");
-          return NodeFS.createReadStream("", {
-            fd: streamFd,
-            encoding: "utf8",
-            autoClose: true,
-          });
-        } catch (error) {
-          if (isBootstrapFdPathDuplicationError(error)) {
-            if (streamFd !== undefined) {
-              NodeFS.closeSync(streamFd);
-            }
-            return makeDirectBootstrapStream(fd);
-          }
-          throw error;
-        }
-      },
-      catch: (error) =>
-        new BootstrapInputStreamOpenError({
-          fd,
-          platform,
-          ...(fdPath === undefined ? {} : { fdPath }),
-          cause: error,
-        }),
-    });
-  });
-
-const makeDirectBootstrapStream = (fd: number): NodeStream.Readable => {
-  try {
-    return NodeFS.createReadStream("", {
-      fd,
-      encoding: "utf8",
-      autoClose: true,
-    });
-  } catch {
-    const stream = new NodeNet.Socket({
-      fd,
-      readable: true,
-      writable: false,
-    });
-    stream.setEncoding("utf8");
-    return stream;
-  }
-};
-
-// Stdin pipes inherited across the wsl.exe boundary report EACCES when we try
-// to re-open them via /proc/self/fd/0 — fall back to reading the fd directly
-// in that case, the same way we already do for ENXIO/EINVAL/EPERM.
-const isBootstrapFdPathDuplicationError = Predicate.compose(
-  Predicate.hasProperty("code"),
-  (_) => _.code === "ENXIO" || _.code === "EINVAL" || _.code === "EPERM" || _.code === "EACCES",
-);
-
-function resolveFdPath(fd: number, platform: NodeJS.Platform): string | undefined {
-  if (platform === "linux") {
-    return `/proc/self/fd/${fd}`;
-  }
-  if (platform === "win32") {
-    return undefined;
-  }
-  return `/dev/fd/${fd}`;
-}

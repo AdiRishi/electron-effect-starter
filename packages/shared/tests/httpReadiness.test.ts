@@ -1,90 +1,68 @@
-import { assert, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
+import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import * as Ref from "effect/Ref";
-import * as Result from "effect/Result";
+import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
-import { HttpClient, HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
 
-import { describeReadinessCause, waitForHttpReady } from "../src/httpReadiness.ts";
+import { waitForHttpReady } from "../src/httpReadiness.ts";
 
-const hangingHttpClient = HttpClient.make(() => Effect.never);
+const probeOptions = {
+  baseUrl: new URL("http://127.0.0.1:3773"),
+  path: "/ready",
+  timeout: Duration.seconds(5),
+  interval: Duration.millis(100),
+  probeTimeout: Duration.seconds(1),
+};
 
-it.effect("retries unsuccessful responses until the server is ready", () =>
-  Effect.gen(function* () {
-    const attempts = yield* Ref.make(0);
-    const client = HttpClient.make((request) =>
-      Ref.updateAndGet(attempts, (attempt) => attempt + 1).pipe(
-        Effect.map((attempt) =>
-          HttpClientResponse.fromWeb(
-            request,
-            new Response(null, { status: attempt < 3 ? 503 : 204 }),
-          ),
-        ),
-      ),
-    );
+// The server is the external seam: each probe gets the next scripted answer, and the last repeats.
+const layerServer = (answers: ReadonlyArray<number | "hang">) =>
+  Layer.sync(HttpClient.HttpClient, () => {
+    let probes = 0;
 
-    const fiber = yield* waitForHttpReady({
-      baseUrl: "http://readiness.test",
-      timeoutMs: 1_000,
-      intervalMs: 100,
-      probeTimeoutMs: 50,
-      makeError: ({ cause }) => new Error("Readiness probe failed", { cause }),
-    }).pipe(
-      Effect.provideService(HttpClient.HttpClient, client),
-      Effect.forkChild({ startImmediately: true }),
-    );
+    return HttpClient.make((request) => {
+      const answer = answers[Math.min(probes, answers.length - 1)];
+      probes += 1;
 
-    yield* TestClock.adjust("200 millis");
-    yield* Fiber.join(fiber);
+      return answer === "hang" || answer === undefined
+        ? Effect.never
+        : Effect.succeed(
+            HttpClientResponse.fromWeb(request, new Response(null, { status: answer })),
+          );
+    });
+  });
 
-    assert.equal(yield* Ref.get(attempts), 3);
-  }),
-);
+describe("waitForHttpReady", () => {
+  it.effect("resolves once the endpoint answers with a 2xx status", () =>
+    Effect.gen(function* () {
+      const fiber = yield* waitForHttpReady(probeOptions).pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.millis(200));
+      yield* Fiber.join(fiber);
+    }).pipe(Effect.provide(layerServer([503, 503, 200]))),
+  );
 
-it.effect("bounds each HTTP readiness probe so retries cannot hang on one request", () =>
-  Effect.gen(function* () {
-    const fiber = yield* Effect.forkChild(
-      Effect.result(
-        waitForHttpReady({
-          baseUrl: "http://127.0.0.1:41773/",
-          timeoutMs: 1_000,
-          intervalMs: 100,
-          probeTimeoutMs: 250,
-          makeError: ({ cause }) => new Error("Readiness probe failed", { cause }),
-        }),
-      ),
-      { startImmediately: true },
-    );
-    yield* Effect.yieldNow;
-    yield* TestClock.adjust(Duration.millis(1_000));
+  it.effect("fails with the last bad status once the timeout passes", () =>
+    Effect.gen(function* () {
+      const fiber = yield* waitForHttpReady(probeOptions).pipe(Effect.flip, Effect.forkChild);
+      yield* TestClock.adjust(probeOptions.timeout);
+      const error = yield* Fiber.join(fiber);
+      assert.strictEqual(error.requestUrl, "http://127.0.0.1:3773/ready");
+      assert.isTrue(HttpClientError.isHttpClientError(error.cause));
+      assert.strictEqual(
+        HttpClientError.isHttpClientError(error.cause) ? error.cause.reason._tag : undefined,
+        "StatusCodeError",
+      );
+    }).pipe(Effect.provide(layerServer([503]))),
+  );
 
-    const result = yield* Fiber.join(fiber);
-
-    assert.isTrue(Result.isFailure(result));
-    if (Result.isFailure(result)) {
-      assert.equal(result.failure.message, "Readiness probe failed");
-      const cause = result.failure.cause as { readonly kind?: string; readonly timeoutMs?: number };
-      assert.equal(cause.kind, "overall-timeout");
-      assert.equal(cause.timeoutMs, 1_000);
-    }
-  }).pipe(Effect.provideService(HttpClient.HttpClient, hangingHttpClient)),
-);
-
-it("preserves primitive readiness reason values in diagnostic output", () => {
-  assert.deepEqual(
-    describeReadinessCause({
-      _tag: "HttpClientError",
-      message: "Backend readiness probe failed.",
-      reason: "authentication failed",
-      cause: "upstream closed",
-    }),
-    {
-      _tag: "HttpClientError",
-      message: "Backend readiness probe failed.",
-      reason: "authentication failed",
-      cause: "upstream closed",
-    },
+  it.effect("treats a probe that never answers as a failure and reports its timeout", () =>
+    Effect.gen(function* () {
+      const fiber = yield* waitForHttpReady(probeOptions).pipe(Effect.flip, Effect.forkChild);
+      yield* TestClock.adjust(probeOptions.timeout);
+      const error = yield* Fiber.join(fiber);
+      assert.isTrue(Cause.isTimeoutError(error.cause));
+    }).pipe(Effect.provide(layerServer(["hang"]))),
   );
 });
