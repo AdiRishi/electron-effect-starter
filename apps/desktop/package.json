@@ -1,0 +1,32 @@
+{
+  "name": "@app/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron shell that supervises the local Effect server.",
+  "type": "module",
+  "main": "dist-electron/boot.cjs",
+  "scripts": {
+    "dev": "tsdown --watch",
+    "build": "tsdown",
+    "start": "node scripts/start-electron.mjs",
+    "smoke-test": "node scripts/smoke-test.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@app/contracts": "workspace:*",
+    "@app/shared": "workspace:*",
+    "@effect/platform-node": "catalog:",
+    "effect": "catalog:",
+    "electron-updater": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "electron": "catalog:",
+    "electron-builder": "catalog:",
+    "tsdown": "catalog:",
+    "vitest": "catalog:"
+  },
+  "productName": "Electron Effect Starter"
+}

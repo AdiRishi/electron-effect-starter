@@ -8,7 +8,10 @@ packages:
 minimumReleaseAge: 1440
 
 allowBuilds:
-  electron: true
+  # Electron 44+ has no install script; it downloads its binary on first use.
+  electron: false
+  # Squirrel.Windows installer support; the Windows target is NSIS.
+  electron-winstaller: false
 
 catalog:
   "@base-ui/react": 1.9.0

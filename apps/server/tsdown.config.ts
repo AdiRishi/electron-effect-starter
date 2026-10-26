@@ -11,6 +11,8 @@ export default defineConfig({
   entry: { bin: "src/bin.ts" },
   format: "esm",
   platform: "node",
+  // The packaged desktop app runs the server on Electron's bundled Node 24.
+  target: "node24",
   outDir: "dist",
   fixedExtension: true,
   dts: false,
