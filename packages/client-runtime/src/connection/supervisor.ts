@@ -1,12 +1,14 @@
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
 import * as Queue from "effect/Queue";
 import * as Random from "effect/Random";
 import * as Ref from "effect/Ref";
@@ -29,8 +31,8 @@ const RETRY_MAX_DELAY_MS = 300_000;
 // A cold server with a large database can take a while to answer, and that is
 // not a reason to drop a working connection.
 const ESTABLISHMENT_TIMEOUT = "15 seconds";
-const PROBE_TIMEOUT = "15 seconds";
-const QUICK_PROBE_TIMEOUT = "3 seconds";
+const PROBE_TIMEOUT = Duration.seconds(15);
+const QUICK_PROBE_TIMEOUT = Duration.seconds(3);
 // A connection that stayed up this long resets the retry ladder when it drops.
 const BACKOFF_RESET_AFTER_MS = 30_000;
 
@@ -39,21 +41,60 @@ interface SupervisorIntent {
   readonly network: NetworkStatus;
 }
 
-type SupervisorSignal =
-  | { readonly _tag: "ConnectRequested" }
-  | { readonly _tag: "DisconnectRequested" }
-  | { readonly _tag: "RetryRequested" }
-  | { readonly _tag: "NetworkChanged"; readonly network: NetworkStatus }
-  | { readonly _tag: "Wakeup"; readonly reason: ConnectionWakeups.ConnectionWakeup };
+type SupervisorSignal = Data.TaggedEnum<{
+  ConnectRequested: {};
+  DisconnectRequested: {};
+  RetryRequested: {};
+  NetworkChanged: { readonly network: NetworkStatus };
+  Wakeup: { readonly reason: ConnectionWakeups.ConnectionWakeup };
+}>;
+const SupervisorSignal = Data.taggedEnum<SupervisorSignal>();
 
-type AttemptOutcome =
-  | { readonly _tag: "Interrupted"; readonly established: boolean; readonly stable: boolean }
-  | {
-      readonly _tag: "Failure";
-      readonly established: boolean;
-      readonly stable: boolean;
-      readonly error: ConnectionAttemptError;
-    };
+type AttemptOutcome = Data.TaggedEnum<{
+  Interrupted: { readonly established: boolean; readonly stable: boolean };
+  Failure: {
+    readonly established: boolean;
+    readonly stable: boolean;
+    readonly error: ConnectionAttemptError;
+  };
+}>;
+const AttemptOutcome = Data.taggedEnum<AttemptOutcome>();
+
+/** How the race to set up a session ended. */
+type Establishment = Data.TaggedEnum<{
+  Completed: { readonly exit: Exit.Exit<RpcSession.RpcSession, ConnectionAttemptError> };
+  Abandoned: {};
+  TimedOut: {};
+}>;
+const Establishment = Data.taggedEnum<Establishment>();
+
+/** What ended one wait on a health probe. */
+type ProbeEvent = Data.TaggedEnum<{
+  ProbeCompleted: { readonly exit: Exit.Exit<void, ConnectionAttemptError> };
+  Signal: { readonly signal: SupervisorSignal };
+  TimedOut: {};
+}>;
+const ProbeEvent = Data.taggedEnum<ProbeEvent>();
+
+// Only an explicit retry or going offline abandons an attempt in flight; other signals wait.
+const abandonsEstablishment = SupervisorSignal.$match({
+  ConnectRequested: () => false,
+  DisconnectRequested: () => true,
+  RetryRequested: () => true,
+  NetworkChanged: ({ network }) => network === "offline",
+  Wakeup: () => false,
+});
+
+// A signal that arrives while connected probes the live session within this timeout, if any.
+const probeTimeoutFor = SupervisorSignal.$match({
+  ConnectRequested: () => undefined,
+  DisconnectRequested: () => undefined,
+  RetryRequested: () => QUICK_PROBE_TIMEOUT,
+  NetworkChanged: ({ network }) => (network === "offline" ? QUICK_PROBE_TIMEOUT : undefined),
+  Wakeup: ({ reason }) => (reason === "application-active" ? PROBE_TIMEOUT : QUICK_PROBE_TIMEOUT),
+});
+
+const isWakeup = SupervisorSignal.$is("Wakeup");
 
 /** Full jitter on an exponential ceiling, so many clients do not reconnect in lockstep. */
 export function retryDelayMs(failureCount: number, random: number): number {
@@ -94,11 +135,10 @@ function failureFromExit<A>(
   stable: boolean,
 ): AttemptOutcome {
   if (Exit.isSuccess(exit) || Cause.hasInterruptsOnly(exit.cause)) {
-    return { _tag: "Interrupted", established, stable };
+    return AttemptOutcome.Interrupted({ established, stable });
   }
   const typedFailure = exit.cause.reasons.find(Cause.isFailReason);
-  return {
-    _tag: "Failure",
+  return AttemptOutcome.Failure({
     established,
     stable,
     error:
@@ -107,7 +147,7 @@ function failureFromExit<A>(
         reason: "transport",
         detail: `${label} connection failed unexpectedly.`,
       }),
-  };
+  });
 }
 
 /**
@@ -163,28 +203,9 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
     return opened;
   }).pipe(Effect.withSpan("ConnectionSupervisor.establish"));
 
-  // Only an explicit retry or going offline abandons an attempt in flight; other signals wait.
-  const waitForEstablishmentInterrupt = Effect.gen(function* () {
-    for (;;) {
-      const next = yield* Queue.take(signals);
-      if (next._tag === "DisconnectRequested" || next._tag === "RetryRequested") return;
-      if (next._tag === "NetworkChanged" && next.network === "offline") return;
-    }
-  });
-
-  const probeTimeoutFor = (next: SupervisorSignal): Duration.Input | undefined => {
-    switch (next._tag) {
-      case "RetryRequested":
-        return QUICK_PROBE_TIMEOUT;
-      case "NetworkChanged":
-        return next.network === "offline" ? QUICK_PROBE_TIMEOUT : undefined;
-      case "Wakeup":
-        return next.reason === "application-active" ? PROBE_TIMEOUT : QUICK_PROBE_TIMEOUT;
-      case "ConnectRequested":
-      case "DisconnectRequested":
-        return undefined;
-    }
-  };
+  const waitForEstablishmentAbandoned = Queue.take(signals).pipe(
+    Effect.repeat({ until: abandonsEstablishment }),
+  );
 
   // Returning to the app, an explicit retry, and the network reporting offline all probe the live
   // session instead of replacing it, so a healthy socket is not torn down. The offline report is
@@ -194,12 +215,14 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
     // the backoff of a later, unrelated failure.
     const takeSignal = Queue.take(signals).pipe(
       Effect.tap((next) =>
-        next._tag === "RetryRequested" ? Ref.set(resetRetryState, false) : Effect.void,
+        SupervisorSignal.$is("RetryRequested")(next)
+          ? Ref.set(resetRetryState, false)
+          : Effect.void,
       ),
     );
     for (;;) {
       const next = yield* takeSignal;
-      if (next._tag === "DisconnectRequested") return;
+      if (SupervisorSignal.$is("DisconnectRequested")(next)) return;
       const probeTimeout = probeTimeoutFor(next);
       if (probeTimeout === undefined) continue;
       yield* Ref.set(probeUnanswered, true);
@@ -208,27 +231,25 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
       for (;;) {
         const remaining = deadline - (yield* Clock.monotonicTimeNanos);
         const event = yield* Effect.raceAllFirst([
-          Fiber.await(probe).pipe(
-            Effect.map((exit) => ({ _tag: "ProbeCompleted" as const, exit })),
-          ),
-          takeSignal.pipe(Effect.map((signal) => ({ _tag: "Signal" as const, signal }))),
+          Fiber.await(probe).pipe(Effect.map((exit) => ProbeEvent.ProbeCompleted({ exit }))),
+          takeSignal.pipe(Effect.map((signal) => ProbeEvent.Signal({ signal }))),
           Effect.sleep(Duration.nanos(remaining > 0n ? remaining : 0n)).pipe(
-            Effect.as({ _tag: "TimedOut" as const }),
+            Effect.as(ProbeEvent.TimedOut()),
           ),
         ]);
-        if (event._tag === "TimedOut") {
+        if (ProbeEvent.$is("TimedOut")(event)) {
           yield* Fiber.interrupt(probe);
           return yield* new ConnectionTransientError({
             reason: "timeout",
             detail: `${target.label} did not respond to a connection health check.`,
           });
         }
-        if (event._tag === "ProbeCompleted") {
+        if (ProbeEvent.$is("ProbeCompleted")(event)) {
           if (Exit.isSuccess(event.exit)) yield* Ref.set(probeUnanswered, false);
           yield* event.exit;
           break;
         }
-        if (event.signal._tag === "DisconnectRequested") {
+        if (SupervisorSignal.$is("DisconnectRequested")(event.signal)) {
           yield* Fiber.interrupt(probe);
           return;
         }
@@ -252,25 +273,24 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
     );
     const establishment = yield* Effect.raceAllFirst([
       exitUnlessInterrupted(establish).pipe(
-        Effect.map((exit) => ({ _tag: "Completed" as const, exit })),
+        Effect.map((exit) => Establishment.Completed({ exit })),
       ),
-      waitForEstablishmentInterrupt.pipe(Effect.as({ _tag: "Interrupted" as const })),
-      Effect.sleep(ESTABLISHMENT_TIMEOUT).pipe(Effect.as({ _tag: "TimedOut" as const })),
+      waitForEstablishmentAbandoned.pipe(Effect.as(Establishment.Abandoned())),
+      Effect.sleep(ESTABLISHMENT_TIMEOUT).pipe(Effect.as(Establishment.TimedOut())),
     ]);
 
-    if (establishment._tag === "Interrupted") {
-      return { _tag: "Interrupted", established: false, stable: false } satisfies AttemptOutcome;
+    if (Establishment.$is("Abandoned")(establishment)) {
+      return AttemptOutcome.Interrupted({ established: false, stable: false });
     }
-    if (establishment._tag === "TimedOut") {
-      return {
-        _tag: "Failure",
+    if (Establishment.$is("TimedOut")(establishment)) {
+      return AttemptOutcome.Failure({
         established: false,
         stable: false,
         error: new ConnectionTransientError({
           reason: "timeout",
           detail: `${target.label} did not respond during connection setup.`,
         }),
-      } satisfies AttemptOutcome;
+      });
     }
     if (Exit.isFailure(establishment.exit)) {
       return failureFromExit(target.label, establishment.exit, false, false);
@@ -279,7 +299,7 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
     const live = establishment.exit.value;
     const currentIntent = yield* Ref.get(intent);
     if (!currentIntent.desired) {
-      return { _tag: "Interrupted", established: false, stable: false } satisfies AttemptOutcome;
+      return AttemptOutcome.Interrupted({ established: false, stable: false });
     }
 
     const connectedAt = yield* Clock.currentTimeMillis;
@@ -291,7 +311,7 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
     );
     const stable = (yield* Clock.currentTimeMillis) - connectedAt >= BACKOFF_RESET_AFTER_MS;
     return Exit.isSuccess(connectedExit)
-      ? ({ _tag: "Interrupted", established: true, stable } satisfies AttemptOutcome)
+      ? AttemptOutcome.Interrupted({ established: true, stable })
       : failureFromExit(target.label, connectedExit, true, stable);
   }, Effect.ensuring(clearSession));
 
@@ -299,11 +319,11 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
     // @effect-diagnostics-next-line raceFirstWithSleepToTimeout:off -- The sleep is the retry delay (false), not a timeout around the signal loop.
     return yield* Effect.raceFirst(
       Effect.sleep(delayMs).pipe(Effect.as(false)),
-      Queue.take(signals).pipe(Effect.map((next) => next._tag === "Wakeup")),
+      Queue.take(signals).pipe(Effect.map(isWakeup)),
     );
   });
 
-  const waitForSignal = Queue.take(signals).pipe(Effect.map((next) => next._tag === "Wakeup"));
+  const waitForSignal = Queue.take(signals).pipe(Effect.map(isWakeup));
 
   const run = Effect.fnUntraced(function* () {
     let failureCount = 0;
@@ -348,10 +368,10 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
         latestFailure = null;
         if (outcome.stable) failureCount = 0;
       }
-      if (outcome._tag === "Interrupted") continue;
+      if (AttemptOutcome.$is("Interrupted")(outcome)) continue;
 
       if (!outcome.established) latestFailure = outcome.error;
-      if (outcome.error._tag === "ConnectionBlockedError") {
+      if (Predicate.isTagged(outcome.error, "ConnectionBlockedError")) {
         yield* setState(
           stateFor("blocked", yield* Ref.get(intent), {
             attempt,
@@ -388,14 +408,14 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
         current.network === network ? [false, current] : ([true, { ...current, network }] as const),
       ).pipe(
         Effect.flatMap((changed) =>
-          changed ? signal({ _tag: "NetworkChanged", network }) : Effect.void,
+          changed ? signal(SupervisorSignal.NetworkChanged({ network })) : Effect.void,
         ),
       ),
     ),
     Effect.forkScoped,
   );
   yield* wakeups.changes.pipe(
-    Stream.runForEach((reason) => signal({ _tag: "Wakeup", reason })),
+    Stream.runForEach((reason) => signal(SupervisorSignal.Wakeup({ reason }))),
     Effect.forkScoped,
   );
   yield* run().pipe(Effect.forkScoped);
@@ -405,15 +425,15 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
     state,
     session,
     connect: Ref.update(intent, (current) => ({ ...current, desired: true })).pipe(
-      Effect.andThen(signal({ _tag: "ConnectRequested" })),
+      Effect.andThen(signal(SupervisorSignal.ConnectRequested())),
       Effect.withSpan("ConnectionSupervisor.connect"),
     ),
     disconnect: Ref.update(intent, (current) => ({ ...current, desired: false })).pipe(
-      Effect.andThen(signal({ _tag: "DisconnectRequested" })),
+      Effect.andThen(signal(SupervisorSignal.DisconnectRequested())),
       Effect.withSpan("ConnectionSupervisor.disconnect"),
     ),
     retryNow: Ref.set(resetRetryState, true).pipe(
-      Effect.andThen(signal({ _tag: "RetryRequested" })),
+      Effect.andThen(signal(SupervisorSignal.RetryRequested())),
       Effect.withSpan("ConnectionSupervisor.retryNow"),
     ),
   });
