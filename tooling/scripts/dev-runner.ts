@@ -96,7 +96,7 @@ export class DevRunnerProcessError extends Schema.TaggedError<DevRunnerProcessEr
   {
     operation: Schema.Literals(["spawn", "wait-for-exit"]),
     mode: DevMode,
-    executable: Schema.Literal("pnpm"),
+    executable: Schema.Literal("turbo"),
     argumentCount: Schema.Number,
     shell: Schema.Boolean,
     cause: Schema.Defect(),
@@ -111,7 +111,7 @@ export class DevRunnerProcessExitError extends Schema.TaggedError<DevRunnerProce
   "DevRunnerProcessExitError",
   {
     mode: DevMode,
-    executable: Schema.Literal("pnpm"),
+    executable: Schema.Literal("turbo"),
     argumentCount: Schema.Number,
     shell: Schema.Boolean,
     exitCode: Schema.Number,
@@ -424,12 +424,16 @@ export const runDevRunnerWithInput = Effect.fn("dev-runner.runDevRunnerWithInput
   }
 
   const filters = PACKAGES_BY_MODE[input.mode].map((name) => `--filter=${name}`);
-  const args = ["exec", "turbo", "run", "dev", ...filters, "--ui=stream", ...input.runArgs];
-  const spawnCommand = yield* resolveSpawnCommand("pnpm", args, { env });
+  const args = ["run", "dev", ...filters, "--ui=stream", ...input.runArgs];
+  // turbo's own bin, not `pnpm exec turbo`: a corepack pnpm shim exits on SIGTERM without
+  // passing it on, and pnpm starts turbo in a new process group, so stopping the runner
+  // would orphan turbo and every dev server under it.
+  const turbo = path.join(repoRoot, "node_modules", ".bin", "turbo");
+  const spawnCommand = yield* resolveSpawnCommand(turbo, args, { env });
 
   const processContext = {
     mode: input.mode,
-    executable: "pnpm" as const,
+    executable: "turbo" as const,
     argumentCount: args.length,
     shell: spawnCommand.shell,
   } as const;

@@ -260,7 +260,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         _tag: "NotFound",
         module: "ChildProcess",
         method: "spawn",
-        description: "pnpm was not found",
+        description: "turbo was not found",
       });
 
       const spawnerLayer = Layer.succeed(
@@ -279,8 +279,8 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
 
         assert.equal(error.operation, "spawn");
         assert.equal(error.mode, "dev:server");
-        assert.equal(error.executable, "pnpm");
-        assert.equal(error.argumentCount, 8);
+        assert.equal(error.executable, "turbo");
+        assert.equal(error.argumentCount, 6);
         assert.equal(error.shell, false);
         assert.equal(error.cause, cause);
         assert.ok(!error.message.includes(cause.message));
@@ -328,8 +328,8 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         assert.instanceOf(error, DevRunnerProcessExitError);
 
         assert.equal(error.mode, "dev:server");
-        assert.equal(error.executable, "pnpm");
-        assert.equal(error.argumentCount, 8);
+        assert.equal(error.executable, "turbo");
+        assert.equal(error.argumentCount, 6);
         assert.equal(error.shell, false);
         assert.equal(error.exitCode, 17);
         assert.ok(!("cause" in error));
