@@ -514,6 +514,9 @@ importers:
       '@app/vitest-config':
         specifier: workspace:*
         version: link:../../tooling/vitest
+      '@effect/platform-node':
+        specifier: 'catalog:'
+        version: 4.0.6(effect@4.0.6)(redis@6.3.0)
       '@effect/vitest':
         specifier: 'catalog:'
         version: 4.0.6(effect@4.0.6)(vitest@5.0.5)
