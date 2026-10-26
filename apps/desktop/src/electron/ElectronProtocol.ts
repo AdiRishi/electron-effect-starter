@@ -103,11 +103,8 @@ class ElectronProtocolFetchError extends Schema.TaggedError<ElectronProtocolFetc
   { cause: Schema.Defect() },
 ) {}
 
-const netFetch = (url: string, init: RequestInit) =>
-  Effect.tryPromise({
-    try: () => Electron.net.fetch(url, init),
-    catch: (cause) => new ElectronProtocolFetchError({ cause }),
-  });
+/** Electron's `net.fetch` in the app; tests pass their own. */
+export type ProtocolFetch = (url: string, init: RequestInit) => Promise<Response>;
 
 const HOP_BY_HOP_REQUEST_HEADERS = new Set([
   "host",
@@ -123,6 +120,7 @@ const HOP_BY_HOP_REQUEST_HEADERS = new Set([
 const proxyRequest = Effect.fn("ElectronProtocol.proxyRequest")(function* (
   request: Request,
   targetOrigin: URL,
+  fetch: ProtocolFetch,
 ) {
   const requestUrl = new URL(request.url);
 
@@ -138,6 +136,12 @@ const proxyRequest = Effect.fn("ElectronProtocol.proxyRequest")(function* (
 
   for (const name of removable) headers.delete(name);
   const isRead = request.method === "GET" || request.method === "HEAD";
+
+  const netFetch = (url: string, init: RequestInit) =>
+    Effect.tryPromise({
+      try: () => fetch(url, init),
+      catch: (cause) => new ElectronProtocolFetchError({ cause }),
+    });
 
   const init: RequestInit & { duplex?: "half" } = {
     method: request.method,
@@ -205,6 +209,15 @@ const serveDesktopAsset = Effect.fn("ElectronProtocol.serveAsset")(function* (
   );
 });
 
+/** Answers one request to the desktop scheme, from the bundled assets or proxied to the target. */
+export const makeDesktopRequestHandler =
+  (input: DesktopProtocolRegistrationInput, fetch: ProtocolFetch) => (request: Request) =>
+    "assetDirectory" in input
+      ? serveDesktopAsset(request, input.assetDirectory)
+      : proxyRequest(request, input.targetOrigin, fetch).pipe(
+          Effect.catchTags({ ElectronProtocolFetchError: (error) => Effect.die(error.cause) }),
+        );
+
 const make = Effect.gen(function* () {
   const registered = yield* Ref.make(false);
   const context = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
@@ -214,20 +227,15 @@ const make = Effect.gen(function* () {
     input: DesktopProtocolRegistrationInput,
   ) {
     if (yield* Ref.get(registered)) return;
+
+    const handleRequest = makeDesktopRequestHandler(input, (url, init) =>
+      Electron.net.fetch(url, init),
+    );
+
     yield* Effect.acquireRelease(
       Effect.try({
         try: () =>
-          Electron.protocol.handle(input.scheme, (request) =>
-            runPromise(
-              "assetDirectory" in input
-                ? serveDesktopAsset(request, input.assetDirectory)
-                : proxyRequest(request, input.targetOrigin).pipe(
-                    Effect.catchTags({
-                      ElectronProtocolFetchError: (error) => Effect.die(error.cause),
-                    }),
-                  ),
-            ),
-          ),
+          Electron.protocol.handle(input.scheme, (request) => runPromise(handleRequest(request))),
         catch: (cause) => new ElectronProtocolRegistrationError({ scheme: input.scheme, cause }),
       }).pipe(Effect.andThen(Ref.set(registered, true))),
       () =>
