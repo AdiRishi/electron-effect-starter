@@ -27,6 +27,7 @@
     "@app/shared": "workspace:*",
     "@app/tsconfig": "workspace:*",
     "@app/vitest-config": "workspace:*",
+    "@effect/platform-node": "catalog:",
     "@effect/vitest": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "@tanstack/router-plugin": "catalog:",

@@ -16,7 +16,7 @@ import { Atom } from "effect/reactivity";
 import * as Socket from "effect/socket/Socket";
 
 import { desktopBridge } from "../env";
-import { serverTarget } from "../server/current";
+import { currentServerTarget } from "../server/current";
 
 const currentNetworkStatus = (): NetworkStatus => (navigator.onLine ? "online" : "offline");
 
@@ -72,6 +72,8 @@ const bearerToken = bridge
         }),
     }).pipe(Effect.asSome)
   : Effect.succeedNone;
+
+const serverTarget = currentServerTarget();
 
 const layerTarget = ConnectionTarget.layerTicket({
   label: "The local server",
