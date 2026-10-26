@@ -9,6 +9,7 @@ import * as Layer from "effect/Layer";
 import * as Electron from "electron";
 
 import * as DesktopApp from "./app/DesktopApp.ts";
+import * as DesktopAppIdentity from "./app/DesktopAppIdentity.ts";
 import * as DesktopEnvironment from "./app/DesktopEnvironment.ts";
 import * as DesktopLifecycle from "./app/DesktopLifecycle.ts";
 import * as DesktopLogger from "./app/DesktopLogger.ts";
@@ -70,6 +71,7 @@ const layerEnvironment = Layer.unwrap(
 
 // The userData claim is built before anything that writes into it.
 const layerFoundation = Layer.mergeAll(
+  DesktopAppIdentity.layer,
   DesktopState.layer,
   DesktopShutdown.layer,
   DesktopAppSettings.layer,

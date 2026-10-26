@@ -17,6 +17,7 @@ import { installDesktopIpcHandlers } from "../ipc/DesktopIpcHandlers.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopApplicationMenu from "../window/DesktopApplicationMenu.ts";
+import * as DesktopAppIdentity from "./DesktopAppIdentity.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopLifecycle from "./DesktopLifecycle.ts";
 import * as DesktopLogger from "./DesktopLogger.ts";
@@ -39,6 +40,15 @@ export class DesktopBackendPortUnavailableError extends Schema.TaggedError<Deskt
 }
 
 const { logInfo, logError } = DesktopLogger.forComponent("desktop-app");
+
+// The renderer may write to the clipboard and go fullscreen; every other gated capability is denied.
+const ALLOWED_RENDERER_PERMISSIONS: ReadonlySet<string> = new Set([
+  "clipboard-sanitized-write",
+  "fullscreen",
+]);
+
+export const isRendererPermissionAllowed = (permission: string): boolean =>
+  ALLOWED_RENDERER_PERMISSIONS.has(permission);
 
 const resolveBackendPort = Effect.fn("DesktopApp.resolveBackendPort")(function* (
   configuredPort: Option.Option<number>,
@@ -114,16 +124,19 @@ const startup = Effect.gen(function* () {
   const lifecycle = yield* DesktopLifecycle.DesktopLifecycle;
   const menu = yield* DesktopApplicationMenu.DesktopApplicationMenu;
   const updates = yield* DesktopUpdates.DesktopUpdates;
+  const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
 
+  yield* identity.configure;
   yield* lifecycle.register;
   yield* electronApp.whenReady.pipe(
     Effect.catchCause((cause) => fatalStartupCause("whenReady", cause)),
   );
-  // Nothing the renderer loads needs camera, notifications or any other gated capability.
-  Electron.session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) =>
-    callback(false),
+  Electron.session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) =>
+    callback(isRendererPermissionAllowed(permission)),
   );
-  Electron.session.defaultSession.setPermissionCheckHandler(() => false);
+  Electron.session.defaultSession.setPermissionCheckHandler((_contents, permission) =>
+    isRendererPermissionAllowed(permission),
+  );
   yield* menu.configure;
   yield* updates.configure;
   yield* bootstrap.pipe(Effect.catchCause((cause) => fatalStartupCause("bootstrap", cause)));
