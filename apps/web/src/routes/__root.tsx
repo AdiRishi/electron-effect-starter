@@ -5,10 +5,12 @@ import { AsyncResult } from "effect/reactivity";
 import { ConnectionStatus } from "~/components/ConnectionStatus";
 import { RootRouteErrorView, RootRouteNotFoundView } from "~/components/RootRouteViews";
 import { connectionStateAtom, retryConnectionAtom } from "~/connection/atoms";
+import { useTheme } from "~/hooks/useTheme";
 
 function RootLayout() {
   const connection = useAtomValue(connectionStateAtom);
   const retry = useAtomSet(retryConnectionAtom);
+  useTheme();
 
   return (
     <div className="flex h-full flex-col">

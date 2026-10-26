@@ -5,6 +5,8 @@ declare module "vitest/browser" {
   interface BrowserCommands {
     /** Defined in vite.config.ts. Moves Playwright's mouse off the page. */
     resetPointer: () => Promise<void>;
+    /** Defined in vite.config.ts. Changes the page's prefers-color-scheme. */
+    emulateColorScheme: (colorScheme: "light" | "dark") => Promise<void>;
   }
 }
 

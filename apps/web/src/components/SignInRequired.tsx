@@ -3,6 +3,7 @@ import { startTransition, useState, type SubmitEvent } from "react";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
+import { useTheme } from "~/hooks/useTheme";
 import { submitServerAuthCredential } from "~/server/auth";
 
 export function SignInRequired({
@@ -15,6 +16,7 @@ export function SignInRequired({
   const [credential, setCredential] = useState("");
   const [errorMessage, setErrorMessage] = useState(initialErrorMessage ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  useTheme();
 
   const submitCredential = async (nextCredential: string) => {
     setIsSubmitting(true);

@@ -97,6 +97,9 @@ export default mergeConfig(
                 resetPointer: async ({ page }) => {
                   await page.mouse.move(-1, -1);
                 },
+                emulateColorScheme: async ({ page }, colorScheme: "light" | "dark") => {
+                  await page.emulateMedia({ colorScheme });
+                },
               },
             },
           },
