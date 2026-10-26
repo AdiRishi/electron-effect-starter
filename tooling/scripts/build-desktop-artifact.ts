@@ -84,6 +84,7 @@ const program = Effect.gen(function* () {
   for (const name of SIGNING_VARIABLES) {
     if (process.env[name] === "") delete process.env[name];
   }
+
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const release = yield* ReleaseConfig;
@@ -95,16 +96,19 @@ const program = Effect.gen(function* () {
       return yield* new MissingBuildOutputError({ output });
     }
   }
+
   // The catalog pins Electron; read the installed version rather than the "catalog:" specifier.
   const { version: electronVersion } = yield* fs
     .readFileString(path.join(repoRoot, "apps/desktop/node_modules/electron/package.json"))
     .pipe(Effect.flatMap(decodeElectronPackage));
 
   const stageDir = yield* fs.makeTempDirectoryScoped({ prefix: `${ARTIFACT_NAME}-stage-` });
+
   // The shell and the server are self-contained bundles, so the staged app needs no node_modules.
   for (const directory of ["apps/desktop/dist-electron", "apps/server/dist"]) {
     yield* fs.copy(path.join(repoRoot, directory), path.join(stageDir, directory));
   }
+
   const stagedPackage = yield* encodeStagedPackage({
     name: ARTIFACT_NAME,
     productName: desktopPackage.productName,
@@ -113,6 +117,7 @@ const program = Effect.gen(function* () {
     author: desktopPackage.productName,
     main: "apps/desktop/dist-electron/boot.cjs",
   });
+
   yield* fs.writeFileString(path.join(stageDir, "package.json"), `${stagedPackage}\n`);
 
   const signed = [
@@ -121,6 +126,7 @@ const program = Effect.gen(function* () {
     release.appleApiKeyId,
     release.appleApiIssuer,
   ].every(Option.isSome);
+
   if (!signed) process.env.CSC_IDENTITY_AUTO_DISCOVERY = "false";
 
   const config: Configuration = {

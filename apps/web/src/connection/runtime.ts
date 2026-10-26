@@ -29,6 +29,7 @@ const layerConnectivity = Connectivity.layer({
         const offline = () => Queue.offerUnsafe(queue, "offline");
         window.addEventListener("online", online);
         window.addEventListener("offline", offline);
+
         return { online, offline };
       }),
       ({ online, offline }) =>
@@ -49,7 +50,9 @@ const layerWakeups = ConnectionWakeups.layer({
             Queue.offerUnsafe(queue, "application-active");
           }
         };
+
         document.addEventListener("visibilitychange", listener);
+
         return listener;
       }),
       (listener) => Effect.sync(() => document.removeEventListener("visibilitychange", listener)),
@@ -58,6 +61,7 @@ const layerWakeups = ConnectionWakeups.layer({
 });
 
 const bridge = desktopBridge;
+
 const bearerToken = bridge
   ? Effect.tryPromise({
       try: () => bridge.getBearerToken(),

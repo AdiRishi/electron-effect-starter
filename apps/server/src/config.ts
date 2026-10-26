@@ -11,6 +11,7 @@ export const DEFAULT_HOST = "127.0.0.1";
 export const DATA_DIR_NAME = ".electron-effect-starter";
 
 export const RuntimeMode = Schema.Literals(["web", "desktop"]);
+
 export type RuntimeMode = typeof RuntimeMode.Type;
 
 export interface ServerDerivedPaths {
@@ -40,6 +41,7 @@ export const deriveServerPaths = Effect.fn("ServerConfig.deriveServerPaths")(fun
   const { join } = yield* Path.Path;
   // Dev servers keep their own state so a dev build never migrates the packaged app's database.
   const stateDir = join(baseDir, devUrl === undefined ? "userdata" : "dev");
+
   return {
     stateDir,
     dbPath: join(stateDir, "state.sqlite"),
@@ -59,15 +61,18 @@ export const ensureServerDirectories = Effect.fn("ServerConfig.ensureServerDirec
 export const resolveStaticDir = Effect.fn("ServerConfig.resolveStaticDir")(function* () {
   const { join, resolve } = yield* Path.Path;
   const fs = yield* FileSystem.FileSystem;
+
   const candidates = [
     resolve(join(import.meta.dirname, "client")),
     resolve(join(import.meta.dirname, "../../web/dist")),
   ];
+
   for (const candidate of candidates) {
     if (yield* fs.exists(join(candidate, "index.html")).pipe(Effect.orElseSucceed(() => false))) {
       return candidate;
     }
   }
+
   return undefined;
 });
 
@@ -79,12 +84,15 @@ export const layerTest = (options?: {
     ServerConfig,
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
+
       // macOS temp dirs live under the /var -> /private/var symlink; keep generated paths real.
       const baseDir = yield* fs.realPath(
         yield* fs.makeTempDirectoryScoped({ prefix: "app-server-test-" }),
       );
+
       const paths = yield* deriveServerPaths(baseDir, undefined);
       yield* ensureServerDirectories(paths);
+
       return ServerConfig.of({
         ...paths,
         logLevel: "Error",

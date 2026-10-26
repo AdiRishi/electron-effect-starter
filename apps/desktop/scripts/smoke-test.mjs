@@ -13,9 +13,11 @@ const child = NodeChildProcess.spawn(electronPath, ["."], {
 });
 
 let output = "";
+
 child.stdout.on("data", (chunk) => {
   output += chunk.toString();
 });
+
 child.stderr.on("data", (chunk) => {
   output += chunk.toString();
 });
@@ -24,6 +26,7 @@ const timeout = setTimeout(() => child.kill("SIGTERM"), 10_000);
 
 child.on("exit", () => {
   clearTimeout(timeout);
+
   const fatalPatterns = [
     "Cannot find module",
     "MODULE_NOT_FOUND",
@@ -33,14 +36,19 @@ child.on("exit", () => {
     "Uncaught ReferenceError",
     "fatal startup error",
   ];
+
   const failures = fatalPatterns.filter((pattern) => output.includes(pattern));
+
   if (!output.includes("server ready")) failures.push("the server never became ready");
+
   if (failures.length > 0) {
     console.error("\nDesktop smoke test failed:");
+
     for (const failure of failures) console.error(` - ${failure}`);
     console.error(`\nFull output:\n${output}`);
     process.exit(1);
   }
+
   console.log("Desktop smoke test passed.");
   process.exit(0);
 });

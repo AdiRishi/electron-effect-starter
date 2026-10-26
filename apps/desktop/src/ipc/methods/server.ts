@@ -13,6 +13,7 @@ export const getServerBootstrap = DesktopIpc.makeSyncIpcMethod({
   result: Schema.NullOr(DesktopServerBootstrap),
   handler: Effect.fn("desktop.ipc.getServerBootstrap")(function* () {
     const backend = yield* DesktopBackend.DesktopBackend;
+
     return yield* backend.rendererBootstrap;
   }),
 });
@@ -23,6 +24,7 @@ export const getBearerToken = DesktopIpc.makeIpcMethod({
   result: Schema.String,
   handler: Effect.fn("desktop.ipc.getBearerToken")(function* () {
     const auth = yield* DesktopServerAuth.DesktopServerAuth;
+
     return yield* auth.getBearerToken;
   }),
 });

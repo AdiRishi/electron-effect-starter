@@ -5,6 +5,7 @@ import * as HttpApiClient from "effect/http-api/HttpApiClient";
 /** Reads a pairing token from a URL fragment such as `#token=…`. */
 export function readPairingToken(hash: string): string | null {
   const token = new URLSearchParams(hash.replace(/^#/, "")).get(PAIRING_TOKEN_QUERY_PARAM);
+
   return token !== null && token.trim().length > 0 ? token.trim() : null;
 }
 
@@ -17,6 +18,7 @@ export const ensureBrowserSession = Effect.fn("browserAuth.ensureBrowserSession"
 ) {
   const client = yield* HttpApiClient.make(AppHttpApi, { baseUrl: httpBaseUrl });
   const token = readPairingToken(window.location.hash);
+
   if (token !== null) {
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
     // A used or expired token falls through to the session check below.
@@ -24,6 +26,8 @@ export const ensureBrowserSession = Effect.fn("browserAuth.ensureBrowserSession"
       .browserSession({ payload: { credential: token } })
       .pipe(Effect.catchTags({ AuthInvalidError: () => Effect.void }));
   }
+
   const session = yield* client.auth.session({ headers: {} });
+
   return session.authenticated;
 });

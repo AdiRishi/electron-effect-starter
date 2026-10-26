@@ -27,6 +27,7 @@ describe("NoteCreateInput", () => {
       const exit = yield* Effect.exit(
         decodeCreateInput({ title: "x".repeat(NOTE_TITLE_MAX_LENGTH + 1), body: "" }),
       );
+
       assert.isTrue(Exit.isFailure(exit));
     }),
   );

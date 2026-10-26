@@ -132,9 +132,12 @@ const closeRun = (
     onNone: () => Effect.void,
     onSome: (fiber) => Fiber.await(fiber).pipe(Effect.asVoid),
   });
+
   const close = Scope.close(run.scope, Exit.void).pipe(Effect.andThen(waitForFiber));
+
   if (!options?.timeout) return close.pipe(Effect.as(true));
   const timeout = options.timeout;
+
   return Effect.forkIn(close, parentScope).pipe(
     Effect.flatMap((closeFiber) =>
       Fiber.await(closeFiber).pipe(Effect.timeoutOption(timeout), Effect.map(Option.isSome)),
@@ -164,12 +167,14 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
   ChildProcessSpawner.ChildProcessSpawner | HttpClient.HttpClient | Scope.Scope
 > {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+
   const bootstrapJson = yield* encodeBootstrapJson(config.bootstrap).pipe(
     Effect.mapError(
       (cause) =>
         new BackendProcessError({ stage: "encode-bootstrap", entryPath: config.entryPath, cause }),
     ),
   );
+
   const command = ChildProcess.make(config.executablePath, [...config.args], {
     cwd: config.cwd,
     env: config.env,
@@ -183,6 +188,7 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
       fd3: { type: "input", stream: Stream.encodeText(Stream.make(`${bootstrapJson}\n`)) },
     },
   });
+
   const handle = yield* spawner
     .spawn(command)
     .pipe(
@@ -190,6 +196,7 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
         (cause) => new BackendProcessError({ stage: "spawn", entryPath: config.entryPath, cause }),
       ),
     );
+
   yield* callbacks.onStarted(handle.pid);
 
   // Output that cannot be read or written must never take the server down with it.
@@ -199,6 +206,7 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
       Effect.ignore,
       Effect.forkScoped,
     );
+
   const outputFibers = [
     yield* drain("stdout", handle.stdout),
     yield* drain("stderr", handle.stderr),
@@ -218,6 +226,7 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
       HttpReadinessError: (error) => callbacks.onReadinessFailure(error).pipe(Effect.as(false)),
     }),
   );
+
   yield* probeReadiness.pipe(Effect.repeat({ while: (ready) => !ready }), Effect.forkScoped);
 
   const exit = yield* handle.exitCode.pipe(
@@ -233,6 +242,7 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
               cause.cause.message,
             )?.[1]
           : undefined;
+
       return signal !== undefined
         ? Effect.succeed<BackendProcessExit>({ code: Option.none(), reason: `killed by ${signal}` })
         : Effect.fail(
@@ -241,11 +251,13 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
     }),
     Effect.exit,
   );
+
   yield* callbacks.onExitObserved;
   yield* Effect.forEach(outputFibers, Fiber.await, {
     concurrency: "unbounded",
     discard: true,
   }).pipe(Effect.timeout(OUTPUT_DRAIN_TIMEOUT), Effect.ignore);
+
   return yield* exit;
 });
 
@@ -284,6 +296,7 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
       restartScheduled: Option.isSome(current.restartFiber),
     })),
   );
+
   const currentConfig = Ref.get(state).pipe(Effect.map((current) => current.config));
 
   const cancelRestart = Effect.gen(function* () {
@@ -291,6 +304,7 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
       current.restartFiber,
       { ...current, restartFiber: Option.none() },
     ]);
+
     if (Option.isSome(restartFiber)) yield* Fiber.interrupt(restartFiber.value);
   });
 
@@ -299,16 +313,19 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
       if (!latest.desiredRunning || Option.isSome(latest.restartFiber)) {
         return [Option.none<Duration.Duration>(), latest] as const;
       }
+
       return [
         Option.some(calculateRestartDelay(latest.restartAttempt)),
         { ...latest, restartAttempt: latest.restartAttempt + 1 },
       ] as const;
     });
+
     if (Option.isNone(scheduled)) return;
     yield* logError("server exited unexpectedly; restart scheduled", {
       reason,
       delayMs: Duration.toMillis(scheduled.value),
     });
+
     const restartFiber = yield* Effect.forkIn(
       Effect.sleep(scheduled.value).pipe(
         Effect.andThen(
@@ -322,6 +339,7 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
       ),
       parentScope,
     );
+
     yield* Ref.update(state, (latest) =>
       Option.isNone(latest.restartFiber)
         ? { ...latest, restartFiber: Option.some(restartFiber) }
@@ -333,24 +351,31 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
     mutex.withPermits(1)(
       Effect.gen(function* () {
         const current = yield* Ref.get(state);
+
         if (Option.isSome(current.active)) {
           if (!current.desiredRunning) {
             yield* Ref.update(state, (latest) => ({ ...latest, desiredRunning: true }));
           }
+
           return;
         }
+
         if (current.ready) {
           yield* spec.onShutdown?.() ?? Effect.void;
           yield* Ref.update(state, (latest) => ({ ...latest, ready: false }));
         }
+
         const config = yield* spec.configResolve.pipe(
           Effect.tapError((error) => logError("failed to resolve the server configuration", error)),
           Effect.option,
         );
+
         if (Option.isNone(config)) {
           if (current.desiredRunning) yield* scheduleRestart("server configuration failed");
+
           return;
         }
+
         yield* cancelRestart;
         yield* Ref.update(state, (latest) => ({
           ...latest,
@@ -358,15 +383,19 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
           ready: false,
           config: Option.some(config.value),
         }));
+
         const entryExists = yield* fileSystem
           .exists(config.value.entryPath)
           .pipe(Effect.orElseSucceed(() => false));
+
         if (!entryExists) {
           yield* scheduleRestart(`missing server entry at ${config.value.entryPath}`);
+
           return;
         }
 
         const runScope = yield* Scope.make("sequential");
+
         const runId = yield* Ref.modify(state, (latest) => [
           latest.nextRunId,
           {
@@ -391,20 +420,28 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
             Effect.gen(function* () {
               const ended = yield* Ref.modify(state, (latest) => {
                 const run = Option.getOrUndefined(latest.active);
+
                 if (run?.id !== runId) return [Option.none(), latest] as const;
+
                 return [
                   Option.some({ stopRequested: run.stopRequested, wasReady: latest.ready }),
                   { ...latest, active: Option.none<ActiveBackendRun>(), ready: false },
                 ] as const;
               });
+
               if (Option.isNone(ended)) return;
+
               if (ended.value.wasReady) yield* spec.onShutdown?.() ?? Effect.void;
+
               if (!(yield* Ref.get(state)).desiredRunning) return;
+
               if (exitCode === SERVER_EXIT_CODE_STATE_DIR_OWNED && !ended.value.stopRequested) {
                 yield* Ref.update(state, (latest) => ({ ...latest, desiredRunning: false }));
                 yield* spec.onStateDirOwned?.() ?? Effect.void;
+
                 return;
               }
+
               yield* scheduleRestart(reason);
             }),
           );
@@ -423,6 +460,7 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
                 ? ([true, { ...latest, restartAttempt: 0, ready: true }] as const)
                 : ([false, latest] as const),
             );
+
             if (isCurrentRun) yield* spec.onReady?.(config.value.httpBaseUrl) ?? Effect.void;
           }),
           onReadinessFailure: (error) => logWarning("server readiness check failed", error),
@@ -452,6 +490,7 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
         const active = Option.map(latest.active, (run) =>
           run.exitObserved ? run : { ...run, stopRequested: true },
         );
+
         return [
           { active, restartFiber: latest.restartFiber, notifyShutdown: latest.ready },
           {
@@ -464,14 +503,20 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
         ] as const;
       }),
     );
+
     if (notifyShutdown) yield* spec.onShutdown?.() ?? Effect.void;
+
     if (Option.isSome(restartFiber)) yield* Fiber.interrupt(restartFiber.value);
+
     if (Option.isNone(active)) return;
     const closed = yield* closeRun(active.value, parentScope, options);
+
     if (!closed) {
       yield* logWarning("server did not stop within the timeout");
+
       return;
     }
+
     yield* Ref.update(state, (latest) =>
       Option.getOrUndefined(latest.active)?.id === active.value.id
         ? { ...latest, active: Option.none<ActiveBackendRun>() }

@@ -10,6 +10,7 @@ const bridge: DesktopBridge = {
   getClientPlatform: () => clientPlatform,
   getServerBootstrap: () => {
     const result: unknown = ipcRenderer.sendSync(IpcChannels.GET_SERVER_BOOTSTRAP_CHANNEL);
+
     return isServerBootstrap(result) ? result : null;
   },
   getBearerToken: () => ipcRenderer.invoke(IpcChannels.GET_BEARER_TOKEN_CHANNEL),

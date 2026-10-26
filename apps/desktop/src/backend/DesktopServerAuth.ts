@@ -51,8 +51,10 @@ const make = Effect.gen(function* () {
 
   const exchange = Effect.gen(function* () {
     const bootstrap = yield* backend.rendererBootstrap;
+
     if (bootstrap === null) return yield* new DesktopServerAuthError({ reason: "not-started" });
     const client = yield* HttpApiClient.make(AppHttpApi, { baseUrl: bootstrap.httpBaseUrl });
+
     const result = yield* client.auth
       .token({
         payload: {
@@ -72,15 +74,18 @@ const make = Effect.gen(function* () {
           (cause) => new DesktopServerAuthError({ reason: "exchange-failed", cause }),
         ),
       );
+
     return result.access_token;
   }).pipe(Effect.provideService(HttpClient.HttpClient, httpClient));
 
   const getBearerToken = mutex.withPermits(1)(
     Effect.gen(function* () {
       const cached = yield* Ref.get(token);
+
       if (Option.isSome(cached)) return cached.value;
       const issued = yield* exchange;
       yield* Ref.set(token, Option.some(issued));
+
       return issued;
     }),
   );

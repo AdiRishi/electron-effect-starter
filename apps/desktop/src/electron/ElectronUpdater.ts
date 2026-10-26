@@ -60,6 +60,7 @@ const make = ElectronUpdater.of({
   ) {
     // AppUpdater is an EventEmitter; the event map above keeps listener arguments typed.
     const emitter: NodeJS.EventEmitter = autoUpdater;
+
     return Effect.acquireRelease(
       Effect.sync(() => emitter.on(eventName, listener)),
       () => Effect.sync(() => emitter.removeListener(eventName, listener)),

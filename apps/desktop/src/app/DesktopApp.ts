@@ -24,6 +24,7 @@ import * as DesktopState from "./DesktopState.ts";
 
 const DEFAULT_BACKEND_PORT = 3773;
 const MAX_TCP_PORT = 65_535;
+
 // A port is free only if nothing listens on it on any interface the server could share.
 const BACKEND_PORT_PROBE_HOSTS = ["127.0.0.1", "0.0.0.0", "::"] as const;
 
@@ -43,17 +44,21 @@ const resolveBackendPort = Effect.fn("DesktopApp.resolveBackendPort")(function* 
 ) {
   if (Option.isSome(configuredPort)) return configuredPort.value;
   const net = yield* NetService.NetService;
+
   // A stable port keeps the renderer's origin, and with it localStorage, the same across launches.
   for (let port = DEFAULT_BACKEND_PORT; port <= MAX_TCP_PORT; port += 1) {
     let available = true;
+
     for (const host of BACKEND_PORT_PROBE_HOSTS) {
       if (!(yield* net.canListenOnHost(port, host))) {
         available = false;
         break;
       }
     }
+
     if (available) return port;
   }
+
   return yield* new DesktopBackendPortUnavailableError({ startPort: DEFAULT_BACKEND_PORT });
 });
 
@@ -67,14 +72,17 @@ const fatalStartupCause = Effect.fn("DesktopApp.fatalStartupCause")(function* <E
   const dialog = yield* ElectronDialog.ElectronDialog;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   yield* logError("fatal startup error", { stage }, cause);
+
   if (!(yield* Ref.getAndSet(state.quitting, true))) {
     yield* dialog.showErrorBox(
       `${environment.displayName} failed to start`,
       `Stage: ${stage}\n${Cause.pretty(cause)}`,
     );
   }
+
   yield* shutdown.request;
   yield* electronApp.quit;
+
   return yield* Effect.failCause(cause);
 });
 
@@ -94,6 +102,7 @@ const bootstrap = Effect.gen(function* () {
 
   const port = yield* resolveBackendPort(environment.configuredBackendPort);
   yield* logInfo("starting the local server", { port });
+
   if (!(yield* Ref.get(state.quitting))) yield* backend.start(port);
 }).pipe(Effect.withSpan("DesktopApp.bootstrap"));
 
@@ -107,8 +116,10 @@ const startup = Effect.gen(function* () {
   if (!(yield* electronApp.requestSingleInstanceLock)) {
     yield* logInfo("another instance is running; exiting");
     yield* electronApp.quit;
+
     return yield* Effect.interrupt;
   }
+
   yield* lifecycle.register;
   yield* electronApp.whenReady.pipe(
     Effect.catchCause((cause) => fatalStartupCause("whenReady", cause)),

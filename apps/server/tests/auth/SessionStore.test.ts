@@ -37,6 +37,7 @@ describe("SessionStore", () => {
         const sessions = yield* SessionStore.SessionStore;
         const issued = yield* sessions.issue({ method: "bearer-access-token" });
         const [, signature] = issued.token.split(".");
+
         const forgedPayload = Buffer.from(
           JSON.stringify({
             v: 1,
@@ -47,6 +48,7 @@ describe("SessionStore", () => {
             exp: 9e15,
           }),
         ).toString("base64url");
+
         assert.strictEqual(
           yield* invalidReason(sessions.verify(`${forgedPayload}.${signature}`)),
           "bad_signature",

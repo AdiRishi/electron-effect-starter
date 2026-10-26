@@ -21,9 +21,11 @@ const probeOptions = {
 const layerServer = (answers: ReadonlyArray<number | "hang">) =>
   Layer.sync(HttpClient.HttpClient, () => {
     let probes = 0;
+
     return HttpClient.make((request) => {
       const answer = answers[Math.min(probes, answers.length - 1)];
       probes += 1;
+
       return answer === "hang" || answer === undefined
         ? Effect.never
         : Effect.succeed(

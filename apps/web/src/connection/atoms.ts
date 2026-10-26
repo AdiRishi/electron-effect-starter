@@ -9,6 +9,7 @@ export const connectionStateAtom = connectionRuntime.atom(
   Stream.unwrap(
     Effect.gen(function* () {
       const supervisor = yield* ConnectionSupervisor.ConnectionSupervisor;
+
       return SubscriptionRef.changes(supervisor.state);
     }),
   ),

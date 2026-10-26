@@ -11,6 +11,7 @@ export const openExternal = DesktopIpc.makeIpcMethod({
   result: Schema.Boolean,
   handler: Effect.fn("desktop.ipc.openExternal")(function* (url) {
     const shell = yield* ElectronShell.ElectronShell;
+
     return yield* shell.openExternal(url);
   }),
 });

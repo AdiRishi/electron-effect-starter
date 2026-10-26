@@ -60,8 +60,11 @@ const make = Effect.gen(function* () {
     reveal: Effect.fn("ElectronWindow.reveal")(function (window: Electron.BrowserWindow) {
       return Effect.sync(() => {
         if (window.isDestroyed()) return;
+
         if (window.isMinimized()) window.restore();
+
         if (!window.isVisible()) window.show();
+
         if (platform === "darwin") Electron.app.focus({ steal: true });
         window.focus();
       });

@@ -69,4 +69,5 @@ export const WsRpcGroup = RpcGroup.make(
   WsNotesDeleteRpc,
   WsSubscribeNotesRpc,
 );
+
 export type WsRpcMethod = (typeof WS_METHODS)[keyof typeof WS_METHODS];

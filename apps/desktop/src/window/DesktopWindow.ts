@@ -15,6 +15,7 @@ import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 
 const DEVELOPMENT_LOAD_RETRY_DELAYS_MS = [100, 250, 500, 1_000, 2_000] as const;
+
 // Chromium net errors a restarting Vite server produces: aborted, refused, reset, timed out.
 const DEVELOPMENT_RETRYABLE_LOAD_ERROR_CODES = new Set([-2, -7, -9, -102, -105, -106, -118]);
 const RENDERER_RECOVERY_RELOAD_DELAY_MS = 500;
@@ -57,6 +58,7 @@ const make = Effect.gen(function* () {
 
   const createMain = Effect.gen(function* () {
     if (yield* Ref.get(desktopState.quitting)) return;
+
     const window = yield* electronWindow.create({
       width: 1100,
       height: 760,
@@ -75,11 +77,13 @@ const make = Effect.gen(function* () {
         sandbox: true,
       },
     });
+
     yield* electronWindow.setMain(window);
 
     // New windows never open in-app; web links go to the system browser.
     window.webContents.setWindowOpenHandler(({ url }) => {
       openExternally(url);
+
       return { action: "deny" };
     });
     window.webContents.on("will-navigate", (event, url) => {
@@ -90,6 +94,7 @@ const make = Effect.gen(function* () {
 
     let developmentLoadRetryIndex = 0;
     let rendererRecoveryTimestamps: ReadonlyArray<number> = [];
+
     const loadApplication = () => {
       if (!window.isDestroyed()) void window.loadURL(applicationUrl).catch(() => undefined);
     };
@@ -101,13 +106,16 @@ const make = Effect.gen(function* () {
       "did-fail-load",
       (_event, errorCode, errorDescription, url, isMainFrame) => {
         if (!isMainFrame) return;
+
         const retry =
           environment.isDevelopment && DEVELOPMENT_RETRYABLE_LOAD_ERROR_CODES.has(errorCode);
+
         const retryInMs = retry
           ? DEVELOPMENT_LOAD_RETRY_DELAYS_MS[
               Math.min(developmentLoadRetryIndex++, DEVELOPMENT_LOAD_RETRY_DELAYS_MS.length - 1)
             ]
           : undefined;
+
         runFork(
           logWarning("main window failed to load", {
             errorCode,
@@ -130,22 +138,26 @@ const make = Effect.gen(function* () {
         details.reason === "oom" ||
         details.reason === "killed" ||
         details.reason === "abnormal-exit";
+
       runFork(
         Effect.gen(function* () {
           const now = yield* Clock.currentTimeMillis;
           rendererRecoveryTimestamps = rendererRecoveryTimestamps.filter(
             (timestamp) => now - timestamp < RENDERER_RECOVERY_WINDOW_MS,
           );
+
           // A renderer that keeps dying is left down rather than reloaded in a loop.
           const shouldRecover =
             recoverable &&
             !window.isDestroyed() &&
             rendererRecoveryTimestamps.length < RENDERER_RECOVERY_MAX_ATTEMPTS;
+
           yield* logWarning("main window render process gone", {
             reason: details.reason,
             exitCode: details.exitCode,
             recovering: shouldRecover,
           });
+
           if (!shouldRecover) return;
           rendererRecoveryTimestamps = [...rendererRecoveryTimestamps, now];
           yield* Effect.sleep(RENDERER_RECOVERY_RELOAD_DELAY_MS);
@@ -163,13 +175,16 @@ const make = Effect.gen(function* () {
     });
 
     loadApplication();
+
     if (environment.isDevelopment) window.webContents.openDevTools({ mode: "detach" });
     yield* logInfo("main window created");
   }).pipe(Effect.withSpan("DesktopWindow.createMain"));
 
   const createMainIfBackendReady = Effect.gen(function* () {
     if (yield* Ref.get(desktopState.quitting)) return;
+
     if (!(yield* Ref.get(desktopState.backendReady))) return;
+
     if (Option.isSome(yield* electronWindow.main)) return;
     yield* createMain;
   });
@@ -178,6 +193,7 @@ const make = Effect.gen(function* () {
     activate: Effect.gen(function* () {
       if (yield* Ref.get(desktopState.quitting)) return;
       const existing = yield* electronWindow.main;
+
       if (Option.isSome(existing)) return yield* electronWindow.reveal(existing.value);
       yield* createMainIfBackendReady;
     }).pipe(

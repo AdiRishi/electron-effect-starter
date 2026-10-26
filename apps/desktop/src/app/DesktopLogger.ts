@@ -14,6 +14,7 @@ export const layer = Layer.unwrap(
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     yield* fs.makeDirectory(environment.logDir, { recursive: true });
+
     return Logger.layer(
       [
         Logger.consolePretty(),
@@ -29,6 +30,7 @@ export const layer = Layer.unwrap(
 /** Effect's log functions, annotating every line with the part of the shell that wrote it. */
 export const forComponent = (component: string) => {
   const annotate = Effect.annotateLogs({ component });
+
   return {
     logInfo: flow(Effect.logInfo, annotate),
     logWarning: flow(Effect.logWarning, annotate),

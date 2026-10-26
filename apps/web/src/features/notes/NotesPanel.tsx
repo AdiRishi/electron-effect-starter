@@ -30,6 +30,7 @@ function NoteEditor({
     setPending(true);
     const saved = await onSubmit({ title, body });
     setPending(false);
+
     if (saved && onCancel === undefined) {
       setTitle("");
       setBody("");
@@ -79,7 +80,9 @@ function NoteCard({ note }: { readonly note: Note }) {
           onSubmit={async (value) => {
             const exit = await updateNote({ id: note.id, ...value });
             const saved = Exit.isSuccess(exit);
+
             if (saved) setEditing(false);
+
             return saved;
           }}
         />
@@ -121,12 +124,15 @@ function NotesList({ notes }: { readonly notes: Atom.Type<typeof notesAtom> }) {
   if (AsyncResult.isFailure(notes)) {
     return <p className="text-destructive text-sm">Notes could not be loaded.</p>;
   }
+
   if (!AsyncResult.isSuccess(notes)) {
     return <p className="text-muted-foreground text-sm">Loading notes…</p>;
   }
+
   if (notes.value.notes.length === 0) {
     return <p className="text-muted-foreground text-sm">No notes yet.</p>;
   }
+
   return (
     <ul className="space-y-2">
       {notes.value.notes.map((note) => (

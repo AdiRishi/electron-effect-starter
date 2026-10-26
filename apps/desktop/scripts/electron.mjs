@@ -18,5 +18,6 @@ export const electronPath = NodeModule.createRequire(import.meta.url)("electron"
 export function electronEnv(extra = {}) {
   const env = { ...process.env, ...extra };
   delete env.ELECTRON_RUN_AS_NODE;
+
   return env;
 }

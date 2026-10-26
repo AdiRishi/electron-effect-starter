@@ -1,5 +1,6 @@
 export function showBootError(error: unknown): void {
   const root = document.getElementById("root");
+
   if (!root) return;
   const container = document.createElement("div");
   container.style.cssText = "padding: 24px; font: 13px/20px system-ui, sans-serif;";

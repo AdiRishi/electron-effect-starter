@@ -36,6 +36,7 @@ const make = Effect.gen(function* () {
     Ref.modify(state, (current) => {
       const sequence = current.sequence + 1;
       const next = { ...event, sequence } satisfies ServerLifecycleEvent;
+
       return [
         next,
         { sequence, events: [next, ...current.events.filter((entry) => entry.type !== next.type)] },
@@ -52,9 +53,11 @@ const make = Effect.gen(function* () {
         { startImmediately: true },
       );
       const snapshot = yield* Ref.get(state);
+
       const snapshotEvents = snapshot.events.toSorted(
         (left, right) => left.sequence - right.sequence,
       );
+
       return Stream.concat(
         Stream.fromIterable(snapshotEvents),
         Stream.fromQueue(liveBuffer).pipe(

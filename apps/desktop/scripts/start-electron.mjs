@@ -11,7 +11,9 @@ const child = NodeChildProcess.spawn(electronPath, ["."], {
 child.on("exit", (code, signal) => {
   if (signal) {
     process.kill(process.pid, signal);
+
     return;
   }
+
   process.exit(code ?? 0);
 });

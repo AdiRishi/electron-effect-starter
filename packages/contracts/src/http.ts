@@ -28,6 +28,7 @@ const OptionalBearerHeaders = Schema.Struct({
 });
 
 export const AuthInvalidReason = Schema.Literals(["missing_credential", "invalid_credential"]);
+
 export type AuthInvalidReason = typeof AuthInvalidReason.Type;
 
 export class AuthInvalidError extends Schema.TaggedError<AuthInvalidError>()(
@@ -48,6 +49,7 @@ export const InternalErrorReason = Schema.Literals([
   "session_issuance_failed",
   "websocket_ticket_issuance_failed",
 ]);
+
 export type InternalErrorReason = typeof InternalErrorReason.Type;
 
 export class InternalError extends Schema.TaggedError<InternalError>()(

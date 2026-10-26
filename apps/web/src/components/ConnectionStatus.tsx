@@ -30,6 +30,7 @@ export function ConnectionStatus({
   readonly onRetry: () => void;
 }) {
   const canRetry = state.phase === "backoff" || state.phase === "blocked";
+
   return (
     <div className="flex items-center gap-2 text-muted-foreground text-xs" role="status">
       <span aria-hidden className={cn("size-2 rounded-full", PHASE_DOT_CLASSES[state.phase])} />

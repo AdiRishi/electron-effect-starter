@@ -26,7 +26,9 @@ export const withClient = Effect.fn("RpcClient.withClient")(function* <A, E, R>(
 ) {
   const supervisor = yield* ConnectionSupervisor.ConnectionSupervisor;
   const session = yield* SubscriptionRef.get(supervisor.session);
+
   if (Option.isNone(session)) return yield* new RpcUnavailableError();
+
   return yield* f(session.value.client);
 });
 
@@ -41,6 +43,7 @@ export const followSession = <A, E, R>(
   Stream.unwrap(
     Effect.gen(function* () {
       const supervisor = yield* ConnectionSupervisor.ConnectionSupervisor;
+
       return SubscriptionRef.changes(supervisor.session).pipe(
         Stream.switchMap(
           Option.match({

@@ -13,4 +13,5 @@ export const DesktopBackendBootstrap = Schema.Struct({
   baseDir: TrimmedNonEmptyString,
   desktopBootstrapToken: TrimmedNonEmptyString,
 });
+
 export type DesktopBackendBootstrap = typeof DesktopBackendBootstrap.Type;

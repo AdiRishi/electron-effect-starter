@@ -41,6 +41,7 @@ const layerInertProtocol = Layer.succeed(
     codecFor: RpcSerialization.json.codecFor,
   }),
 );
+
 const makeHarness = Effect.fn("test.makeHarness")(function* (options?: {
   readonly prepareFailures?: ReadonlyArray<ConnectionAttemptError>;
 }) {
@@ -63,6 +64,7 @@ const makeHarness = Effect.fn("test.makeHarness")(function* (options?: {
       ),
     }),
   );
+
   const layerSessions = Layer.succeed(
     RpcSession.RpcSessionFactory,
     RpcSession.RpcSessionFactory.of({
@@ -70,6 +72,7 @@ const makeHarness = Effect.fn("test.makeHarness")(function* (options?: {
         Effect.gen(function* () {
           yield* Ref.update(sessionsOpened, (count) => count + 1);
           const closed = yield* Deferred.make<never, ConnectionAttemptError>();
+
           return {
             client: yield* makeWsRpcProtocolClient.pipe(Effect.provide(layerInertProtocol)),
             ready: Effect.void,
@@ -84,6 +87,7 @@ const makeHarness = Effect.fn("test.makeHarness")(function* (options?: {
         }),
     }),
   );
+
   const context = yield* Layer.build(
     ConnectionSupervisor.layer({ initiallyDesired: true }).pipe(
       Layer.provide(layerTarget),
@@ -94,13 +98,16 @@ const makeHarness = Effect.fn("test.makeHarness")(function* (options?: {
       Layer.provide(ConnectionWakeups.layer({ changes: Stream.fromQueue(wakeups) })),
     ),
   );
+
   const supervisor = Context.get(context, ConnectionSupervisor.ConnectionSupervisor);
+
   const awaitPhase = (phase: SupervisorConnectionPhase) =>
     SubscriptionRef.changes(supervisor.state).pipe(
       Stream.filter((state) => state.phase === phase),
       Stream.runHead,
       Effect.flatMap(Effect.fromOption),
     );
+
   return { supervisor, sessionsOpened, probe, probesAnswered, wakeups, awaitPhase };
 });
 
@@ -118,6 +125,7 @@ describe("ConnectionSupervisor", () => {
       const harness = yield* makeHarness({
         prepareFailures: [new ConnectionTransientError({ reason: "network", detail: "down" })],
       });
+
       const backoff = yield* harness.awaitPhase("backoff");
       assert.strictEqual(backoff.lastFailure?.reason, "network");
       // The first retry waits between one and two seconds.
@@ -131,6 +139,7 @@ describe("ConnectionSupervisor", () => {
       const harness = yield* makeHarness({
         prepareFailures: [new ConnectionBlockedError({ reason: "authentication", detail: "401" })],
       });
+
       yield* harness.awaitPhase("blocked");
       yield* TestClock.adjust("10 minutes");
       assert.strictEqual((yield* SubscriptionRef.get(harness.supervisor.state)).phase, "blocked");

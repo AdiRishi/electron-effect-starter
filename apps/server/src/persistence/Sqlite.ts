@@ -29,6 +29,7 @@ export const layerFromPath = Effect.fn("Sqlite.layerFromPath")(function* (dbPath
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   yield* fs.makeDirectory(path.dirname(dbPath), { recursive: true });
+
   return Layer.provideMerge(
     layerSetup,
     SqliteClient.layer({
@@ -46,6 +47,7 @@ export const layerMemory = Layer.provideMerge(
 export const layerConfig = Layer.unwrap(
   Effect.gen(function* () {
     const { dbPath } = yield* ServerConfig.ServerConfig;
+
     return layerFromPath(dbPath);
   }),
 );

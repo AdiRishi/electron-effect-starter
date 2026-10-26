@@ -18,12 +18,15 @@ type AppEvents = ElectronApp.ElectronAppEvents;
 // Electron is the external seam: the fake app records listeners and quit calls.
 const makeHarness = Effect.gen(function* () {
   const listeners = new Map<keyof AppEvents, (...args: never) => void>();
+
   const emit = <K extends keyof AppEvents>(eventName: K, ...args: AppEvents[K]) => {
     // SAFETY: `on` stores each listener under its own event name, so it accepts AppEvents[K].
     const listener = listeners.get(eventName) as ((...args: AppEvents[K]) => void) | undefined;
     listener?.(...args);
   };
+
   const quits = yield* Queue.unbounded<void>();
+
   const app = ElectronApp.ElectronApp.of({
     metadata: Effect.succeed({
       appVersion: "0.0.0",
@@ -41,6 +44,7 @@ const makeHarness = Effect.gen(function* () {
       }),
     onBeforeQuitForUpdate: () => Effect.void,
   });
+
   const layer = Layer.mergeAll(
     Layer.succeed(ElectronApp.ElectronApp, app),
     Layer.succeed(
@@ -86,11 +90,13 @@ const makeHarness = Effect.gen(function* () {
     DesktopShutdown.layer,
     DesktopState.layer,
   );
+
   return { emit, quits, layer };
 });
 
 const makeQuitEvent = () => {
   let prevented = false;
+
   return {
     event: {
       preventDefault: () => void (prevented = true),

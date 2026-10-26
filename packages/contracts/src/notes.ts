@@ -15,12 +15,14 @@ export const Note = Schema.Struct({
   createdAt: Schema.DateTimeUtc,
   updatedAt: Schema.DateTimeUtc,
 });
+
 export type Note = typeof Note.Type;
 
 export const NoteCreateInput = Schema.Struct({
   title: NoteTitle,
   body: NoteBody,
 });
+
 export type NoteCreateInput = typeof NoteCreateInput.Type;
 
 export const NoteUpdateInput = Schema.Struct({
@@ -28,11 +30,13 @@ export const NoteUpdateInput = Schema.Struct({
   title: NoteTitle,
   body: NoteBody,
 });
+
 export type NoteUpdateInput = typeof NoteUpdateInput.Type;
 
 export const NoteDeleteInput = Schema.Struct({
   id: NoteId,
 });
+
 export type NoteDeleteInput = typeof NoteDeleteInput.Type;
 
 export class NoteNotFoundError extends Schema.TaggedError<NoteNotFoundError>()(
@@ -76,4 +80,5 @@ export const NotesStreamEvent = Schema.Union([
   NotesStreamUpsertedEvent,
   NotesStreamRemovedEvent,
 ]);
+
 export type NotesStreamEvent = typeof NotesStreamEvent.Type;

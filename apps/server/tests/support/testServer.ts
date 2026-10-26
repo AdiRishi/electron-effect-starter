@@ -27,9 +27,12 @@ export const makeTestServer = Effect.fn("TestServer.make")(function* (options?: 
       Layer.provideMerge(NodeServices.layer),
     ),
   );
+
   const address = Context.get(context, HttpServer.HttpServer).address;
+
   if (Predicate.isTagged(address, "UnixPathAddress"))
     return yield* Effect.die("Test server bound a unix socket.");
+
   return {
     client: Context.get(context, HttpClient.HttpClient),
     // The test server listens on the wildcard address, which a client cannot dial.
@@ -43,7 +46,9 @@ export const connectRpc = Effect.fn("TestServer.connectRpc")(function* (
   ticket: string | undefined,
 ) {
   const url = new URL(WS_PATH, baseUrl.replace(/^http/, "ws"));
+
   if (ticket !== undefined) url.searchParams.set(WS_TICKET_QUERY_PARAM, ticket);
+
   const protocol = yield* Layer.build(
     RpcClient.layerProtocolSocket({ retryPolicy: Schedule.recurs(0) }).pipe(
       Layer.provide(Socket.layerWebSocket(url.toString())),
@@ -51,5 +56,6 @@ export const connectRpc = Effect.fn("TestServer.connectRpc")(function* (
       Layer.provide(RpcSerialization.layerJson),
     ),
   );
+
   return yield* RpcClient.make(WsRpcGroup).pipe(Effect.provideContext(protocol));
 });

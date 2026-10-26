@@ -31,6 +31,7 @@ import * as Ws from "./ws.ts";
 const layerHttpServer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
+
     return NodeHttpServer.layer(
       () => rejectRequestsUntilServing(guardHttpResponseWriteErrors(NodeHttp.createServer())),
       {
@@ -71,6 +72,7 @@ const layerServer = Layer.unwrap(
     const config = yield* ServerConfig.ServerConfig;
     // Before anything opens the database: one server per state directory.
     yield* acquireServerOwnership(config.stateDir);
+
     return Startup.layer.pipe(
       Layer.provideMerge(HttpRouter.serve(layerRoutes, { disableLogger: true })),
       Layer.provideMerge(layerServices),

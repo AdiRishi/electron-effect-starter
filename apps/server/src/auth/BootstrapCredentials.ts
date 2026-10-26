@@ -35,6 +35,7 @@ export class PairingTokenIssueError extends Schema.TaggedError<PairingTokenIssue
 const tokensMatch = (left: string, right: string) => {
   const leftBuffer = Buffer.from(left, "utf8");
   const rightBuffer = Buffer.from(right, "utf8");
+
   return (
     leftBuffer.length === rightBuffer.length && NodeCrypto.timingSafeEqual(leftBuffer, rightBuffer)
   );
@@ -66,6 +67,7 @@ const make = Effect.gen(function* () {
     const bytes = yield* crypto
       .randomBytes(32)
       .pipe(Effect.mapError((cause) => new PairingTokenIssueError({ cause })));
+
     const token = Buffer.from(bytes).toString("base64url");
     const now = yield* DateTime.now;
     const expiresAt = DateTime.addDuration(now, PAIRING_TOKEN_TTL);
@@ -74,6 +76,7 @@ const make = Effect.gen(function* () {
         [...current].filter(([, tokenExpiry]) => DateTime.isGreaterThan(tokenExpiry, now)),
       ).set(token, expiresAt),
     );
+
     return { token, expiresAt };
   }).pipe(Effect.withSpan("BootstrapCredentials.issuePairingToken"));
 
@@ -81,19 +84,25 @@ const make = Effect.gen(function* () {
     if (desktopBootstrapToken !== undefined && tokensMatch(credential, desktopBootstrapToken)) {
       return "desktop" as const;
     }
+
     const expiresAt = yield* Ref.modify(pairingTokens, (current) => {
       const found = current.get(credential);
+
       if (found === undefined) return [undefined, current] as const;
       const next = new Map(current);
       next.delete(credential);
+
       return [found, next] as const;
     });
+
     if (expiresAt === undefined) {
       return yield* new BootstrapCredentialInvalidError({ reason: "unknown" });
     }
+
     if (DateTime.isLessThanOrEqualTo(expiresAt, yield* DateTime.now)) {
       return yield* new BootstrapCredentialInvalidError({ reason: "expired" });
     }
+
     return "pairing" as const;
   });
 

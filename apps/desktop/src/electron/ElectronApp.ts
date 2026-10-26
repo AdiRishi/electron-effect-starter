@@ -74,6 +74,7 @@ const make = ElectronApp.of({
   ) {
     // App is an EventEmitter; the event map above keeps listener arguments typed.
     const emitter: NodeJS.EventEmitter = Electron.app;
+
     return Effect.acquireRelease(
       Effect.sync(() => emitter.on(eventName, listener)),
       () => Effect.sync(() => emitter.removeListener(eventName, listener)),

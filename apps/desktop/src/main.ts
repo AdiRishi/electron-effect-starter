@@ -52,6 +52,7 @@ const layerElectron = Layer.mergeAll(
 const layerEnvironment = Layer.unwrap(
   Effect.gen(function* () {
     const app = yield* ElectronApp.ElectronApp;
+
     return DesktopEnvironment.layer({
       dirname: __dirname,
       platform: yield* HostProcess.Platform,

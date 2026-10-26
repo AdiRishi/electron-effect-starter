@@ -16,6 +16,7 @@ const BASE_WEB_PORT = 5733;
 const MAX_OFFSET = 1000;
 
 const DevMode = Schema.Literals(["dev", "dev:server", "dev:web", "dev:desktop"]);
+
 type DevMode = typeof DevMode.Type;
 
 const PACKAGES_BY_MODE: Record<DevMode, ReadonlyArray<string>> = {
@@ -42,13 +43,16 @@ export class DevRunnerPortsExhaustedError extends Schema.TaggedError<DevRunnerPo
 const resolvePorts = Effect.fn("dev-runner.resolvePorts")(function* (repoRoot: string) {
   const net = yield* NetService.NetService;
   const configuredOffset = yield* Config.Int("APP_PORT_OFFSET").pipe(Config.option);
+
   const startOffset = Option.getOrElse(
     configuredOffset,
     () => (Hash.string(repoRoot) >>> 0) % MAX_OFFSET,
   );
+
   for (let offset = startOffset; offset < startOffset + MAX_OFFSET; offset += 1) {
     const serverPort = BASE_SERVER_PORT + offset;
     const webPort = BASE_WEB_PORT + offset;
+
     if (
       (yield* net.isPortAvailableOnLoopback(serverPort)) &&
       (yield* net.isPortAvailableOnLoopback(webPort))
@@ -56,6 +60,7 @@ const resolvePorts = Effect.fn("dev-runner.resolvePorts")(function* (repoRoot: s
       return { serverPort, webPort };
     }
   }
+
   return yield* new DevRunnerPortsExhaustedError({ startOffset });
 });
 
@@ -81,6 +86,7 @@ const run = Effect.fn("dev-runner.run")(function* (mode: DevMode) {
   });
 
   const filters = PACKAGES_BY_MODE[mode].map((name) => `--filter=${name}`);
+
   const handle = yield* spawner.spawn(
     ChildProcess.make("pnpm", ["exec", "turbo", "run", "dev", ...filters, "--ui=stream"], {
       cwd: repoRoot,
@@ -99,7 +105,9 @@ const run = Effect.fn("dev-runner.run")(function* (mode: DevMode) {
       },
     }),
   );
+
   const exitCode = yield* handle.exitCode;
+
   if (exitCode !== 0) return yield* new DevRunnerTurboExitError({ exitCode });
 }, Effect.scoped);
 

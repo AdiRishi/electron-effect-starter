@@ -58,6 +58,7 @@ const make = Effect.gen(function* () {
   // so a concurrent reader never sees a partial secret and two creators agree on one value.
   const create = Effect.fn("ServerSecretStore.create")(function* (name: string, value: Uint8Array) {
     const finalPath = secretPath(name);
+
     const uuid = yield* crypto
       .randomUUIDv4()
       .pipe(
@@ -65,7 +66,9 @@ const make = Effect.gen(function* () {
           (cause) => new SecretStoreError({ secret: name, operation: "generate", cause }),
         ),
       );
+
     const tempPath = `${finalPath}.${uuid}.tmp`;
+
     return yield* Effect.gen(function* () {
       yield* Effect.scoped(
         Effect.gen(function* () {
@@ -75,6 +78,7 @@ const make = Effect.gen(function* () {
         }),
       );
       yield* fs.link(tempPath, finalPath);
+
       return true;
     }).pipe(
       Effect.catchReason("PlatformError", "AlreadyExists", () => Effect.succeed(false)),
@@ -90,7 +94,9 @@ const make = Effect.gen(function* () {
     bytes: number,
   ) {
     const existing = yield* read(name);
+
     if (Option.isSome(existing)) return existing.value;
+
     const generated = yield* crypto
       .randomBytes(bytes)
       .pipe(
@@ -98,9 +104,12 @@ const make = Effect.gen(function* () {
           (cause) => new SecretStoreError({ secret: name, operation: "generate", cause }),
         ),
       );
+
     if (yield* create(name, generated)) return Uint8Array.from(generated);
     const winner = yield* read(name);
+
     if (Option.isSome(winner)) return winner.value;
+
     return yield* new SecretStoreError({
       secret: name,
       operation: "read",

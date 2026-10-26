@@ -62,10 +62,13 @@ const exitIfShutdownStalled = Effect.fn("DesktopLifecycle.exitIfShutdownStalled"
   const pendingMs = Number(
     ((yield* Clock.monotonicTimeNanos) - quit.waitingSinceNanos) / 1_000_000n,
   );
+
   if (pendingMs < Duration.toMillis(SHUTDOWN_STALL_THRESHOLD)) {
     yield* logInfo("quit already in progress", { source, pendingMs });
+
     return;
   }
+
   yield* logError("shutdown stalled; exiting without it", { source, pendingMs });
   const electronApp = yield* ElectronApp.ElectronApp;
   yield* electronApp.exit(0);
@@ -85,14 +88,19 @@ const make = DesktopLifecycle.of({
     const handleBeforeQuit = (event: Electron.Event) => {
       if (quit.phase === "allowed") {
         void runPromise(Ref.set(state.quitting, true));
+
         return;
       }
+
       // Hold the quit until the server has stopped, then quit again for real.
       event.preventDefault();
+
       if (quit.phase === "waiting") {
         void runPromise(exitIfShutdownStalled(quit, "before-quit"));
+
         return;
       }
+
       void runPromise(
         Effect.gen(function* () {
           yield* startWaitingForShutdown(quit);
@@ -110,8 +118,10 @@ const make = DesktopLifecycle.of({
     const quitFromSignal = (signal: "SIGINT" | "SIGTERM") => {
       if (quit.phase === "waiting") {
         void runPromise(exitIfShutdownStalled(quit, signal));
+
         return;
       }
+
       void runPromise(
         Effect.gen(function* () {
           if (yield* Ref.getAndSet(state.quitting, true)) return;

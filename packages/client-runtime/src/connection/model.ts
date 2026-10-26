@@ -8,9 +8,11 @@ export const ConnectionTransientReason = Schema.Literals([
   "transport",
   "remote-unavailable",
 ]);
+
 export type ConnectionTransientReason = typeof ConnectionTransientReason.Type;
 
 export const ConnectionBlockedReason = Schema.Literals(["authentication", "configuration"]);
+
 export type ConnectionBlockedReason = typeof ConnectionBlockedReason.Type;
 
 /** A failure worth retrying with backoff. */

@@ -16,6 +16,7 @@ const openEnvelopeFd = Effect.fn("test.openEnvelopeFd")(function* (contents: str
   const directory = yield* fs.makeTempDirectoryScoped({ prefix: "app-bootstrap-" });
   const file = path.join(directory, "envelope");
   yield* fs.writeFileString(file, contents);
+
   return yield* Effect.acquireRelease(
     Effect.sync(() => NodeFS.openSync(file, "r")),
     (fd) =>
@@ -40,6 +41,7 @@ describe("readBootstrapEnvelope", () => {
             desktopBootstrapToken: "secret",
           })}\n`,
         );
+
         const envelope = yield* readBootstrapEnvelope(fd);
         assert.deepStrictEqual(
           Option.map(envelope, (value) => value.port),

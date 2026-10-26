@@ -75,6 +75,7 @@ const sign = (payload: string, secret: Uint8Array) =>
 const signaturesMatch = (left: string, right: string) => {
   const leftBuffer = Buffer.from(left, "base64url");
   const rightBuffer = Buffer.from(right, "base64url");
+
   return (
     leftBuffer.length === rightBuffer.length && NodeCrypto.timingSafeEqual(leftBuffer, rightBuffer)
   );
@@ -114,12 +115,15 @@ const make = Effect.gen(function* () {
 
   const open = Effect.fnUntraced(function* (token: string) {
     const [encodedPayload, signature, ...rest] = token.split(".");
+
     if (!encodedPayload || !signature || rest.length > 0) {
       return yield* new SessionCredentialInvalidError({ reason: "malformed" });
     }
+
     if (!signaturesMatch(signature, sign(encodedPayload, signingSecret))) {
       return yield* new SessionCredentialInvalidError({ reason: "bad_signature" });
     }
+
     return Buffer.from(encodedPayload, "base64url").toString("utf8");
   });
 
@@ -131,8 +135,10 @@ const make = Effect.gen(function* () {
         .randomUUIDv4()
         .pipe(Effect.mapError((cause) => new SessionIssueError({ cause }))),
     );
+
     const issuedAt = yield* DateTime.now;
     const expiresAt = DateTime.addDuration(issuedAt, SESSION_TTL);
+
     const payload = yield* encodeSessionClaims({
       v: 1,
       kind: "session",
@@ -141,6 +147,7 @@ const make = Effect.gen(function* () {
       iat: issuedAt.epochMilliseconds,
       exp: expiresAt.epochMilliseconds,
     }).pipe(Effect.mapError((cause) => new SessionIssueError({ cause })));
+
     return {
       sessionId,
       method: input.method,
@@ -156,10 +163,13 @@ const make = Effect.gen(function* () {
         SchemaError: () => new SessionCredentialInvalidError({ reason: "bad_payload" }),
       }),
     );
+
     const now = yield* DateTime.now;
+
     if (claims.exp <= now.epochMilliseconds) {
       return yield* new SessionCredentialInvalidError({ reason: "expired" });
     }
+
     return {
       sessionId: claims.sid,
       method: claims.method,
@@ -173,6 +183,7 @@ const make = Effect.gen(function* () {
     const issuedAt = yield* DateTime.now;
     const ticketExpiry = DateTime.addDuration(issuedAt, WEBSOCKET_TICKET_TTL);
     const expiresAt = DateTime.min(ticketExpiry, session.expiresAt);
+
     const payload = yield* encodeWebSocketClaims({
       v: 1,
       kind: "websocket",
@@ -182,6 +193,7 @@ const make = Effect.gen(function* () {
       iat: issuedAt.epochMilliseconds,
       exp: expiresAt.epochMilliseconds,
     }).pipe(Effect.mapError((cause) => new SessionIssueError({ cause })));
+
     return { ticket: seal(Buffer.from(payload, "utf8").toString("base64url")), expiresAt };
   });
 
@@ -194,10 +206,13 @@ const make = Effect.gen(function* () {
         SchemaError: () => new SessionCredentialInvalidError({ reason: "bad_payload" }),
       }),
     );
+
     const now = yield* DateTime.now;
+
     if (claims.exp <= now.epochMilliseconds) {
       return yield* new SessionCredentialInvalidError({ reason: "expired" });
     }
+
     return {
       sessionId: claims.sid,
       method: claims.method,

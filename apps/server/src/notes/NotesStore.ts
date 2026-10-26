@@ -68,20 +68,24 @@ const make = Effect.gen(function* () {
     Result: NoteRow,
     execute: () => sql`SELECT * FROM notes ORDER BY updated_at DESC`,
   });
+
   const findById = SqlSchema.findOneOption({
     Request: NoteId,
     Result: NoteRow,
     execute: (id) => sql`SELECT * FROM notes WHERE id = ${id}`,
   });
+
   const insert = SqlSchema.void({
     Request: NoteRow,
     execute: (row) => sql`INSERT INTO notes ${sql.insert(row)}`,
   });
+
   const updateRow = SqlSchema.void({
     Request: NoteRow,
     execute: (row) =>
       sql`UPDATE notes SET title = ${row.title}, body = ${row.body}, updated_at = ${row.updated_at} WHERE id = ${row.id}`,
   });
+
   const deleteById = SqlSchema.void({
     Request: NoteId,
     execute: (id) => sql`DELETE FROM notes WHERE id = ${id}`,
@@ -109,18 +113,22 @@ const make = Effect.gen(function* () {
       updated_at: now,
     }).pipe(storageError("create"));
     yield* publish((next) => ({ type: "upserted", revision: next, note }));
+
     return note;
   }, lock.withPermit);
 
   const update = Effect.fn("NotesStore.update")(function* (input: NoteUpdateInput) {
     const existing = yield* findById(input.id).pipe(storageError("update"));
+
     if (Option.isNone(existing)) return yield* new NoteNotFoundError({ id: input.id });
+
     const note: Note = {
       ...toNote(existing.value),
       title: input.title,
       body: input.body,
       updatedAt: yield* DateTime.now,
     };
+
     yield* updateRow({
       id: note.id,
       title: note.title,
@@ -129,11 +137,13 @@ const make = Effect.gen(function* () {
       updated_at: note.updatedAt,
     }).pipe(storageError("update"));
     yield* publish((next) => ({ type: "upserted", revision: next, note }));
+
     return note;
   }, lock.withPermit);
 
   const remove = Effect.fn("NotesStore.remove")(function* (id: NoteId) {
     const existing = yield* findById(id).pipe(storageError("delete"));
+
     if (Option.isNone(existing)) return yield* new NoteNotFoundError({ id });
     yield* deleteById(id).pipe(storageError("delete"));
     yield* publish((next) => ({ type: "removed", revision: next, id }));
@@ -149,11 +159,13 @@ const make = Effect.gen(function* () {
       // Subscribe before reading the snapshot so no change lands between the two.
       const live = yield* PubSub.subscribe(changes);
       const current = yield* snapshot;
+
       const initial: NotesStreamEvent = {
         type: "snapshot",
         revision: current.revision,
         notes: current.notes.map(toNote),
       };
+
       return Stream.concat(
         Stream.make(initial),
         Stream.fromSubscription(live).pipe(

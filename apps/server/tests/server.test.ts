@@ -30,9 +30,11 @@ describe("server", () => {
     it.effect("describes itself without credentials", () =>
       Effect.gen(function* () {
         const { client } = yield* makeTestServer();
+
         const descriptor = yield* client
           .get("/.well-known/app/server")
           .pipe(Effect.flatMap(decodeDescriptor));
+
         assert.strictEqual(descriptor.name, "@app/server");
       }),
     );
@@ -49,6 +51,7 @@ describe("server", () => {
     it.effect("rejects a bootstrap credential it did not issue", () =>
       Effect.gen(function* () {
         const { client } = yield* makeTestServer({ desktopBootstrapToken: DESKTOP_TOKEN });
+
         const response = yield* client.execute(
           HttpClientRequest.post("/oauth/token").pipe(
             HttpClientRequest.bodyUrlParams({
@@ -59,6 +62,7 @@ describe("server", () => {
             }),
           ),
         );
+
         assert.strictEqual(response.status, 401);
       }),
     );
@@ -66,6 +70,7 @@ describe("server", () => {
     it.effect("serves RPC to a desktop renderer that trades its bootstrap token for a ticket", () =>
       Effect.gen(function* () {
         const { client, baseUrl } = yield* makeTestServer({ desktopBootstrapToken: DESKTOP_TOKEN });
+
         const { access_token } = yield* client
           .execute(
             HttpClientRequest.post("/oauth/token").pipe(
@@ -78,6 +83,7 @@ describe("server", () => {
             ),
           )
           .pipe(Effect.flatMap(decodeAccessToken));
+
         const { ticket } = yield* client
           .execute(
             HttpClientRequest.post("/api/auth/websocket-ticket").pipe(
@@ -88,10 +94,12 @@ describe("server", () => {
 
         const rpc = yield* connectRpc(baseUrl, ticket);
         const created = yield* rpc["notes.create"]({ title: "From the renderer", body: "" });
+
         const [snapshot] = yield* rpc["notes.subscribe"]({}).pipe(
           Stream.take(1),
           Stream.runCollect,
         );
+
         assert.deepStrictEqual(
           snapshot?.type === "snapshot" ? snapshot.notes.map((note) => note.id) : [],
           [created.id],

@@ -9,12 +9,14 @@ export interface ServerTarget {
 const toWebSocketUrl = (httpUrl: string) => {
   const url = new URL(httpUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+
   return url.toString();
 };
 
 const toHttpUrl = (wsUrl: string) => {
   const url = new URL(wsUrl);
   url.protocol = url.protocol === "wss:" ? "https:" : "http:";
+
   return url.toString();
 };
 
@@ -31,8 +33,10 @@ export function resolveServerTarget(input: {
   if (input.desktop !== null) {
     return { ...input.desktop, source: "desktop" };
   }
+
   const httpUrl = input.configuredHttpUrl.trim();
   const wsUrl = input.configuredWsUrl.trim();
+
   if (httpUrl.length > 0 || wsUrl.length > 0) {
     return {
       httpBaseUrl: httpUrl.length > 0 ? httpUrl : toHttpUrl(wsUrl),
@@ -40,5 +44,6 @@ export function resolveServerTarget(input: {
       source: "configured",
     };
   }
+
   return { httpBaseUrl: input.origin, wsBaseUrl: toWebSocketUrl(input.origin), source: "origin" };
 }

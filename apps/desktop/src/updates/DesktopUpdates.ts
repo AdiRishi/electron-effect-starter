@@ -59,8 +59,10 @@ const make = Effect.gen(function* () {
   const configure = Effect.gen(function* () {
     if (!enabled) {
       yield* logInfo("automatic updates are off", { packaged: environment.isPackaged });
+
       return;
     }
+
     yield* updater.configure({ autoDownload: true, autoInstallOnAppQuit: true });
     yield* updater.on("update-downloaded", (info) => {
       runFork(promptRestart(info.version));

@@ -20,6 +20,7 @@ declare global {
 export async function act<T>(callback: () => T | Promise<T>): Promise<T> {
   const previous = globalThis.IS_REACT_ACT_ENVIRONMENT;
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
   try {
     return await reactAct(async () => await callback());
   } finally {
@@ -76,15 +77,18 @@ export async function render(
   const router = path === false ? undefined : createTestRouter(path);
   // The router element is created once so a rerender updates the tree instead of remounting it.
   const routerElement = router && <RouterProvider router={router} />;
+
   const wrap = (node: ReactNode) =>
     routerElement ? <RoutedUi value={node}>{routerElement}</RoutedUi> : node;
 
   let mounted = true;
+
   const unmount = async () => {
     if (!mounted) return;
     mounted = false;
     await act(() => root.unmount());
   };
+
   const screen: Screen = {
     ...utils.getElementLocatorSelectors(container),
     container,
@@ -107,11 +111,13 @@ export async function render(
     await screen[Symbol.asyncDispose]();
     throw error;
   }
+
   return screen;
 }
 
 /** Fake timers for one test: `using _timers = fakeTimers()`. */
 export function fakeTimers(config?: Parameters<typeof vi.useFakeTimers>[0]): Disposable {
   vi.useFakeTimers(config);
+
   return { [Symbol.dispose]: () => void vi.useRealTimers() };
 }

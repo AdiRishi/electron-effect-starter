@@ -62,6 +62,7 @@ const CONTENT_SECURITY_POLICY = [
 function withContentSecurityPolicy(response: Response): Response {
   const headers = new Headers(response.headers);
   headers.set("Content-Security-Policy", CONTENT_SECURITY_POLICY);
+
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -124,27 +125,33 @@ const proxyRequest = Effect.fn("ElectronProtocol.proxyRequest")(function* (
   targetOrigin: URL,
 ) {
   const requestUrl = new URL(request.url);
+
   if (requestUrl.host !== DESKTOP_HOST) return new Response(null, { status: 404 });
 
   const targetUrl = new URL(`${requestUrl.pathname}${requestUrl.search}`, targetOrigin);
   const headers = new Headers(request.headers);
+
   // Collect first: deleting while iterating Headers skips entries.
   const removable = Array.from(headers.keys()).filter(
     (name) => HOP_BY_HOP_REQUEST_HEADERS.has(name) || name.startsWith("sec-fetch-"),
   );
+
   for (const name of removable) headers.delete(name);
   const isRead = request.method === "GET" || request.method === "HEAD";
+
   const init: RequestInit & { duplex?: "half" } = {
     method: request.method,
     headers,
     ...(isRead ? {} : { body: request.body, duplex: "half" }),
   };
+
   const response = isRead
     ? yield* netFetch(targetUrl.toString(), init).pipe(
         // Vite restarts briefly drop connections; retry reads only.
         Effect.retry({ schedule: Schedule.exponential("50 millis", 3), times: 2 }),
       )
     : yield* netFetch(targetUrl.toString(), init);
+
   return withContentSecurityPolicy(response);
 });
 
@@ -155,29 +162,40 @@ const serveDesktopAsset = Effect.fn("ElectronProtocol.serveAsset")(function* (
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const url = new URL(request.url);
+
   if (url.host !== DESKTOP_HOST) return new Response(null, { status: 404 });
+
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response(null, { status: 405 });
   }
+
   const pathname = yield* Effect.try(() => decodeURIComponent(url.pathname)).pipe(
     Effect.orElseSucceed(() => null),
   );
+
   if (pathname === null || pathname.includes("\0")) return new Response(null, { status: 400 });
   const root = path.resolve(assetDirectory);
   const assetPath = path.resolve(root, `.${pathname}`);
+
   if (assetPath !== root && !assetPath.startsWith(root + path.sep)) {
     return new Response(null, { status: 404 });
   }
+
   const stat = yield* fileSystem.stat(assetPath).pipe(Effect.orElseSucceed(() => null));
   let filePath = assetPath;
+
   if (stat?.type !== "File") {
     // Unknown files with an extension are real 404s; extensionless paths are app routes.
     const wantsHtml = request.headers.get("accept")?.includes("text/html") ?? false;
+
     if (path.extname(assetPath) !== "" && !wantsHtml) return new Response(null, { status: 404 });
     filePath = path.join(root, "index.html");
   }
+
   const contents = yield* fileSystem.readFile(filePath).pipe(Effect.orElseSucceed(() => null));
+
   if (contents === null) return new Response(null, { status: 404 });
+
   return withContentSecurityPolicy(
     new Response(request.method === "HEAD" ? null : new Uint8Array(contents), {
       headers: {

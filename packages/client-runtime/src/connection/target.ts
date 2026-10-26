@@ -38,6 +38,7 @@ export const layerTicket = (options: {
 
       const prepare = Effect.gen(function* () {
         const bearer = yield* options.bearerToken;
+
         const { ticket } = yield* client.auth
           .webSocketTicket({
             headers: Option.match(bearer, {
@@ -79,8 +80,10 @@ export const layerTicket = (options: {
                 ),
             }),
           );
+
         const url = new URL(WS_PATH, options.wsBaseUrl);
         url.searchParams.set(WS_TICKET_QUERY_PARAM, ticket);
+
         return { socketUrl: url.toString() };
       }).pipe(Effect.withSpan("ConnectionTarget.prepare"));
 

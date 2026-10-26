@@ -46,6 +46,7 @@ const make = Effect.gen(function* () {
     const connected = yield* Deferred.make<void>();
     const disconnected = yield* Deferred.make<never, ConnectionTransientError>();
     const pingTimedOut = yield* Ref.make(false);
+
     const hooks = RpcClient.ConnectionHooks.of({
       onConnect: Deferred.succeed(connected, undefined).pipe(Effect.asVoid),
       onDisconnect: Effect.all([Deferred.isDone(connected), Ref.get(pingTimedOut)]).pipe(
@@ -65,9 +66,11 @@ const make = Effect.gen(function* () {
         Effect.asVoid,
       ),
     });
+
     const layerSocket = Socket.layerWebSocket(input.socketUrl, {
       openTimeout: SOCKET_OPEN_TIMEOUT,
     }).pipe(Layer.provide(Layer.succeed(Socket.WebSocketConstructor, webSocketConstructor)));
+
     // Retries stay off: exactly one component reconnects, and it is the supervisor.
     const layerProtocol = Layer.effect(
       RpcClient.Protocol,
@@ -86,6 +89,7 @@ const make = Effect.gen(function* () {
         ),
       ),
     );
+
     const protocolContext = yield* Layer.build(layerProtocol);
     const client = yield* makeWsRpcProtocolClient.pipe(Effect.provideContext(protocolContext));
 

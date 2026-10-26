@@ -34,6 +34,7 @@ function Button({ className, variant, size, render, ...props }: ButtonProps) {
     "data-slot": "button",
     type: render ? undefined : ("button" as const),
   };
+
   return useRender({
     defaultTagName: "button",
     render,

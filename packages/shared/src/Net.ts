@@ -59,8 +59,10 @@ export const make = () => {
           (cause.code === "EADDRNOTAVAIL" || cause.code === "EAFNOSUPPORT")
         ) {
           settle(true);
+
           return;
         }
+
         settle(false);
       });
 
@@ -114,6 +116,7 @@ export const make = () => {
       hasListenerOnHost(port, "::1"),
       (ipv4, ipv6) => ipv4 || ipv6,
     );
+
     if (hasListener) {
       return false;
     }
@@ -146,8 +149,10 @@ export const make = () => {
         probe.close(() => {
           if (port > 0) {
             settle(Effect.succeed(port));
+
             return;
           }
+
           settle(Effect.fail(new NetError({ message: "Failed to reserve loopback port" })));
         });
       });
@@ -166,6 +171,7 @@ export const make = () => {
       if (preferred > 0 && (yield* isPortAvailableOnLoopback(preferred))) {
         return preferred;
       }
+
       return yield* reserveLoopbackPort();
     }),
   } satisfies NetService["Service"];

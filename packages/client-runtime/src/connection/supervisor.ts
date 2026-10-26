@@ -28,11 +28,13 @@ import * as ConnectionWakeups from "./wakeups.ts";
 
 const RETRY_BASE_DELAY_MS = 1_000;
 const RETRY_MAX_DELAY_MS = 300_000;
+
 // A cold server with a large database can take a while to answer, and that is
 // not a reason to drop a working connection.
 const ESTABLISHMENT_TIMEOUT = "15 seconds";
 const PROBE_TIMEOUT = Duration.seconds(15);
 const QUICK_PROBE_TIMEOUT = Duration.seconds(3);
+
 // A connection that stayed up this long resets the retry ladder when it drops.
 const BACKOFF_RESET_AFTER_MS = 30_000;
 
@@ -48,6 +50,7 @@ type SupervisorSignal = Data.TaggedEnum<{
   NetworkChanged: { readonly network: NetworkStatus };
   Wakeup: { readonly reason: ConnectionWakeups.ConnectionWakeup };
 }>;
+
 const SupervisorSignal = Data.taggedEnum<SupervisorSignal>();
 
 type AttemptOutcome = Data.TaggedEnum<{
@@ -58,6 +61,7 @@ type AttemptOutcome = Data.TaggedEnum<{
     readonly error: ConnectionAttemptError;
   };
 }>;
+
 const AttemptOutcome = Data.taggedEnum<AttemptOutcome>();
 
 /** How the race to set up a session ended. */
@@ -66,6 +70,7 @@ type Establishment = Data.TaggedEnum<{
   Abandoned: {};
   TimedOut: {};
 }>;
+
 const Establishment = Data.taggedEnum<Establishment>();
 
 /** What ended one wait on a health probe. */
@@ -74,6 +79,7 @@ type ProbeEvent = Data.TaggedEnum<{
   Signal: { readonly signal: SupervisorSignal };
   TimedOut: {};
 }>;
+
 const ProbeEvent = Data.taggedEnum<ProbeEvent>();
 
 // Only an explicit retry or going offline abandons an attempt in flight; other signals wait.
@@ -99,6 +105,7 @@ const isWakeup = SupervisorSignal.$is("Wakeup");
 /** Full jitter on an exponential ceiling, so many clients do not reconnect in lockstep. */
 export function retryDelayMs(failureCount: number, random: number): number {
   const ceiling = Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** (failureCount + 1));
+
   return Math.round(ceiling / 2 + (ceiling / 2) * random);
 }
 
@@ -137,7 +144,9 @@ function failureFromExit<A>(
   if (Exit.isSuccess(exit) || Cause.hasInterruptsOnly(exit.cause)) {
     return AttemptOutcome.Interrupted({ established, stable });
   }
+
   const typedFailure = exit.cause.reasons.find(Cause.isFailReason);
+
   return AttemptOutcome.Failure({
     established,
     stable,
@@ -179,10 +188,12 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
     desired: options?.initiallyDesired ?? false,
     network: yield* connectivity.status,
   };
+
   const intent = yield* Ref.make(initialIntent);
   const signals = yield* Queue.unbounded<SupervisorSignal>();
   const resetRetryState = yield* Ref.make(false);
   const probeUnanswered = yield* Ref.make(false);
+
   const state = yield* SubscriptionRef.make(
     !initialIntent.desired
       ? stateFor("available", initialIntent)
@@ -190,6 +201,7 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
         ? stateFor("offline", initialIntent)
         : stateFor("connecting", initialIntent, { attempt: 1 }),
   );
+
   const session = yield* SubscriptionRef.make(Option.none<RpcSession.RpcSession>());
 
   const clearSession = SubscriptionRef.set(session, Option.none());
@@ -200,6 +212,7 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
     const { socketUrl } = yield* target.prepare;
     const opened = yield* sessions.connect({ label: target.label, socketUrl });
     yield* opened.ready;
+
     return opened;
   }).pipe(Effect.withSpan("ConnectionSupervisor.establish"));
 
@@ -220,16 +233,21 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
           : Effect.void,
       ),
     );
+
     for (;;) {
       const next = yield* takeSignal;
+
       if (SupervisorSignal.$is("DisconnectRequested")(next)) return;
       const probeTimeout = probeTimeoutFor(next);
+
       if (probeTimeout === undefined) continue;
       yield* Ref.set(probeUnanswered, true);
       const probe = yield* Effect.forkChild(live.probe);
       let deadline = (yield* Clock.monotonicTimeNanos) + Duration.toNanosUnsafe(probeTimeout);
+
       for (;;) {
         const remaining = deadline - (yield* Clock.monotonicTimeNanos);
+
         const event = yield* Effect.raceAllFirst([
           Fiber.await(probe).pipe(Effect.map((exit) => ProbeEvent.ProbeCompleted({ exit }))),
           takeSignal.pipe(Effect.map((signal) => ProbeEvent.Signal({ signal }))),
@@ -237,26 +255,34 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
             Effect.as(ProbeEvent.TimedOut()),
           ),
         ]);
+
         if (ProbeEvent.$is("TimedOut")(event)) {
           yield* Fiber.interrupt(probe);
+
           return yield* new ConnectionTransientError({
             reason: "timeout",
             detail: `${target.label} did not respond to a connection health check.`,
           });
         }
+
         if (ProbeEvent.$is("ProbeCompleted")(event)) {
           if (Exit.isSuccess(event.exit)) yield* Ref.set(probeUnanswered, false);
           yield* event.exit;
           break;
         }
+
         if (SupervisorSignal.$is("DisconnectRequested")(event.signal)) {
           yield* Fiber.interrupt(probe);
+
           return;
         }
+
         const signalTimeout = probeTimeoutFor(event.signal);
+
         if (signalTimeout !== undefined) {
           const signalDeadline =
             (yield* Clock.monotonicTimeNanos) + Duration.toNanosUnsafe(signalTimeout);
+
           if (signalDeadline < deadline) deadline = signalDeadline;
         }
       }
@@ -271,6 +297,7 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
     yield* setState(
       stateFor("connecting", yield* Ref.get(intent), { attempt, generation, lastFailure }),
     );
+
     const establishment = yield* Effect.raceAllFirst([
       exitUnlessInterrupted(establish).pipe(
         Effect.map((exit) => Establishment.Completed({ exit })),
@@ -282,6 +309,7 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
     if (Establishment.$is("Abandoned")(establishment)) {
       return AttemptOutcome.Interrupted({ established: false, stable: false });
     }
+
     if (Establishment.$is("TimedOut")(establishment)) {
       return AttemptOutcome.Failure({
         established: false,
@@ -292,12 +320,14 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
         }),
       });
     }
+
     if (Exit.isFailure(establishment.exit)) {
       return failureFromExit(target.label, establishment.exit, false, false);
     }
 
     const live = establishment.exit.value;
     const currentIntent = yield* Ref.get(intent);
+
     if (!currentIntent.desired) {
       return AttemptOutcome.Interrupted({ established: false, stable: false });
     }
@@ -309,7 +339,9 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
     const connectedExit = yield* Effect.raceFirst(live.closed, monitorConnectedSession(live)).pipe(
       exitUnlessInterrupted,
     );
+
     const stable = (yield* Clock.currentTimeMillis) - connectedAt >= BACKOFF_RESET_AFTER_MS;
+
     return Exit.isSuccess(connectedExit)
       ? AttemptOutcome.Interrupted({ established: true, stable })
       : failureFromExit(target.label, connectedExit, true, stable);
@@ -335,7 +367,9 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
         failureCount = 0;
         latestFailure = null;
       }
+
       const currentIntent = yield* Ref.get(intent);
+
       if (!currentIntent.desired) {
         failureCount = 0;
         latestFailure = null;
@@ -344,6 +378,7 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
         yield* waitForSignal;
         continue;
       }
+
       if (currentIntent.network === "offline") {
         yield* clearSession;
         yield* setState(
@@ -353,24 +388,31 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
             lastFailure: latestFailure,
           }),
         );
+
         if (yield* waitForSignal) failureCount = 0;
         continue;
       }
 
       const attempt = failureCount + 1;
+
       const outcome: AttemptOutcome = yield* Effect.scoped(
         runAttempt(attempt, generation + 1, latestFailure),
       );
+
       const failedProbe = yield* Ref.getAndSet(probeUnanswered, false);
+
       if (outcome.established) {
         generation += 1;
         // A session came up, so no earlier failure describes the connection.
         latestFailure = null;
+
         if (outcome.stable) failureCount = 0;
       }
+
       if (AttemptOutcome.$is("Interrupted")(outcome)) continue;
 
       if (!outcome.established) latestFailure = outcome.error;
+
       if (Predicate.isTagged(outcome.error, "ConnectionBlockedError")) {
         yield* setState(
           stateFor("blocked", yield* Ref.get(intent), {
@@ -379,9 +421,11 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
             lastFailure: outcome.error,
           }),
         );
+
         if (yield* waitForSignal) failureCount = 0;
         continue;
       }
+
       // A live socket that missed a health check is replaced at once, not after a backoff.
       if (failedProbe) {
         failureCount = 0;
@@ -398,6 +442,7 @@ const make = Effect.fn("ConnectionSupervisor.make")(function* (options?: {
           retryAt: (yield* Clock.currentTimeMillis) + delayMs,
         }),
       );
+
       if (yield* waitForRetrySignal(delayMs)) failureCount = 0;
     }
   });

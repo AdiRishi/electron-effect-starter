@@ -15,6 +15,7 @@ const closeServer = (server: NodeNet.Server) =>
 
 const getPort = (server: NodeNet.Server): number => {
   const address = server.address();
+
   return typeof address === "object" && address !== null ? address.port : 0;
 };
 
@@ -53,17 +54,22 @@ it.layer(NetService.layer)("NetService", (it) => {
           const net = yield* NetService.NetService;
           const port = yield* net.reserveLoopbackPort();
           const listen = NodeNet.Server.prototype.listen;
+
           const spy = vi.spyOn(NodeNet.Server.prototype, "listen").mockImplementation(function (
             this: NodeNet.Server,
             ...args
           ) {
             const [options] = args;
+
             if (options?.host === "::1" || options?.host === "::") {
               process.nextTick(() => this.emit("error", Object.assign(new Error(code), { code })));
+
               return this;
             }
+
             return listen.apply(this, args);
           });
+
           try {
             assert.equal(yield* net.isPortAvailableOnLoopback(port), true);
             assert.equal(yield* net.canListenOnHost(port, "::"), true);

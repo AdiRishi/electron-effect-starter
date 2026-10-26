@@ -58,8 +58,11 @@ const EnvConfig = Config.all({
 const expandHomePath = Effect.fn("cli.expandHomePath")(function* (input: string) {
   const { join, resolve } = yield* Path.Path;
   const home = yield* HostProcess.HomeDirectory;
+
   if (input === "~") return home;
+
   if (input.startsWith("~/") || input.startsWith("~\\")) return join(home, input.slice(2));
+
   return resolve(input);
 });
 
@@ -73,6 +76,7 @@ export const resolveServerConfig = Effect.fn("cli.resolveServerConfig")(function
   const env = yield* EnvConfig;
 
   const bootstrapFd = Option.firstSomeOf([serverFlags.bootstrapFd, env.bootstrapFd]);
+
   const bootstrap = Option.isSome(bootstrapFd)
     ? Option.getOrUndefined(yield* readBootstrapEnvelope(bootstrapFd.value))
     : undefined;
@@ -81,23 +85,29 @@ export const resolveServerConfig = Effect.fn("cli.resolveServerConfig")(function
     Option.firstSomeOf([serverFlags.mode, env.mode, Option.fromUndefinedOr(bootstrap?.mode)]),
     (): ServerConfig.RuntimeMode => "web",
   );
+
   const explicitPort = Option.firstSomeOf([
     serverFlags.port,
     env.port,
     Option.fromUndefinedOr(bootstrap?.port),
   ]);
+
   const port = Option.isSome(explicitPort)
     ? explicitPort.value
     : yield* net.findAvailablePort(ServerConfig.DEFAULT_PORT);
+
   const devUrl = Option.getOrUndefined(Option.firstSomeOf([serverFlags.devUrl, env.devUrl]));
+
   const rawBaseDir = Option.firstSomeOf([
     serverFlags.baseDir,
     env.baseDir,
     Option.fromUndefinedOr(bootstrap?.baseDir),
   ]).pipe(Option.filter((value) => value.trim().length > 0));
+
   const baseDir = Option.isSome(rawBaseDir)
     ? yield* expandHomePath(rawBaseDir.value.trim())
     : path.join(yield* HostProcess.HomeDirectory, ServerConfig.DATA_DIR_NAME);
+
   const paths = yield* ServerConfig.deriveServerPaths(baseDir, devUrl);
   yield* ServerConfig.ensureServerDirectories(paths);
 
@@ -127,11 +137,13 @@ const runServerCommand = Effect.fn("cli.runServerCommand")(function* (serverFlag
   const logLevel = yield* GlobalFlag.LogLevel;
   const config = yield* resolveServerConfig(serverFlags, logLevel);
   const run = runServer.pipe(Effect.provideService(ServerConfig.ServerConfig, config));
+
   if (config.mode !== "desktop") return yield* run;
   yield* Effect.sync(() => {
     process.stdout.on("error", ignoreClosedLauncherPipe);
     process.stderr.on("error", ignoreClosedLauncherPipe);
   });
+
   return yield* Effect.raceFirst(
     run,
     // End like SIGTERM does: an interrupt-only exit lets the runtime run finalizers and exit.

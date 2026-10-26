@@ -100,18 +100,21 @@ describe("DesktopBackendManager", () => {
       Effect.gen(function* () {
         const bootstrapLines = yield* Queue.unbounded<string>();
         const ready = yield* Deferred.make<URL>();
+
         const instance = yield* makeInstance({
           spawn: (command) =>
             Effect.gen(function* () {
               const fd3 = ChildProcess.isStandardCommand(command)
                 ? command.options.additionalFds?.fd3
                 : undefined;
+
               if (fd3?.type === "input" && fd3.stream) {
                 yield* Queue.offer(
                   bootstrapLines,
                   yield* fd3.stream.pipe(Stream.decodeText(), Stream.mkString),
                 );
               }
+
               return makeProcess({ exitCode: Effect.never });
             }),
           onReady: (httpBaseUrl) => Deferred.succeed(ready, httpBaseUrl).pipe(Effect.asVoid),
@@ -131,12 +134,14 @@ describe("DesktopBackendManager", () => {
       Effect.gen(function* () {
         const starts = yield* Queue.unbounded<number>();
         let startCount = 0;
+
         const instance = yield* makeInstance({
           httpStatus: "never",
           spawn: () =>
             Effect.gen(function* () {
               startCount += 1;
               yield* Queue.offer(starts, startCount);
+
               return makeProcess({
                 exitCode:
                   startCount === 1 ? Effect.succeed(ChildProcessSpawner.ExitCode(1)) : Effect.never,
@@ -159,11 +164,13 @@ describe("DesktopBackendManager", () => {
       Effect.gen(function* () {
         const refused = yield* Deferred.make<void>();
         let startCount = 0;
+
         const instance = yield* makeInstance({
           httpStatus: "never",
           spawn: () =>
             Effect.sync(() => {
               startCount += 1;
+
               return makeProcess({
                 exitCode: Effect.succeed(
                   ChildProcessSpawner.ExitCode(SERVER_EXIT_CODE_STATE_DIR_OWNED),
@@ -190,12 +197,14 @@ describe("DesktopBackendManager", () => {
         const closed = yield* Deferred.make<void>();
         const ready = yield* Deferred.make<void>();
         let startCount = 0;
+
         const instance = yield* makeInstance({
           spawn: () =>
             Effect.gen(function* () {
               startCount += 1;
               // Closing the run's scope is how the real spawner kills the process.
               yield* Effect.addFinalizer(() => Deferred.succeed(closed, undefined));
+
               return makeProcess({
                 exitCode: Deferred.await(closed).pipe(Effect.as(ChildProcessSpawner.ExitCode(0))),
               });
@@ -224,6 +233,7 @@ describe("DesktopBackendManager", () => {
         method: "exitCode",
         cause: new Error("Process interrupted due to receipt of signal: 'SIGKILL'"),
       });
+
       const exit = yield* DesktopBackendManager.runBackendProcess(baseConfig, {
         readinessTimeout: Duration.seconds(1),
         onStarted: () => Effect.void,
@@ -245,6 +255,7 @@ describe("DesktopBackendManager", () => {
           ),
         ),
       );
+
       assert.deepStrictEqual(exit, { code: Option.none(), reason: "killed by SIGKILL" });
     }),
   );

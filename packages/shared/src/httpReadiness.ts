@@ -33,6 +33,7 @@ export const waitForHttpReady = Effect.fn("shared.httpReadiness.waitForHttpReady
     const requestUrl = new URL(input.path, input.baseUrl).href;
     const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient);
     const attempts = yield* Ref.make(0);
+
     const lastFailure = yield* Ref.make(
       Option.none<HttpClientError.HttpClientError | Cause.TimeoutError>(),
     );

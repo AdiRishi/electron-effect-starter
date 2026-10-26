@@ -12,6 +12,7 @@ try {
       process.platform === "linux"
         ? process.env.XDG_CACHE_HOME || NodePath.join(NodeOS.homedir(), ".cache")
         : NodeOS.tmpdir();
+
     NodeModule.enableCompileCache(
       NodePath.join(cacheRoot, "electron-effect-starter", "compile-cache"),
     );

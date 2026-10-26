@@ -26,6 +26,7 @@ export const layer = Layer.effectDiscard(
       const pairingUrl = yield* auth.issueStartupPairingUrl(
         config.devUrl?.toString() ?? listeningUrl,
       );
+
       yield* Effect.logInfo(`Open ${pairingUrl} to sign this browser in.`);
     }
 

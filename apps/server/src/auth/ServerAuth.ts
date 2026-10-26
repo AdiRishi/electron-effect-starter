@@ -28,19 +28,25 @@ function selectRequestCredential(
   request: HttpServerRequest.HttpServerRequest,
 ): RequestCredential | undefined {
   const cookieToken = request.cookies[SESSION_COOKIE_NAME];
+
   if (cookieToken !== undefined && cookieToken.length > 0) {
     return { token: cookieToken, source: "cookie" };
   }
+
   const header = request.headers.authorization;
+
   if (header?.startsWith(BEARER_PREFIX)) {
     const token = header.slice(BEARER_PREFIX.length).trim();
+
     if (token.length > 0) return { token, source: "bearer" };
   }
+
   return undefined;
 }
 
 function firstHeaderValue(value: string | undefined): string | undefined {
   const first = value?.split(",")[0]?.trim().toLowerCase();
+
   return first && first.length > 0 ? first : undefined;
 }
 
@@ -51,15 +57,20 @@ function isBrowserOriginAllowed(
   trustedOrigins: ReadonlySet<string>,
 ): boolean {
   const origin = request.headers.origin;
+
   if (origin === undefined) return true;
+
   if (request.headers["sec-fetch-site"] === "same-origin") return true;
+
   if (trustedOrigins.has(origin)) return true;
   let originHost: string;
+
   try {
     originHost = new URL(origin).host.toLowerCase();
   } catch {
     return false;
   }
+
   return originHost !== "" && originHost === firstHeaderValue(request.headers.host);
 }
 
@@ -126,12 +137,15 @@ const make = Effect.gen(function* () {
 
   const authenticateRequest: ServerAuth["Service"]["authenticateRequest"] = (request) => {
     const credential = selectRequestCredential(request);
+
     if (credential === undefined) {
       return Effect.fail(new RequestCredentialError({ reason: "missing" }));
     }
+
     if (credential.source === "cookie" && !isBrowserOriginAllowed(request, trustedOrigins)) {
       return Effect.fail(new RequestCredentialError({ reason: "untrusted_origin" }));
     }
+
     return sessions.verify(credential.token);
   };
 
@@ -140,6 +154,7 @@ const make = Effect.gen(function* () {
       const ticket = Option.flatMapNullishOr(HttpServerRequest.toURL(request), (url) =>
         url.searchParams.get(WS_TICKET_QUERY_PARAM),
       ).pipe(Option.filter((value) => value.trim().length > 0));
+
       return Option.isSome(ticket)
         ? yield* sessions.verifyWebSocketTicket(ticket.value)
         : yield* authenticateRequest(request);
@@ -162,6 +177,7 @@ const make = Effect.gen(function* () {
   ) {
     yield* bootstrapCredentials.consume(credential);
     const session = yield* sessions.issue({ method: "browser-session-cookie" });
+
     return {
       response: {
         authenticated: true,
@@ -177,6 +193,7 @@ const make = Effect.gen(function* () {
       yield* bootstrapCredentials.consume(credential);
       const session = yield* sessions.issue({ method: "bearer-access-token" });
       const now = yield* DateTime.now;
+
       return {
         access_token: session.token,
         issued_token_type: AuthAccessTokenType,
@@ -193,6 +210,7 @@ const make = Effect.gen(function* () {
     session: SessionStore.Session,
   ) {
     const issued = yield* sessions.issueWebSocketTicket(session);
+
     return {
       ticket: issued.ticket,
       expiresAt: issued.expiresAt,
@@ -206,6 +224,7 @@ const make = Effect.gen(function* () {
     const { token } = yield* bootstrapCredentials.issuePairingToken;
     const url = new URL(baseUrl);
     url.hash = new URLSearchParams([[PAIRING_TOKEN_QUERY_PARAM, token]]).toString();
+
     return url.toString();
   });
 

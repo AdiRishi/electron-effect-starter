@@ -30,9 +30,11 @@ export const layerAuthentication = Layer.effect(
   HttpAuthentication,
   Effect.gen(function* () {
     const auth = yield* ServerAuth.ServerAuth;
+
     return (httpEffect) =>
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
+
         const session = yield* auth.authenticateRequest(request).pipe(
           Effect.catchTags({
             RequestCredentialError: (error) =>
@@ -42,6 +44,7 @@ export const layerAuthentication = Layer.effect(
             SessionCredentialInvalidError: failInvalidCredential,
           }),
         );
+
         return yield* httpEffect.pipe(Effect.provideService(AuthenticatedPrincipal, session));
       });
   }),
@@ -59,6 +62,7 @@ export const layer = HttpApiBuilder.group(
         Effect.fn("http.auth.session")(function* () {
           const request = yield* HttpServerRequest.HttpServerRequest;
           yield* appendCredentialResponseHeaders;
+
           return yield* auth.getSessionState(request);
         }),
       )
@@ -67,6 +71,7 @@ export const layer = HttpApiBuilder.group(
         Effect.fn("http.auth.browserSession")(
           function* (args) {
             const result = yield* auth.createBrowserSession(args.payload.credential);
+
             const cookies = yield* Effect.fromResult(
               Cookies.set(Cookies.empty, SESSION_COOKIE_NAME, result.sessionToken, {
                 expires: DateTime.toDate(result.response.expiresAt),
@@ -75,10 +80,12 @@ export const layer = HttpApiBuilder.group(
                 sameSite: "lax",
               }),
             ).pipe(Effect.mapError(() => new InternalError({ reason: "session_issuance_failed" })));
+
             yield* HttpEffect.appendPreResponseHandler((_request, response) =>
               Effect.succeed(HttpServerResponse.mergeCookies(response, cookies)),
             );
             yield* appendCredentialResponseHeaders;
+
             return result.response;
           },
           Effect.catchTags({
@@ -93,6 +100,7 @@ export const layer = HttpApiBuilder.group(
         Effect.fn("http.auth.token")(
           function* (args) {
             yield* appendCredentialResponseHeaders;
+
             return yield* auth.exchangeBootstrapCredential(args.payload.subject_token);
           },
           Effect.catchTags({
@@ -108,6 +116,7 @@ export const layer = HttpApiBuilder.group(
           function* () {
             const session = yield* AuthenticatedPrincipal;
             yield* appendCredentialResponseHeaders;
+
             return yield* auth.issueWebSocketTicket(session);
           },
           Effect.catchTags({

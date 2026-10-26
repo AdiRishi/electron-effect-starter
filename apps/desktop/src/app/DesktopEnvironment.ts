@@ -39,10 +39,12 @@ export const make = Effect.fn("DesktopEnvironment.make")(function* (input: {
   const path = yield* Path.Path;
   const config = yield* DesktopConfig;
   const isDevelopment = Option.isSome(config.devServerUrl);
+
   // Dev builds keep separate state so they never migrate the installed app's database.
   const stateDir = isDevelopment
     ? path.join(input.metadata.userDataPath, "dev")
     : input.metadata.userDataPath;
+
   // dist-electron sits three levels below the repository root in a source checkout.
   const appRoot = input.metadata.isPackaged
     ? input.metadata.appPath

@@ -56,7 +56,9 @@ const isFdPathDuplicationError = Predicate.compose(
 
 function resolveFdPath(fd: number, platform: NodeJS.Platform): string | undefined {
   if (platform === "linux") return `/proc/self/fd/${fd}`;
+
   if (platform === "win32") return undefined;
+
   return `/dev/fd/${fd}`;
 }
 
@@ -66,6 +68,7 @@ const makeDirectStream = (fd: number): NodeStream.Readable => {
   } catch {
     const socket = new NodeNet.Socket({ fd, readable: true, writable: false });
     socket.setEncoding("utf8");
+
     return socket;
   }
 };
@@ -84,16 +87,21 @@ const isFdReady = (fd: number) =>
 
 const openStream = Effect.fn("bootstrap.openStream")(function* (fd: number) {
   const fdPath = resolveFdPath(fd, yield* HostProcess.Platform);
+
   return yield* Effect.try({
     try: (): NodeStream.Readable => {
       if (fdPath === undefined) return makeDirectStream(fd);
       let streamFd: number | undefined;
+
       try {
         streamFd = NodeFS.openSync(fdPath, "r");
+
         return NodeFS.createReadStream("", { fd: streamFd, encoding: "utf8", autoClose: true });
       } catch (error) {
         if (!isFdPathDuplicationError(error)) throw error;
+
         if (streamFd !== undefined) NodeFS.closeSync(streamFd);
+
         return makeDirectStream(fd);
       }
     },
@@ -129,6 +137,7 @@ export const readBootstrapEnvelope = Effect.fn("readBootstrapEnvelope")(function
           : Effect.fail(new BootstrapEnvelopeReadError({ fd, stage: "read", cause: error })),
       );
     };
+
     const handleLine = (line: string) => {
       const decoded = decodeBootstrapLine(line);
       resume(
@@ -137,6 +146,7 @@ export const readBootstrapEnvelope = Effect.fn("readBootstrapEnvelope")(function
           : Effect.fail(new BootstrapEnvelopeDecodeError({ fd, cause: decoded.failure })),
       );
     };
+
     const handleClose = () => resume(Effect.succeedNone);
 
     stream.once("error", handleError);

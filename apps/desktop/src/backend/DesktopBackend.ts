@@ -62,6 +62,7 @@ const make = Effect.gen(function* () {
   const bootstrapToken = Buffer.from(yield* Effect.orDie(crypto.randomBytes(32))).toString(
     "base64url",
   );
+
   const port = yield* Ref.make(Option.none<number>());
 
   yield* fs.makeDirectory(environment.logDir, { recursive: true });
@@ -69,7 +70,9 @@ const make = Effect.gen(function* () {
 
   const configResolve = Effect.gen(function* () {
     const selectedPort = yield* Ref.get(port);
+
     if (Option.isNone(selectedPort)) return yield* Effect.die(new DesktopBackendPortMissingError());
+
     return {
       executablePath: process.execPath,
       entryPath: environment.backendEntryPath,
@@ -119,6 +122,7 @@ const make = Effect.gen(function* () {
         onSome: ({ httpBaseUrl }) => {
           const wsBaseUrl = new URL(httpBaseUrl);
           wsBaseUrl.protocol = "ws:";
+
           return { httpBaseUrl: httpBaseUrl.href, wsBaseUrl: wsBaseUrl.href };
         },
       }),

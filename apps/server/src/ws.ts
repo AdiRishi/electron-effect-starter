@@ -20,6 +20,7 @@ export const layerHandlers = WsRpcGroup.toLayer(
   Effect.gen(function* () {
     const lifecycle = yield* ServerLifecycleEvents.ServerLifecycleEvents;
     const notes = yield* NotesStore.NotesStore;
+
     return WsRpcGroup.of({
       [WS_METHODS.serverProbe]: () => Effect.succeed({}),
       [WS_METHODS.subscribeServerLifecycle]: () => lifecycle.subscribe,
@@ -43,6 +44,7 @@ export const layer = HttpRouter.add(
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
     const auth = yield* ServerAuth.ServerAuth;
+
     const session = yield* auth.authenticateWebSocketUpgrade(request).pipe(
       Effect.catchTags({
         RequestCredentialError: (error) =>
@@ -55,16 +57,20 @@ export const layer = HttpRouter.add(
           Effect.fail(new AuthInvalidError({ reason: "invalid_credential" })),
       }),
     );
+
     const httpEffect = yield* Effect.gen(function* () {
       const { protocol, httpEffect } = yield* RpcServer.makeProtocolWithHttpEffectWebsocket;
       yield* RpcServer.make(WsRpcGroup, RPC_SERVER_OPTIONS).pipe(
         Effect.provideService(RpcServer.Protocol, protocol),
         Effect.forkScoped,
       );
+
       return httpEffect;
     }).pipe(Effect.provide(layerHandlers.pipe(Layer.provideMerge(RpcSerialization.layerJson))));
+
     // A socket must not outlive the session that opened it; the client reconnects and reauthenticates.
     const sessionRemaining = DateTime.distance(yield* DateTime.now, session.expiresAt);
+
     return yield* httpEffect.pipe(
       Effect.timeoutOrElse({
         duration: sessionRemaining,
