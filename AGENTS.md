@@ -6,7 +6,7 @@ This is a starter for Effect v4 desktop apps: an Electron shell supervises a loc
 
 - `pnpm check` (typecheck, lint and format) and `pnpm test` pass.
 - A change to the desktop shell or to a build config also needs `pnpm build` and `pnpm --filter @app/desktop smoke-test`.
-- To see the app, run `pnpm dev` and open the sign-in URL the server logs. `pnpm dev:desktop` runs the desktop shell.
+- To see the app, run `pnpm dev` and open the sign-in URL the server prints. `pnpm dev:desktop` runs the desktop shell.
 
 ## Effect
 
