@@ -1,22 +1,19 @@
 # Electron Effect Starter
 
-A desktop app starter built on [Effect](https://effect.website) v4, with the architecture of a real product instead of a hello-world window.
+Start your desktop app on [Effect](https://effect.website) v4 with the hard parts already solved.
 
-<p align="center">
-  <img src=".github/assets/notes.jpg" alt="The sample notes app, connected to its local server" width="720">
-</p>
+A serious desktop app needs more than a window. It needs a local backend that starts, restarts and shuts down cleanly, clients that stay connected, authentication, a secure renderer, and installers that update themselves. Each of these takes weeks to get right. This starter has all of them working together, following the architecture of [T3 Code](https://github.com/pingdotgg/t3code)'s desktop app, so you begin with your own features.
 
-An Electron shell runs and supervises a local Effect server. One React app talks to that server over typed WebSocket RPC, in the desktop window and in any browser on your machine. The design follows the desktop app of [T3 Code](https://github.com/pingdotgg/t3code).
+## What's solved
 
-## Why start here
+- **A supervised local server.** The Electron shell runs an Effect HTTP and WebSocket server as a child process, restarts it with backoff if it crashes, and waits for it to stop before quitting.
+- **One UI for desktop and browser.** The same React build runs in the desktop window and in any browser on your machine, over typed RPC with live updates.
+- **Connections that recover.** Clients reconnect after a server restart or a laptop sleep without your feature code handling it.
+- **Security by default.** The renderer is sandboxed behind a strict CSP, IPC is checked against schemas, and every client signs in, browsers included.
+- **Releases.** Tagging a version builds installers for macOS, Windows and Linux, and installed apps update from GitHub Releases.
+- **Effect everywhere.** The server, the shell and the client share typed errors, services and layers. The Effect source is vendored, so coding agents write idiomatic Effect from day one.
 
-- **One app, two places.** The same build runs in the desktop window and in a browser, with live updates in both.
-- **It recovers on its own.** A crashed server restarts with backoff. Clients reconnect after a restart or a laptop sleep. Quitting waits for the server to shut down cleanly.
-- **Locked down by default.** The renderer is sandboxed behind a strict CSP, IPC is checked against schemas, and every client signs in, browsers included.
-- **Effect from end to end.** The server, the shell and the client share typed errors, services and layers. The Effect source is vendored in the repo, so coding agents write idiomatic Effect.
-- **Ready to ship.** Tagging a release builds installers for macOS, Windows and Linux, and installed apps update themselves from GitHub Releases.
-
-The sample feature, a notes list that syncs across every window and browser, shows the full path from SQLite to the UI.
+A small notes feature shows where your code goes, from SQLite to the UI. Replace it with your app.
 
 Built with Effect 4, Electron 45, React 19, TypeScript 7, Vite, Tailwind CSS 4, Turborepo, Vitest and oxlint.
 
