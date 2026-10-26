@@ -12,7 +12,7 @@ import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
-import { makeComponentLogger } from "./DesktopLogger.ts";
+import * as DesktopLogger from "./DesktopLogger.ts";
 import * as DesktopShutdown from "./DesktopShutdown.ts";
 import * as DesktopState from "./DesktopState.ts";
 
@@ -29,7 +29,7 @@ export class DesktopLifecycle extends Context.Service<
   { readonly register: Effect.Effect<void, never, Scope.Scope | LifecycleServices> }
 >()("@app/desktop/app/DesktopLifecycle") {}
 
-const { logInfo, logError } = makeComponentLogger("desktop-lifecycle");
+const { logInfo, logError } = DesktopLogger.forComponent("desktop-lifecycle");
 
 interface QuitState {
   phase: "running" | "waiting" | "allowed";

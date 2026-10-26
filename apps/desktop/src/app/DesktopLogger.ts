@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import { flow } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as Path from "effect/Path";
@@ -25,14 +26,12 @@ export const layer = Layer.unwrap(
   }),
 );
 
-/** Annotates every log line from one part of the shell with its component name. */
-export const makeComponentLogger = (component: string) => ({
-  logInfo: (message: string, fields?: Record<string, unknown>) =>
-    Effect.logInfo(message, ...(fields ? [fields] : [])).pipe(Effect.annotateLogs({ component })),
-  logWarning: (message: string, fields?: Record<string, unknown>) =>
-    Effect.logWarning(message, ...(fields ? [fields] : [])).pipe(
-      Effect.annotateLogs({ component }),
-    ),
-  logError: (message: string, fields?: Record<string, unknown>) =>
-    Effect.logError(message, ...(fields ? [fields] : [])).pipe(Effect.annotateLogs({ component })),
-});
+/** Effect's log functions, annotating every line with the part of the shell that wrote it. */
+export const forComponent = (component: string) => {
+  const annotate = Effect.annotateLogs({ component });
+  return {
+    logInfo: flow(Effect.logInfo, annotate),
+    logWarning: flow(Effect.logWarning, annotate),
+    logError: flow(Effect.logError, annotate),
+  };
+};

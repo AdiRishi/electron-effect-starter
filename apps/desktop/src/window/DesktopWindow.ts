@@ -8,7 +8,7 @@ import * as Ref from "effect/Ref";
 import * as Electron from "electron";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
-import { makeComponentLogger } from "../app/DesktopLogger.ts";
+import * as DesktopLogger from "../app/DesktopLogger.ts";
 import * as DesktopState from "../app/DesktopState.ts";
 import { getDesktopUrl } from "../electron/ElectronProtocol.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
@@ -21,7 +21,7 @@ const RENDERER_RECOVERY_RELOAD_DELAY_MS = 500;
 const RENDERER_RECOVERY_MAX_ATTEMPTS = 3;
 const RENDERER_RECOVERY_WINDOW_MS = 60_000;
 
-const { logInfo, logWarning } = makeComponentLogger("desktop-window");
+const { logInfo, logWarning } = DesktopLogger.forComponent("desktop-window");
 
 function isSameOrigin(applicationUrl: string, navigationUrl: string): boolean {
   try {
@@ -182,7 +182,7 @@ const make = Effect.gen(function* () {
       yield* createMainIfBackendReady;
     }).pipe(
       Effect.catchTags({
-        ElectronWindowCreateError: (error) => logWarning(error.message),
+        ElectronWindowCreateError: (error) => logWarning("could not create the main window", error),
       }),
       Effect.withSpan("DesktopWindow.activate"),
     ),
@@ -193,7 +193,7 @@ const make = Effect.gen(function* () {
         yield* createMainIfBackendReady;
       },
       Effect.catchTags({
-        ElectronWindowCreateError: (error) => logWarning(error.message),
+        ElectronWindowCreateError: (error) => logWarning("could not create the main window", error),
       }),
     ),
     handleBackendNotReady: Ref.set(desktopState.backendReady, false),

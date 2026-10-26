@@ -6,13 +6,13 @@ import * as Schedule from "effect/Schedule";
 import type * as Scope from "effect/Scope";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
-import { makeComponentLogger } from "../app/DesktopLogger.ts";
+import * as DesktopLogger from "../app/DesktopLogger.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
 
 const CHECK_INTERVAL = "4 hours";
 
-const { logInfo, logWarning } = makeComponentLogger("desktop-updates");
+const { logInfo, logWarning } = DesktopLogger.forComponent("desktop-updates");
 
 /**
  * Checks for updates in packaged builds, downloads them in the background, and offers a restart
@@ -37,8 +37,7 @@ const make = Effect.gen(function* () {
 
   const check = updater.checkForUpdates.pipe(
     Effect.catchTags({
-      ElectronUpdaterCheckError: (error) =>
-        logWarning(error.message, { cause: String(error.cause) }),
+      ElectronUpdaterCheckError: (error) => logWarning("update check failed", error),
     }),
   );
 
@@ -82,7 +81,7 @@ const make = Effect.gen(function* () {
       );
     });
     yield* updater.on("error", (error) => {
-      runFork(logWarning("updater error", { message: error.message }));
+      runFork(logWarning("updater error", error));
     });
     yield* check.pipe(Effect.repeat(Schedule.spaced(CHECK_INTERVAL)), Effect.forkScoped);
   }).pipe(Effect.withSpan("DesktopUpdates.configure"));

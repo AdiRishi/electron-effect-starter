@@ -4,7 +4,6 @@ import {
   SERVER_EXIT_CODE_STATE_DIR_OWNED,
 } from "@app/contracts";
 import { type HttpReadinessError, waitForHttpReady } from "@app/shared/httpReadiness";
-import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -20,7 +19,7 @@ import * as Stream from "effect/Stream";
 import { HttpClient } from "effect/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { makeComponentLogger } from "../app/DesktopLogger.ts";
+import * as DesktopLogger from "../app/DesktopLogger.ts";
 
 const INITIAL_RESTART_DELAY = Duration.millis(500);
 const MAX_RESTART_DELAY = Duration.seconds(10);
@@ -271,7 +270,7 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
   const httpClient = yield* HttpClient.HttpClient;
   const state = yield* Ref.make(initialState);
   const mutex = yield* Semaphore.make(1);
-  const { logInfo, logWarning, logError } = makeComponentLogger("desktop-backend");
+  const { logInfo, logWarning, logError } = DesktopLogger.forComponent("desktop-backend");
 
   const updateActiveRun = (runId: number, f: (run: ActiveBackendRun) => ActiveBackendRun) =>
     Ref.update(state, withActiveRun(runId, f));
@@ -319,9 +318,7 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
           ]),
         ),
         Effect.flatMap((shouldRestart) => (shouldRestart ? start : Effect.void)),
-        Effect.catchCause((cause) =>
-          logError("server restart fiber failed", { cause: Cause.pretty(cause) }),
-        ),
+        Effect.catchCause((cause) => logError("server restart fiber failed", cause)),
       ),
       parentScope,
     );
@@ -347,9 +344,7 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
           yield* Ref.update(state, (latest) => ({ ...latest, ready: false }));
         }
         const config = yield* spec.configResolve.pipe(
-          Effect.tapError((error) =>
-            logError("failed to resolve the server configuration", { cause: error.message }),
-          ),
+          Effect.tapError((error) => logError("failed to resolve the server configuration", error)),
           Effect.option,
         );
         if (Option.isNone(config)) {
@@ -430,8 +425,7 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
             );
             if (isCurrentRun) yield* spec.onReady?.(config.value.httpBaseUrl) ?? Effect.void;
           }),
-          onReadinessFailure: (error) =>
-            logWarning("server readiness check failed", { error: error.message }),
+          onReadinessFailure: (error) => logWarning("server readiness check failed", error),
           onOutput: spec.onOutput ?? (() => Effect.void),
         }).pipe(
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),

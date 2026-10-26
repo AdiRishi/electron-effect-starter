@@ -18,7 +18,7 @@ import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopApplicationMenu from "../window/DesktopApplicationMenu.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopLifecycle from "./DesktopLifecycle.ts";
-import { makeComponentLogger } from "./DesktopLogger.ts";
+import * as DesktopLogger from "./DesktopLogger.ts";
 import * as DesktopShutdown from "./DesktopShutdown.ts";
 import * as DesktopState from "./DesktopState.ts";
 
@@ -36,7 +36,7 @@ export class DesktopBackendPortUnavailableError extends Schema.TaggedError<Deskt
   }
 }
 
-const { logInfo, logError } = makeComponentLogger("desktop-app");
+const { logInfo, logError } = DesktopLogger.forComponent("desktop-app");
 
 const resolveBackendPort = Effect.fn("DesktopApp.resolveBackendPort")(function* (
   configuredPort: Option.Option<number>,
@@ -66,12 +66,11 @@ const fatalStartupCause = Effect.fn("DesktopApp.fatalStartupCause")(function* <E
   const electronApp = yield* ElectronApp.ElectronApp;
   const dialog = yield* ElectronDialog.ElectronDialog;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
-  const detail = Cause.pretty(cause);
-  yield* logError("fatal startup error", { stage, detail });
+  yield* logError("fatal startup error", { stage }, cause);
   if (!(yield* Ref.getAndSet(state.quitting, true))) {
     yield* dialog.showErrorBox(
       `${environment.displayName} failed to start`,
-      `Stage: ${stage}\n${detail}`,
+      `Stage: ${stage}\n${Cause.pretty(cause)}`,
     );
   }
   yield* shutdown.request;
