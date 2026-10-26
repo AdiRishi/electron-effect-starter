@@ -85,7 +85,12 @@ const isFdReady = (fd: number) =>
     }),
   );
 
-const openStream = Effect.fn("bootstrap.openStream")(function* (fd: number) {
+const openFdPathForReading = (fdPath: string) => NodeFS.openSync(fdPath, "r");
+
+const openStream = Effect.fn("bootstrap.openStream")(function* (
+  fd: number,
+  openFdPath: (fdPath: string) => number,
+) {
   const fdPath = resolveFdPath(fd, yield* HostProcess.Platform);
 
   return yield* Effect.try({
@@ -94,7 +99,7 @@ const openStream = Effect.fn("bootstrap.openStream")(function* (fd: number) {
       let streamFd: number | undefined;
 
       try {
-        streamFd = NodeFS.openSync(fdPath, "r");
+        streamFd = openFdPath(fdPath);
 
         return NodeFS.createReadStream("", { fd: streamFd, encoding: "utf8", autoClose: true });
       } catch (error) {
@@ -115,14 +120,18 @@ const openStream = Effect.fn("bootstrap.openStream")(function* (fd: number) {
  */
 export const readBootstrapEnvelope = Effect.fn("readBootstrapEnvelope")(function* (
   fd: number,
-  options?: { readonly timeoutMs?: number },
+  options?: {
+    readonly timeoutMs?: number;
+    /** Reopens the descriptor through its /dev/fd or /proc path; tests replace it to fail. */
+    readonly openFdPath?: (fdPath: string) => number;
+  },
 ): Effect.fn.Return<
   Option.Option<DesktopBackendBootstrap>,
   BootstrapEnvelopeReadError | BootstrapEnvelopeDecodeError,
   never
 > {
   if (!(yield* isFdReady(fd))) return Option.none();
-  const stream = yield* openStream(fd);
+  const stream = yield* openStream(fd, options?.openFdPath ?? openFdPathForReading);
 
   return yield* Effect.callback<
     Option.Option<DesktopBackendBootstrap>,

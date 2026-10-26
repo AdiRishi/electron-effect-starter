@@ -1,6 +1,7 @@
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- The reader takes a raw descriptor, which only node:fs opens.
 import * as NodeFS from "node:fs";
 
+import * as HostProcess from "@app/shared/HostProcess";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -10,12 +11,26 @@ import * as Path from "effect/Path";
 
 import { readBootstrapEnvelope } from "../src/bootstrap.ts";
 
-const openEnvelopeFd = Effect.fn("test.openEnvelopeFd")(function* (contents: string) {
+const ENVELOPE = `${JSON.stringify({
+  mode: "desktop",
+  port: 4123,
+  host: "127.0.0.1",
+  baseDir: "/tmp/app",
+  desktopBootstrapToken: "secret",
+})}\n`;
+
+const writeEnvelopeFile = Effect.fn("test.writeEnvelopeFile")(function* (contents: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const directory = yield* fs.makeTempDirectoryScoped({ prefix: "app-bootstrap-" });
   const file = path.join(directory, "envelope");
   yield* fs.writeFileString(file, contents);
+
+  return file;
+});
+
+const openEnvelopeFd = Effect.fn("test.openEnvelopeFd")(function* (contents: string) {
+  const file = yield* writeEnvelopeFile(contents);
 
   return yield* Effect.acquireRelease(
     Effect.sync(() => NodeFS.openSync(file, "r")),
@@ -32,15 +47,7 @@ describe("readBootstrapEnvelope", () => {
   it.layer(NodeServices.layer)((it) => {
     it.effect("decodes the envelope the desktop shell writes", () =>
       Effect.gen(function* () {
-        const fd = yield* openEnvelopeFd(
-          `${JSON.stringify({
-            mode: "desktop",
-            port: 4123,
-            host: "127.0.0.1",
-            baseDir: "/tmp/app",
-            desktopBootstrapToken: "secret",
-          })}\n`,
-        );
+        const fd = yield* openEnvelopeFd(ENVELOPE);
 
         const envelope = yield* readBootstrapEnvelope(fd);
         assert.deepStrictEqual(
@@ -55,6 +62,29 @@ describe("readBootstrapEnvelope", () => {
         const fd = yield* openEnvelopeFd(`${JSON.stringify({ mode: "desktop", port: 0 })}\n`);
         const error = yield* Effect.flip(readBootstrapEnvelope(fd));
         assert.strictEqual(error._tag, "BootstrapEnvelopeDecodeError");
+      }),
+    );
+
+    it.effect("falls back to reading the inherited fd when path duplication fails", () =>
+      Effect.gen(function* () {
+        // The fallback stream closes the fd asynchronously; a closing finalizer would race it.
+        const fd = NodeFS.openSync(yield* writeEnvelopeFile(ENVELOPE), "r");
+        const duplicationAttempts: Array<string> = [];
+
+        const envelope = yield* readBootstrapEnvelope(fd, {
+          timeoutMs: 100,
+          openFdPath: (fdPath) => {
+            duplicationAttempts.push(fdPath);
+
+            throw Object.assign(new Error("open failed with ENXIO"), { code: "ENXIO" });
+          },
+        }).pipe(Effect.provideService(HostProcess.Platform, "linux"));
+
+        assert.deepStrictEqual(duplicationAttempts, [`/proc/self/fd/${fd}`]);
+        assert.deepStrictEqual(
+          Option.map(envelope, (value) => value.port),
+          Option.some(4123),
+        );
       }),
     );
 
