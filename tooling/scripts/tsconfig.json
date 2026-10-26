@@ -4,5 +4,5 @@
     "types": ["node"],
     "lib": ["ESNext", "esnext.disposable"]
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "tests"]
 }

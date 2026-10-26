@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@app/shared": "workspace:*",
@@ -12,7 +13,10 @@
   },
   "devDependencies": {
     "@app/tsconfig": "workspace:*",
+    "@app/vitest-config": "workspace:*",
+    "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
-    "electron-builder": "catalog:"
+    "electron-builder": "catalog:",
+    "vitest": "catalog:"
   }
 }
