@@ -108,7 +108,11 @@ const make = Effect.gen(function* () {
 
     return {
       client,
-      ready: Deferred.await(connected).pipe(Effect.raceFirst(Deferred.await(disconnected))),
+      // An open socket is not yet a working session: the server must answer a request on it.
+      ready: Deferred.await(connected).pipe(
+        Effect.andThen(probe),
+        Effect.raceFirst(Deferred.await(disconnected)),
+      ),
       probe,
       closed: Deferred.await(disconnected),
     } satisfies RpcSession;
