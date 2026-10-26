@@ -14,8 +14,8 @@ import * as DesktopBackend from "../../src/backend/DesktopBackend.ts";
 import * as ElectronDialog from "../../src/electron/ElectronDialog.ts";
 import * as ElectronUpdater from "../../src/electron/ElectronUpdater.ts";
 import * as DesktopUpdates from "../../src/updates/DesktopUpdates.ts";
-import * as DesktopWindow from "../../src/window/DesktopWindow.ts";
 import { testEnvironment } from "./environment.ts";
+import { layerFakeDesktopWindow } from "./windows.ts";
 
 /** What electron-updater passes its listeners: update info, or the error. */
 export type UpdaterEventPayload = { readonly version: string } | Error;
@@ -147,15 +147,6 @@ export function makeUpdatesHarness(options: UpdatesHarnessOptions = {}) {
     },
   });
 
-  const layerWindow = Layer.succeed(
-    DesktopWindow.DesktopWindow,
-    DesktopWindow.DesktopWindow.of({
-      activate: Effect.void,
-      handleBackendReady: () => Effect.void,
-      handleBackendNotReady: Effect.void,
-    }),
-  );
-
   const layer = DesktopUpdates.layer.pipe(
     Layer.provideMerge(
       Layer.mergeAll(
@@ -165,7 +156,7 @@ export function makeUpdatesHarness(options: UpdatesHarnessOptions = {}) {
         layerUpdater,
         layerDialog,
         layerFileSystem,
-        layerWindow,
+        layerFakeDesktopWindow(),
         NodePath.layerPosix,
       ),
     ),

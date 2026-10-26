@@ -5,13 +5,13 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 
-import * as Electron from "electron";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopLogger from "../app/DesktopLogger.ts";
 import * as DesktopState from "../app/DesktopState.ts";
 import { getDesktopUrl } from "../electron/ElectronProtocol.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
+import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 
 const DEVELOPMENT_LOAD_RETRY_DELAYS_MS = [100, 250, 500, 1_000, 2_000] as const;
@@ -23,6 +23,10 @@ const RENDERER_RECOVERY_MAX_ATTEMPTS = 3;
 const RENDERER_RECOVERY_WINDOW_MS = 60_000;
 
 const { logInfo, logWarning } = DesktopLogger.forComponent("desktop-window");
+
+function getWindowBackgroundColor(shouldUseDarkColors: boolean): string {
+  return shouldUseDarkColors ? "#09090b" : "#ffffff";
+}
 
 function isSameOrigin(applicationUrl: string, navigationUrl: string): boolean {
   try {
@@ -39,6 +43,8 @@ export class DesktopWindow extends Context.Service<
     readonly activate: Effect.Effect<void>;
     readonly handleBackendReady: (httpBaseUrl: URL) => Effect.Effect<void>;
     readonly handleBackendNotReady: Effect.Effect<void>;
+    /** Repaints every window's background after the system switches light and dark mode. */
+    readonly syncAppearance: Effect.Effect<void>;
   }
 >()("@app/desktop/window/DesktopWindow") {}
 
@@ -46,6 +52,7 @@ const make = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const desktopState = yield* DesktopState.DesktopState;
   const electronShell = yield* ElectronShell.ElectronShell;
+  const electronTheme = yield* ElectronTheme.ElectronTheme;
   const electronWindow = yield* ElectronWindow.ElectronWindow;
   const runFork = Effect.runForkWith(yield* Effect.context<never>());
   const applicationUrl = getDesktopUrl(environment.isDevelopment);
@@ -58,6 +65,7 @@ const make = Effect.gen(function* () {
 
   const createMain = Effect.gen(function* () {
     if (yield* Ref.get(desktopState.quitting)) return;
+    const shouldUseDarkColors = yield* electronTheme.shouldUseDarkColors;
 
     const window = yield* electronWindow.create({
       width: 1100,
@@ -66,7 +74,7 @@ const make = Effect.gen(function* () {
       minHeight: 480,
       show: false,
       title: environment.displayName,
-      backgroundColor: Electron.nativeTheme.shouldUseDarkColors ? "#09090b" : "#ffffff",
+      backgroundColor: getWindowBackgroundColor(shouldUseDarkColors),
       autoHideMenuBar: true,
       webPreferences: {
         preload: environment.preloadPath,
@@ -213,6 +221,12 @@ const make = Effect.gen(function* () {
       }),
     ),
     handleBackendNotReady: Ref.set(desktopState.backendReady, false),
+    syncAppearance: Effect.gen(function* () {
+      const backgroundColor = getWindowBackgroundColor(yield* electronTheme.shouldUseDarkColors);
+      yield* electronWindow.syncAllAppearance((window) =>
+        Effect.sync(() => window.setBackgroundColor(backgroundColor)),
+      );
+    }).pipe(Effect.withSpan("DesktopWindow.syncAppearance")),
   });
 });
 

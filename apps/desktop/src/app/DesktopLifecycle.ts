@@ -9,6 +9,7 @@ import type * as Scope from "effect/Scope";
 import type * as Electron from "electron";
 
 import * as ElectronApp from "../electron/ElectronApp.ts";
+import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
@@ -22,6 +23,7 @@ type LifecycleServices =
   | DesktopState.DesktopState
   | DesktopWindow.DesktopWindow
   | ElectronApp.ElectronApp
+  | ElectronTheme.ElectronTheme
   | ElectronWindow.ElectronWindow;
 
 export class DesktopLifecycle extends Context.Service<
@@ -79,6 +81,7 @@ const make = DesktopLifecycle.of({
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
     const electronApp = yield* ElectronApp.ElectronApp;
     const electronWindow = yield* ElectronWindow.ElectronWindow;
+    const electronTheme = yield* ElectronTheme.ElectronTheme;
     const desktopWindow = yield* DesktopWindow.DesktopWindow;
     const state = yield* DesktopState.DesktopState;
     const context = yield* Effect.context<LifecycleServices>();
@@ -106,7 +109,11 @@ const make = DesktopLifecycle.of({
           yield* startWaitingForShutdown(quit);
           yield* Ref.set(state.quitting, true);
           yield* logInfo("before-quit received");
-          yield* electronWindow.destroyAll;
+          yield* electronWindow.destroyAll.pipe(
+            Effect.catchCause((cause) =>
+              logError("failed to destroy windows before shutdown", cause),
+            ),
+          );
           yield* requestShutdownAndWait;
         }),
       ).finally(() => {
@@ -134,16 +141,31 @@ const make = DesktopLifecycle.of({
       );
     };
 
+    yield* electronTheme.onUpdated(() => {
+      void runPromise(desktopWindow.syncAppearance);
+    });
     yield* electronApp.onBeforeQuitForUpdate(() => {
       // The updater owns the rest of the quit, install and relaunch; cancelling the following
       // before-quit would break it. Windows are destroyed inline because the quit proceeds as
       // soon as this listener returns.
       quit.phase = "allowed";
-      Effect.runSyncWith(context)(electronWindow.destroyAll);
+      Effect.runSyncWith(context)(
+        electronWindow.destroyAll.pipe(
+          Effect.andThen(logInfo("allowing updater-controlled quit")),
+          Effect.catchCause((cause) =>
+            logError("failed to destroy windows before updater quit", cause),
+          ),
+        ),
+      );
     });
     yield* electronApp.on("before-quit", handleBeforeQuit);
     yield* electronApp.on("activate", () => {
-      void runPromise(desktopWindow.activate);
+      void runPromise(
+        Effect.gen(function* () {
+          if (yield* Ref.get(state.quitting)) return;
+          yield* desktopWindow.activate;
+        }),
+      );
     });
     yield* electronApp.on("second-instance", () => {
       void runPromise(desktopWindow.activate);
