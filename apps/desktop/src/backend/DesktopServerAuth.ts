@@ -14,7 +14,8 @@ import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
-import { HttpClient } from "effect/http";
+import * as Cause from "effect/Cause";
+import { HttpClient, HttpClientError } from "effect/http";
 import * as HttpApiClient from "effect/http-api/HttpApiClient";
 
 import * as DesktopBackend from "./DesktopBackend.ts";
@@ -22,6 +23,21 @@ import * as DesktopBackend from "./DesktopBackend.ts";
 // The renderer asks right after the window opens; a server that just restarted answers 503 briefly.
 const TRANSIENT_RETRY_TIMEOUT = Duration.seconds(15);
 const TRANSIENT_RETRY_INTERVAL = Duration.millis(500);
+const REQUEST_TIMEOUT = Duration.seconds(10);
+const TRANSIENT_STATUS_CODES = new Set([502, 503, 504]);
+
+// A rejected or malformed exchange fails the same way on every attempt, so only an unreachable,
+// slow or restarting server is worth asking again.
+const isTransientExchangeError = <E>(error: E): boolean => {
+  if (Cause.isTimeoutError(error)) return true;
+
+  if (!HttpClientError.isHttpClientError(error)) return false;
+
+  return (
+    Predicate.isTagged(error.reason, "TransportError") ||
+    TRANSIENT_STATUS_CODES.has(error.response?.status ?? 0)
+  );
+};
 
 export class DesktopServerAuthError extends Schema.TaggedError<DesktopServerAuthError>()(
   "DesktopServerAuthError",
@@ -65,8 +81,9 @@ const make = Effect.gen(function* () {
         },
       })
       .pipe(
+        Effect.timeout(REQUEST_TIMEOUT),
         Effect.retry({
-          while: Predicate.isTagged("HttpClientError"),
+          while: isTransientExchangeError,
           schedule: Schedule.spaced(TRANSIENT_RETRY_INTERVAL),
         }),
         Effect.timeout(TRANSIENT_RETRY_TIMEOUT),
