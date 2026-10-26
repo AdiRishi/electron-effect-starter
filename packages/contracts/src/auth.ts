@@ -65,8 +65,5 @@ export const AuthSessionState = Schema.Struct({
 
 export type AuthSessionState = typeof AuthSessionState.Type;
 
-/** Query parameter that carries a one-time pairing credential into the web app. */
-export const PAIRING_TOKEN_QUERY_PARAM = "token";
-
 /** Query parameter that carries a WebSocket ticket on the `/ws` upgrade. */
 export const WS_TICKET_QUERY_PARAM = "wsTicket";

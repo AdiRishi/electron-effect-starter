@@ -18,6 +18,10 @@
     "./Net": {
       "types": "./src/Net.ts",
       "import": "./src/Net.ts"
+    },
+    "./pairingUrl": {
+      "types": "./src/pairingUrl.ts",
+      "import": "./src/pairingUrl.ts"
     }
   },
   "scripts": {

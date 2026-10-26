@@ -1,6 +1,5 @@
 import {
   AuthAccessTokenType,
-  PAIRING_TOKEN_QUERY_PARAM,
   SESSION_COOKIE_NAME,
   WS_TICKET_QUERY_PARAM,
   type AuthAccessTokenResult,
@@ -8,6 +7,7 @@ import {
   type AuthSessionState,
   type AuthWebSocketTicketResult,
 } from "@app/contracts";
+import { setPairingTokenOnUrl } from "@app/shared/pairingUrl";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -217,15 +217,12 @@ const make = Effect.gen(function* () {
     } satisfies AuthWebSocketTicketResult;
   });
 
-  // The token travels in the fragment so it never reaches server logs or a Referer header.
   const issueStartupPairingUrl = Effect.fn("ServerAuth.issueStartupPairingUrl")(function* (
     baseUrl: string,
   ) {
     const { token } = yield* bootstrapCredentials.issuePairingToken;
-    const url = new URL(baseUrl);
-    url.hash = new URLSearchParams([[PAIRING_TOKEN_QUERY_PARAM, token]]).toString();
 
-    return url.toString();
+    return setPairingTokenOnUrl(new URL(baseUrl), token).toString();
   });
 
   return ServerAuth.of({
