@@ -106,9 +106,12 @@ export const resolveServerConfig = Effect.fn("cli.resolveServerConfig")(function
 
   const devUrl = Option.getOrUndefined(Option.firstSomeOf([serverFlags.devUrl, env.devUrl]));
 
+  const explicitBaseDir = Option.firstSomeOf([serverFlags.baseDir, env.baseDir]).pipe(
+    Option.filter((value) => value.trim().length > 0),
+  );
+
   const rawBaseDir = Option.firstSomeOf([
-    serverFlags.baseDir,
-    env.baseDir,
+    explicitBaseDir,
     Option.fromUndefinedOr(bootstrap?.baseDir),
   ]).pipe(Option.filter((value) => value.trim().length > 0));
 
@@ -116,7 +119,10 @@ export const resolveServerConfig = Effect.fn("cli.resolveServerConfig")(function
     ? yield* expandHomePath(rawBaseDir.value.trim())
     : path.join(yield* HostProcess.HomeDirectory, ServerConfig.DATA_DIR_NAME);
 
-  const paths = yield* ServerConfig.deriveServerPaths(baseDir, devUrl);
+  const paths = yield* ServerConfig.deriveServerPaths(baseDir, devUrl, {
+    baseDirIsExplicit: Option.isSome(explicitBaseDir),
+  });
+
   yield* ServerConfig.ensureServerDirectories(paths);
 
   return ServerConfig.ServerConfig.of({
@@ -150,7 +156,8 @@ const runServerCommand = Effect.fn("cli.runServerCommand")(function* (serverFlag
   const config = yield* resolveServerConfig(serverFlags, logLevel);
   const run = runServer.pipe(Effect.provideService(ServerConfig.ServerConfig, config));
 
-  if (config.mode !== "desktop") return yield* run;
+  // Only a server the desktop shell launched with a bootstrap token has a launcher to watch.
+  if (config.mode !== "desktop" || config.desktopBootstrapToken === undefined) return yield* run;
   yield* Effect.sync(() => {
     process.stdout.on("error", ignoreClosedLauncherPipe);
     process.stderr.on("error", ignoreClosedLauncherPipe);

@@ -36,13 +36,23 @@ export class ServerConfig extends Context.Service<
   }
 >()("@app/server/config/ServerConfig") {}
 
+export interface DeriveServerPathsOptions {
+  readonly baseDirIsExplicit?: boolean;
+}
+
 export const deriveServerPaths = Effect.fn("ServerConfig.deriveServerPaths")(function* (
   baseDir: string,
   devUrl: URL | undefined,
+  options: DeriveServerPathsOptions = {},
 ): Effect.fn.Return<ServerDerivedPaths, never, Path.Path> {
   const { join } = yield* Path.Path;
+
   // Dev servers keep their own state so a dev build never migrates the packaged app's database.
-  const stateDir = join(baseDir, devUrl === undefined ? "userdata" : "dev");
+  // A base directory named on the command line or in APP_HOME is already separate; use it as given.
+  const stateDir = join(
+    baseDir,
+    devUrl !== undefined && !options.baseDirIsExplicit ? "dev" : "userdata",
+  );
 
   return {
     stateDir,

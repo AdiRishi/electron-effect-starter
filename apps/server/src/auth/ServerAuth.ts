@@ -1,5 +1,6 @@
 import {
   AuthAccessTokenType,
+  DESKTOP_RENDERER_ORIGINS,
   WS_TICKET_QUERY_PARAM,
   type AuthAccessTokenResult,
   type AuthBrowserSessionResult,
@@ -217,7 +218,7 @@ function firstHeaderValue(value: string | undefined): string | undefined {
 }
 
 // Missing Origin allows same-origin reads and non-browser clients; otherwise require
-// same-origin Sec-Fetch-Site, this server's host, or a trusted app origin.
+// same-origin Sec-Fetch-Site, this server's host (including X-Forwarded-Host), or a trusted app origin.
 function isBrowserOriginAllowed(
   request: HttpServerRequest.HttpServerRequest,
   trustedOrigins: ReadonlySet<string>,
@@ -239,7 +240,10 @@ function isBrowserOriginAllowed(
 
   if (originHost === "") return false;
 
-  return originHost === firstHeaderValue(request.headers.host);
+  return (
+    originHost === firstHeaderValue(request.headers.host) ||
+    originHost === firstHeaderValue(request.headers["x-forwarded-host"])
+  );
 }
 
 const make = Effect.gen(function* () {
@@ -271,7 +275,10 @@ const make = Effect.gen(function* () {
     );
 
   // Cookies span ports; reject cookie-authenticated requests and sockets from other same-site origins.
-  const trustedBrowserOrigins = new Set<string>(config.devUrl ? [config.devUrl.origin] : []);
+  const trustedBrowserOrigins = new Set<string>([
+    ...(config.devUrl ? [config.devUrl.origin] : []),
+    ...DESKTOP_RENDERER_ORIGINS,
+  ]);
 
   const authenticateRequest: ServerAuth["Service"]["authenticateRequest"] = (request) => {
     const credential = selectRequestCredential(request, sessions.cookieName);
