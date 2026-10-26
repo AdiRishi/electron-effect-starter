@@ -80,9 +80,17 @@ export interface BackendInstanceSpec {
   readonly onReady?: (httpBaseUrl: URL) => Effect.Effect<void>;
   readonly onShutdown?: () => Effect.Effect<void>;
   readonly onStateDirOwned?: () => Effect.Effect<void>;
-  readonly onOutput?: (stream: BackendOutputStream, chunk: Uint8Array) => Effect.Effect<void>;
+  readonly outputLog?: DesktopLogger.DesktopBackendOutputLog;
   readonly readinessTimeout?: Duration.Duration;
 }
+
+const noOutputLog: DesktopLogger.DesktopBackendOutputLog = {
+  beginSession: () => Effect.void,
+  writeOutputChunk: () => Effect.void,
+  persistFailureSnapshot: () => Effect.void,
+  persistFailure: () => Effect.void,
+  discardSession: Effect.void,
+};
 
 interface ActiveBackendRun {
   readonly id: number;
@@ -282,6 +290,7 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
   const httpClient = yield* HttpClient.HttpClient;
   const state = yield* Ref.make(initialState);
   const mutex = yield* Semaphore.make(1);
+  const outputLog = spec.outputLog ?? noOutputLog;
   const { logInfo, logWarning, logError } = DesktopLogger.forComponent("desktop-backend");
 
   const updateActiveRun = (runId: number, f: (run: ActiveBackendRun) => ActiveBackendRun) =>
@@ -424,12 +433,27 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
                 if (run?.id !== runId) return [Option.none(), latest] as const;
 
                 return [
-                  Option.some({ stopRequested: run.stopRequested, wasReady: latest.ready }),
+                  Option.some({
+                    pid: run.pid,
+                    exitObserved: run.exitObserved,
+                    stopRequested: run.stopRequested,
+                    wasReady: latest.ready,
+                  }),
                   { ...latest, active: Option.none<ActiveBackendRun>(), ready: false },
                 ] as const;
               });
 
               if (Option.isNone(ended)) return;
+
+              if (Option.isSome(ended.value.pid)) {
+                if (ended.value.exitObserved && !ended.value.stopRequested) {
+                  yield* outputLog.persistFailure({
+                    details: `pid=${ended.value.pid.value} ${reason}`,
+                  });
+                } else {
+                  yield* outputLog.discardSession;
+                }
+              }
 
               if (ended.value.wasReady) yield* spec.onShutdown?.() ?? Effect.void;
 
@@ -449,10 +473,13 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
 
         const program = runBackendProcess(config.value, {
           readinessTimeout: spec.readinessTimeout ?? DEFAULT_READINESS_TIMEOUT,
-          onStarted: (pid) =>
-            updateActiveRun(runId, (run) => ({ ...run, pid: Option.some(pid) })).pipe(
-              Effect.andThen(logInfo("server started", { pid, port: config.value.bootstrap.port })),
-            ),
+          onStarted: Effect.fn("DesktopBackend.onStarted")(function* (pid) {
+            yield* updateActiveRun(runId, (run) => ({ ...run, pid: Option.some(pid) }));
+            yield* logInfo("server started", { pid, port: config.value.bootstrap.port });
+            yield* outputLog.beginSession({
+              details: `pid=${pid} port=${config.value.bootstrap.port} cwd=${config.value.cwd}`,
+            });
+          }),
           onExitObserved: updateActiveRun(runId, (run) => ({ ...run, exitObserved: true })),
           onReady: Effect.gen(function* () {
             const isCurrentRun = yield* Ref.modify(state, (latest) =>
@@ -463,9 +490,11 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
 
             if (isCurrentRun) yield* spec.onReady?.(config.value.httpBaseUrl) ?? Effect.void;
           }),
-          onReadinessFailure: (error) =>
-            logWarning("server readiness check failed", error.message, error),
-          onOutput: spec.onOutput ?? (() => Effect.void),
+          onReadinessFailure: Effect.fn("DesktopBackend.onReadinessFailure")(function* (error) {
+            yield* logWarning("server readiness check failed", error.message, error);
+            yield* outputLog.persistFailureSnapshot({ details: error.message });
+          }),
+          onOutput: outputLog.writeOutputChunk,
         }).pipe(
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
           Effect.provideService(HttpClient.HttpClient, httpClient),
@@ -518,11 +547,13 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
       return;
     }
 
-    yield* Ref.update(state, (latest) =>
+    const needsCleanup = yield* Ref.modify(state, (latest) =>
       Option.getOrUndefined(latest.active)?.id === active.value.id
-        ? { ...latest, active: Option.none<ActiveBackendRun>() }
-        : latest,
+        ? ([true, { ...latest, active: Option.none<ActiveBackendRun>() }] as const)
+        : ([false, latest] as const),
     );
+
+    if (needsCleanup) yield* outputLog.discardSession;
   });
 
   yield* Effect.addFinalizer(() => stop());

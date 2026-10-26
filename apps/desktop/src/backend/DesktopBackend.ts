@@ -3,7 +3,6 @@ import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -11,6 +10,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import * as DesktopLogger from "../app/DesktopLogger.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
@@ -58,7 +58,6 @@ const make = Effect.gen(function* () {
   const dialog = yield* ElectronDialog.ElectronDialog;
   const electronApp = yield* ElectronApp.ElectronApp;
   const crypto = yield* Crypto.Crypto;
-  const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
   // One token per launch: a restarted server is re-seeded with it, so the renderer's bearer survives.
@@ -68,8 +67,17 @@ const make = Effect.gen(function* () {
 
   const port = yield* Ref.make(Option.none<number>());
 
-  yield* fs.makeDirectory(environment.logDir, { recursive: true });
-  const serverLog = yield* fs.open(path.join(environment.logDir, "server.log"), { flag: "w" });
+  // The server logs only to stdout, so server.log is its record in a packaged build.
+  const serverLog = yield* DesktopLogger.makeRotatingLogFileWriter({
+    filePath: path.join(environment.logDir, "server.log"),
+  });
+
+  const failureLog = yield* DesktopLogger.makeBackendOutputLog({
+    isDevelopment: environment.isDevelopment,
+    logFile: yield* DesktopLogger.makeRotatingLogFileWriter({
+      filePath: path.join(environment.logDir, "server-child.log"),
+    }),
+  });
 
   const configResolve = Effect.gen(function* () {
     const selectedPort = yield* Ref.get(port);
@@ -115,7 +123,13 @@ const make = Effect.gen(function* () {
           "Another server is using this app's data directory. Quit the other copy and open the app again.",
         )
         .pipe(Effect.andThen(electronApp.quit)),
-    onOutput: (_stream, chunk) => serverLog.writeAll(chunk).pipe(Effect.ignore),
+    outputLog: {
+      ...failureLog,
+      writeOutputChunk: (stream, chunk) =>
+        serverLog
+          .writeBytes(chunk)
+          .pipe(Effect.andThen(failureLog.writeOutputChunk(stream, chunk))),
+    },
   });
 
   const rendererBootstrap = instance.currentConfig.pipe(

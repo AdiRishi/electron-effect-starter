@@ -17,6 +17,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import * as DesktopLogger from "../../src/app/DesktopLogger.ts";
 import * as DesktopBackendManager from "../../src/backend/DesktopBackendManager.ts";
 
 const decodeBootstrap = Schema.decodeEffect(Schema.fromJsonString(DesktopBackendBootstrap));
@@ -78,9 +79,11 @@ const makeInstance = (input: {
   readonly httpStatus?: number | "never";
   readonly onReady?: (httpBaseUrl: URL) => Effect.Effect<void>;
   readonly onStateDirOwned?: () => Effect.Effect<void>;
+  readonly outputLog?: DesktopLogger.DesktopBackendOutputLog;
 }) =>
   DesktopBackendManager.makeBackendInstance({
     configResolve: Effect.succeed(baseConfig),
+    ...(input.outputLog ? { outputLog: input.outputLog } : {}),
     ...(input.onReady ? { onReady: input.onReady } : {}),
     ...(input.onStateDirOwned ? { onStateDirOwned: input.onStateDirOwned } : {}),
   }).pipe(
@@ -223,6 +226,58 @@ describe("DesktopBackendManager", () => {
         assert.isTrue(Option.isNone(snapshot.activePid));
         yield* TestClock.adjust(Duration.minutes(1));
         assert.strictEqual(startCount, 1);
+      }),
+    ),
+  );
+
+  it.effect("persists a crashed run's output and discards a stopped run's", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events: string[] = [];
+        const crashed = yield* Deferred.make<void>();
+        let startCount = 0;
+
+        const instance = yield* makeInstance({
+          httpStatus: "never",
+          outputLog: {
+            beginSession: ({ details }) => Effect.sync(() => events.push(`begin:${details}`)),
+            writeOutputChunk: () => Effect.void,
+            persistFailureSnapshot: () => Effect.void,
+            persistFailure: ({ details }) =>
+              Effect.sync(() => events.push(`persist:${details}`)).pipe(
+                Effect.andThen(Deferred.succeed(crashed, undefined)),
+                Effect.asVoid,
+              ),
+            discardSession: Effect.sync(() => {
+              events.push("discard");
+            }),
+          },
+          spawn: () =>
+            Effect.gen(function* () {
+              startCount += 1;
+              const closed = yield* Deferred.make<void>();
+              yield* Effect.addFinalizer(() => Deferred.succeed(closed, undefined));
+
+              return makeProcess({
+                exitCode:
+                  startCount === 1
+                    ? Effect.succeed(ChildProcessSpawner.ExitCode(1))
+                    : Deferred.await(closed).pipe(Effect.as(ChildProcessSpawner.ExitCode(0))),
+              });
+            }),
+        });
+
+        yield* instance.start;
+        yield* Deferred.await(crashed);
+        yield* TestClock.adjust(Duration.millis(500));
+        yield* instance.stop();
+
+        assert.deepStrictEqual(events, [
+          "begin:pid=123 port=3773 cwd=/server",
+          "persist:pid=123 code=1",
+          "begin:pid=123 port=3773 cwd=/server",
+          "discard",
+        ]);
       }),
     ),
   );
