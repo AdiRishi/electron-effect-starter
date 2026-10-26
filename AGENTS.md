@@ -1,34 +1,27 @@
 # AGENTS.md
 
-Electron Effect Starter: an Electron shell that supervises a local Effect HTTP and WebSocket RPC server, with one React build that runs in the shell and in a plain browser. Read `docs/architecture.md` before changing auth, the connection supervisor, the backend manager, or shutdown.
+This is a starter for Effect v4 desktop apps: an Electron shell supervises a local Effect server, and one React build runs in the shell and in a browser. It uses pnpm workspaces and Turborepo.
 
-## Done means
+## Verify a change
 
-`pnpm check` and `pnpm test` pass. For a change to the desktop shell or its build, `pnpm build` and `pnpm --filter @app/desktop smoke-test` pass too.
+- `pnpm check` (typecheck, lint and format) and `pnpm test` pass.
+- A change to the desktop shell or to a build config also needs `pnpm build` and `pnpm --filter @app/desktop smoke-test`.
+- To see the app, run `pnpm dev` and open the sign-in URL the server logs. `pnpm dev:desktop` runs the desktop shell.
 
 ## Effect
 
-- Read `repos/effect/LLMS.md` first, then find the idiom in `repos/effect/packages/` (source and tests). `repos/` is a vendored subtree: read it, never edit it. `pnpm sync:repos` updates it.
-- Services are `Context.Service` classes with an inline interface, keyed `@app/<package>/<path>` (for example `@app/server/notes/NotesStore`).
-- Service methods and reusable functions are `Effect.fn("Name")`. Errors are `Schema.TaggedError` classes, handled with `catchTags`.
-- Use Effect's `FileSystem`, `Path`, `ChildProcess` and `Config`. Where a Node builtin is the right tool, suppress the diagnostic with a reason: `// @effect-diagnostics nodeBuiltinImport:off -- <reason>`.
-- The `@effect/tsgo` language service runs inside `tsc`, so its diagnostics fail `pnpm typecheck`.
+Read `repos/effect/LLMS.md` before writing Effect code. Treat `repos/effect/` as the source of truth for idiomatic usage, tests and API design, and prefer its patterns over guesses or web search. `repos/` holds vendored reference repositories: read them, but never edit or import from them. `pnpm sync:repos` updates them.
 
-## Packages
+## Conventions the code doesn't show
 
-- `packages/contracts`: wire schemas only (RPC, HTTP API, IPC, bootstrap). No runtime logic.
-- `packages/shared`: runtime helpers used by more than one app. Subpath exports, no barrel.
-- `packages/client-runtime`: the connection supervisor and RPC client, exported as `/connection` and `/rpc`.
-- Workspace packages export raw `.ts`. The Turbo `transit` task carries their source into dependents' task hashes.
+- Tests live in each package's `tests/` directory, mirroring `src/`. A new package includes `tests/**` in its `tsconfig.json`, or its tests stop typechecking.
+- A test that opens a real socket uses `it.layer(layer, { excludeTestServices: true })`. Under the default test clock, network timeouts never fire and the test hangs.
+- A lint error names its rule, and the rule's file under `tooling/oxlint-plugin-*/rules/` says what it protects. Fix the code it points at. Suppress a rule only at a real boundary, such as an untyped Electron, Node or log value, on that line and with a reason: `// oxlint-disable-next-line <rule> -- <reason>`.
 
-## Tests
+## Design notes
 
-- Tests live in each package's `tests/`, mirroring `src/`: `src/notes/NotesStore.ts` is tested by `tests/notes/NotesStore.test.ts`. A new package extends `@app/tsconfig/base.json`, merges `@app/vitest-config`, and includes `tests/**` in its `tsconfig.json`.
-- Write tests with `@effect/vitest` and `TestClock`. Tests that open real sockets use `it.layer(layer, { excludeTestServices: true })`.
-- Web component tests are `*.browser.test.tsx` and run in Playwright Chromium.
+Read the notes for an area before changing it:
 
-## Lint rules
-
-`tooling/` holds repo tooling: code that runs on the repository and never ships. Two oxlint plugins are configured in `oxlint.config.ts`: the repo's own rules in `tooling/oxlint-plugin-app/`, and anti-slop in `tooling/oxlint-plugin-anti-slop/`, vendored from upstream with its source recorded in `UPSTREAM.md`. A lint error names the rule; read its file in the plugin's `rules/` directory for what it protects.
-
-Fix the code a rule points at, not the symptom. Where the code sits at a real boundary (an untyped Electron, Node or log value), suppress the rule on that line with a reason: `// oxlint-disable-next-line <rule> -- <reason>`.
+- [`apps/server/AGENTS.md`](apps/server/AGENTS.md): state ownership, subscriptions and auth.
+- [`apps/desktop/AGENTS.md`](apps/desktop/AGENTS.md): server supervision, shutdown and renderer security.
+- [`packages/client-runtime/AGENTS.md`](packages/client-runtime/AGENTS.md): reconnection.
