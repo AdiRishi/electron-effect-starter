@@ -1,5 +1,0 @@
-# Workspace Packages Ship Raw TypeScript Source
-
-The `packages/*` workspace packages have no build step — their `exports` maps point straight at `./src/*.ts`, and every consumer (Vite bundles, `tsc`, Node's type stripping) compiles from source. This is T3 Code's pattern, kept on purpose: there is no `dist` to go stale against `src`, go-to-definition lands in real source, and package boundaries stay about API shape rather than build artifacts. Do not add build steps to these packages "to do it properly" — the cost would be a compile-watch pipeline and stale-artifact bugs, for zero benefit while the packages are internal-only. (Publishing one externally is the event that justifies adding a build, to that package alone.)
-
-The export granularity is also deliberately asymmetric, not accidental: `@app/shared` and `@app/client-runtime` are **subpath-only** — no root barrel — so importing one utility can never drag a growing package wholesale into a bundle (T3 Code enforces this on its client-runtime with a lint rule). `@app/contracts` keeps a root barrel because it is schema-only and consumed wholesale by design.
