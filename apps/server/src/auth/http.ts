@@ -89,7 +89,8 @@ export const layer = HttpApiBuilder.group(
             return result.response;
           },
           Effect.catchTags({
-            BootstrapCredentialInvalidError: failInvalidCredential,
+            UnknownBootstrapCredentialError: failInvalidCredential,
+            ExpiredBootstrapCredentialError: failInvalidCredential,
             SessionIssueError: () =>
               Effect.fail(new InternalError({ reason: "session_issuance_failed" })),
           }),
@@ -104,7 +105,8 @@ export const layer = HttpApiBuilder.group(
             return yield* auth.exchangeBootstrapCredential(args.payload.subject_token);
           },
           Effect.catchTags({
-            BootstrapCredentialInvalidError: failInvalidCredential,
+            UnknownBootstrapCredentialError: failInvalidCredential,
+            ExpiredBootstrapCredentialError: failInvalidCredential,
             SessionIssueError: () =>
               Effect.fail(new InternalError({ reason: "session_issuance_failed" })),
           }),

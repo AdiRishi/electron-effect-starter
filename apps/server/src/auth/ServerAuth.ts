@@ -125,7 +125,7 @@ export class ServerAuth extends Context.Service<
     ) => Effect.Effect<AuthWebSocketTicketResult, SessionStore.SessionIssueError>;
     readonly issueStartupPairingUrl: (
       baseUrl: string,
-    ) => Effect.Effect<string, BootstrapCredentials.PairingTokenIssueError>;
+    ) => Effect.Effect<string, BootstrapCredentials.PairingCredentialRandomGenerationError>;
   }
 >()("@app/server/auth/ServerAuth") {}
 
@@ -220,9 +220,9 @@ const make = Effect.gen(function* () {
   const issueStartupPairingUrl = Effect.fn("ServerAuth.issueStartupPairingUrl")(function* (
     baseUrl: string,
   ) {
-    const { token } = yield* bootstrapCredentials.issuePairingToken;
+    const { credential } = yield* bootstrapCredentials.issueOneTimeToken;
 
-    return setPairingTokenOnUrl(new URL(baseUrl), token).toString();
+    return setPairingTokenOnUrl(new URL(baseUrl), credential).toString();
   });
 
   return ServerAuth.of({

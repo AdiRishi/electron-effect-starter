@@ -1,6 +1,3 @@
-// @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect's Crypto has no timingSafeEqual.
-import * as NodeCrypto from "node:crypto";
-
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -8,105 +5,179 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
 import * as ServerConfig from "../config.ts";
 
-const PAIRING_TOKEN_TTL = Duration.minutes(15);
+export type BootstrapMethod = "desktop-bootstrap" | "one-time-token";
 
-export class BootstrapCredentialInvalidError extends Schema.TaggedError<BootstrapCredentialInvalidError>()(
-  "BootstrapCredentialInvalidError",
-  { reason: Schema.Literals(["unknown", "expired"]) },
+export interface BootstrapGrant {
+  readonly method: BootstrapMethod;
+  readonly subject: string;
+  readonly expiresAt: DateTime.Utc;
+}
+
+export class UnknownBootstrapCredentialError extends Schema.TaggedError<UnknownBootstrapCredentialError>()(
+  "UnknownBootstrapCredentialError",
+  {},
 ) {
   override get message(): string {
-    return `The bootstrap credential is not usable (${this.reason}).`;
+    return "Unknown bootstrap credential.";
   }
 }
 
-export class PairingTokenIssueError extends Schema.TaggedError<PairingTokenIssueError>()(
-  "PairingTokenIssueError",
+export class ExpiredBootstrapCredentialError extends Schema.TaggedError<ExpiredBootstrapCredentialError>()(
+  "ExpiredBootstrapCredentialError",
+  {},
+) {
+  override get message(): string {
+    return "Bootstrap credential expired.";
+  }
+}
+
+export const BootstrapCredentialInvalidError = Schema.Union([
+  UnknownBootstrapCredentialError,
+  ExpiredBootstrapCredentialError,
+]);
+
+export type BootstrapCredentialInvalidError = typeof BootstrapCredentialInvalidError.Type;
+
+export class PairingCredentialRandomGenerationError extends Schema.TaggedError<PairingCredentialRandomGenerationError>()(
+  "PairingCredentialRandomGenerationError",
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Failed to issue a pairing token.";
+    return "Failed to generate pairing credential data.";
   }
 }
 
-const tokensMatch = (left: string, right: string) => {
-  const leftBuffer = Buffer.from(left, "utf8");
-  const rightBuffer = Buffer.from(right, "utf8");
-
-  return (
-    leftBuffer.length === rightBuffer.length && NodeCrypto.timingSafeEqual(leftBuffer, rightBuffer)
-  );
-};
+export interface IssuedBootstrapCredential {
+  readonly credential: string;
+  readonly expiresAt: DateTime.Utc;
+}
 
 /**
- * Credentials a client trades once for a session: the token the desktop shell passes at launch,
- * which stays valid for the process lifetime, and one-time pairing tokens printed for browsers.
+ * Credentials a client trades for a session: the token the desktop shell passes at launch, valid
+ * for 24 hours and any number of exchanges, and one-time pairing tokens printed for browsers.
  */
 export class BootstrapCredentials extends Context.Service<
   BootstrapCredentials,
   {
-    readonly issuePairingToken: Effect.Effect<
-      { readonly token: string; readonly expiresAt: DateTime.Utc },
-      PairingTokenIssueError
+    readonly issueOneTimeToken: Effect.Effect<
+      IssuedBootstrapCredential,
+      PairingCredentialRandomGenerationError
     >;
     readonly consume: (
       credential: string,
-    ) => Effect.Effect<"desktop" | "pairing", BootstrapCredentialInvalidError>;
+    ) => Effect.Effect<BootstrapGrant, BootstrapCredentialInvalidError>;
   }
 >()("@app/server/auth/BootstrapCredentials") {}
 
+interface StoredBootstrapGrant extends BootstrapGrant {
+  readonly remainingUses: number | "unbounded";
+}
+
+type ConsumeResult = Result.Result<BootstrapGrant, BootstrapCredentialInvalidError>;
+
+const DEFAULT_ONE_TIME_TOKEN_TTL_MINUTES = Duration.minutes(5);
+const DESKTOP_BOOTSTRAP_TTL_HOURS = Duration.hours(24);
+const DEV_STARTUP_TTL_HOURS = Duration.hours(24);
+
 const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
-  const { desktopBootstrapToken } = yield* ServerConfig.ServerConfig;
-  const pairingTokens = yield* Ref.make(new Map<string, DateTime.Utc>());
+  const config = yield* ServerConfig.ServerConfig;
+  const grantsRef = yield* Ref.make(new Map<string, StoredBootstrapGrant>());
 
-  const issuePairingToken = Effect.gen(function* () {
-    const bytes = yield* crypto
-      .randomBytes(32)
-      .pipe(Effect.mapError((cause) => new PairingTokenIssueError({ cause })));
-
-    const token = Buffer.from(bytes).toString("base64url");
-    const now = yield* DateTime.now;
-    const expiresAt = DateTime.addDuration(now, PAIRING_TOKEN_TTL);
-    yield* Ref.update(pairingTokens, (current) =>
-      new Map(
-        [...current].filter(([, tokenExpiry]) => DateTime.isGreaterThan(tokenExpiry, now)),
-      ).set(token, expiresAt),
-    );
-
-    return { token, expiresAt };
-  }).pipe(Effect.withSpan("BootstrapCredentials.issuePairingToken"));
-
-  const consume = Effect.fn("BootstrapCredentials.consume")(function* (credential: string) {
-    if (desktopBootstrapToken !== undefined && tokensMatch(credential, desktopBootstrapToken)) {
-      return "desktop" as const;
-    }
-
-    const expiresAt = yield* Ref.modify(pairingTokens, (current) => {
-      const found = current.get(credential);
-
-      if (found === undefined) return [undefined, current] as const;
+  const seedGrant = (credential: string, grant: StoredBootstrapGrant) =>
+    Ref.update(grantsRef, (current) => {
       const next = new Map(current);
-      next.delete(credential);
+      next.set(credential, grant);
 
-      return [found, next] as const;
+      return next;
     });
 
-    if (expiresAt === undefined) {
-      return yield* new BootstrapCredentialInvalidError({ reason: "unknown" });
-    }
+  if (config.desktopBootstrapToken) {
+    const now = yield* DateTime.now;
+    yield* seedGrant(config.desktopBootstrapToken, {
+      method: "desktop-bootstrap",
+      subject: "desktop-bootstrap",
+      expiresAt: DateTime.addDuration(now, DESKTOP_BOOTSTRAP_TTL_HOURS),
+      // Reloads and expired bearer sessions must be able to re-exchange the desktop seed.
+      remainingUses: "unbounded",
+    });
+  }
 
-    if (DateTime.isLessThanOrEqualTo(expiresAt, yield* DateTime.now)) {
-      return yield* new BootstrapCredentialInvalidError({ reason: "expired" });
-    }
+  const issueOneTimeToken = Effect.gen(function* () {
+    const bytes = yield* crypto
+      .randomBytes(32)
+      .pipe(Effect.mapError((cause) => new PairingCredentialRandomGenerationError({ cause })));
 
-    return "pairing" as const;
+    const credential = Buffer.from(bytes).toString("base64url");
+
+    // The dev server restarts often; a startup link that outlives a few restarts saves re-pairing.
+    const ttl =
+      config.devUrl === undefined ? DEFAULT_ONE_TIME_TOKEN_TTL_MINUTES : DEV_STARTUP_TTL_HOURS;
+
+    const expiresAt = DateTime.addDuration(yield* DateTime.now, ttl);
+    yield* seedGrant(credential, {
+      method: "one-time-token",
+      subject: "one-time-token",
+      expiresAt,
+      remainingUses: 1,
+    });
+
+    return { credential, expiresAt } satisfies IssuedBootstrapCredential;
+  }).pipe(Effect.withSpan("BootstrapCredentials.issueOneTimeToken"));
+
+  const consume: BootstrapCredentials["Service"]["consume"] = Effect.fn(
+    "BootstrapCredentials.consume",
+  )(function* (credential) {
+    const now = yield* DateTime.now;
+
+    // One Ref.modify finds, checks and spends the grant, so racing requests cannot both spend it.
+    const result: ConsumeResult = yield* Ref.modify(
+      grantsRef,
+      (current): readonly [ConsumeResult, Map<string, StoredBootstrapGrant>] => {
+        const grant = current.get(credential);
+
+        if (!grant) {
+          return [Result.fail(new UnknownBootstrapCredentialError({})), current];
+        }
+
+        const next = new Map(current);
+
+        if (DateTime.isGreaterThanOrEqualTo(now, grant.expiresAt)) {
+          next.delete(credential);
+
+          return [Result.fail(new ExpiredBootstrapCredentialError({})), next];
+        }
+
+        const remainingUses = grant.remainingUses;
+
+        if (remainingUses !== "unbounded") {
+          if (remainingUses <= 1) {
+            next.delete(credential);
+          } else {
+            next.set(credential, { ...grant, remainingUses: remainingUses - 1 });
+          }
+        }
+
+        return [
+          Result.succeed({
+            method: grant.method,
+            subject: grant.subject,
+            expiresAt: grant.expiresAt,
+          }),
+          next,
+        ];
+      },
+    );
+
+    return yield* Effect.fromResult(result);
   });
 
-  return BootstrapCredentials.of({ issuePairingToken, consume });
+  return BootstrapCredentials.of({ issueOneTimeToken, consume });
 });
 
 export const layer = Layer.effect(BootstrapCredentials, make);
