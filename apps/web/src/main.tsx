@@ -8,8 +8,21 @@ import "./index.css";
 
 import { SignInRequired } from "./components/SignInRequired";
 import { isElectron } from "./env";
+import { clearChunkReloadGuard, reloadOnceForChunkLoadError } from "./lib/chunkReloadGuard";
 import { getRouter } from "./router";
 import { resolveInitialServerAuthGateState, type ServerAuthGateState } from "./server/auth";
+
+let chunkLoadFailed = false;
+let reloadScheduled = false;
+
+window.addEventListener("vite:preloadError", (event) => {
+  chunkLoadFailed = true;
+
+  if (reloadOnceForChunkLoadError()) {
+    reloadScheduled = true;
+    event.preventDefault();
+  }
+});
 
 const registry = AtomRegistry.make();
 
@@ -38,6 +51,11 @@ async function start() {
   // The desktop shell serves one document from its own scheme, so routes live in the hash there.
   const router = getRouter(isElectron ? createHashHistory() : createBrowserHistory());
   await router.load();
+
+  // Route chunk failures resolve router.load() and surface later through the error boundary.
+  if (reloadScheduled) return;
+
+  if (!chunkLoadFailed) clearChunkReloadGuard();
   root.render(
     <StrictMode>
       <RegistryContext.Provider value={registry}>
@@ -47,4 +65,8 @@ async function start() {
   );
 }
 
-export const startup = start();
+export const startup = start().catch((error) => {
+  if (reloadScheduled) return;
+
+  throw error;
+});
